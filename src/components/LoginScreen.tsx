@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Lock, Eye, EyeOff, Fingerprint, Terminal, AlertTriangle, Zap, Brain, Wifi, Activity, Key, User, ChevronRight } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, Fingerprint, Terminal, AlertTriangle, Zap, Brain, Wifi, Activity, Key, User, ChevronRight, Hexagon, Triangle, Circle, Pentagon } from 'lucide-react';
 
 interface LoginScreenProps {
   onLogin: (username: string) => void;
@@ -9,30 +9,39 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [biometricScan, setBiometricScan] = useState(0);
-  const [error, setError] = useState('');
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [bioMetrics, setBioMetrics] = useState({ iris: false, fingerprint: false, voice: false });
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [particles, setParticles] = useState<Array<{x: number, y: number, size: number}>>([]);
 
-  // 3D parallax background
+  // Track mouse for parallax effect
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        const x = (e.clientX - rect.left - rect.width / 2) / rect.width;
-        const y = (e.clientY - rect.top - rect.height / 2) / rect.height;
-        setMousePosition({ x: x * 20, y: y * 20 });
-      }
+      setMousePosition({
+        x: (e.clientX / window.innerWidth - 0.5) * 20,
+        y: (e.clientY / window.innerHeight - 0.5) * 20
+      });
     };
-
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // Neural network visualization
+  // Initialize floating particles
+  useEffect(() => {
+    const newParticles = [];
+    for (let i = 0; i < 30; i++) {
+      newParticles.push({
+        x: Math.random() * 100,
+        y: Math.random() * 100,
+        size: Math.random() * 3 + 1
+      });
+    }
+    setParticles(newParticles);
+  }, []);
+
+  // Holographic background animation
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -43,464 +52,299 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    interface Node {
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      connections: number[];
-      activated: boolean;
-    }
-
-    const nodes: Node[] = [];
-    const nodeCount = 50;
-
-    // Create nodes
-    for (let i = 0; i < nodeCount; i++) {
-      nodes.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.5,
-        vy: (Math.random() - 0.5) * 0.5,
-        connections: [],
-        activated: false
-      });
-    }
-
-    // Create connections
-    nodes.forEach((node, i) => {
-      const connectionCount = 2 + Math.floor(Math.random() * 3);
-      for (let j = 0; j < connectionCount; j++) {
-        const target = Math.floor(Math.random() * nodeCount);
-        if (target !== i) {
-          node.connections.push(target);
-        }
-      }
-    });
-
-    let pulseTime = 0;
+    let time = 0;
     const animate = () => {
-      pulseTime += 0.02;
+      time += 0.005;
       
-      // Clear with trail effect
+      // Clear with fade effect
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Update and draw nodes
-      nodes.forEach((node, i) => {
-        // Update position
-        node.x += node.vx;
-        node.y += node.vy;
-
-        // Bounce off edges
-        if (node.x < 0 || node.x > canvas.width) node.vx *= -1;
-        if (node.y < 0 || node.y > canvas.height) node.vy *= -1;
-
-        // Random activation
-        if (Math.random() < 0.001) {
-          node.activated = true;
-          setTimeout(() => { node.activated = false; }, 1000);
-        }
-
-        // Draw connections
-        node.connections.forEach(targetIndex => {
-          const target = nodes[targetIndex];
-          if (target) {
-            const gradient = ctx.createLinearGradient(node.x, node.y, target.x, target.y);
-            
-            if (node.activated || target.activated) {
-              gradient.addColorStop(0, 'rgba(0, 255, 255, 0.6)');
-              gradient.addColorStop(0.5, 'rgba(168, 85, 247, 0.8)');
-              gradient.addColorStop(1, 'rgba(255, 0, 255, 0.6)');
-              ctx.lineWidth = 2;
-            } else {
-              gradient.addColorStop(0, 'rgba(0, 255, 255, 0.1)');
-              gradient.addColorStop(1, 'rgba(168, 85, 247, 0.1)');
-              ctx.lineWidth = 1;
-            }
-            
-            ctx.strokeStyle = gradient;
-            ctx.beginPath();
-            ctx.moveTo(node.x, node.y);
-            ctx.lineTo(target.x, target.y);
-            ctx.stroke();
-          }
-        });
-
-        // Draw node
-        const size = node.activated ? 8 : 4;
-        const glowSize = node.activated ? 20 : 10;
-        
-        // Glow effect
-        const glowGradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, glowSize);
-        if (node.activated) {
-          glowGradient.addColorStop(0, 'rgba(0, 255, 255, 0.8)');
-          glowGradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
-        } else {
-          glowGradient.addColorStop(0, 'rgba(168, 85, 247, 0.4)');
-          glowGradient.addColorStop(1, 'rgba(168, 85, 247, 0)');
-        }
-        
-        ctx.fillStyle = glowGradient;
-        ctx.fillRect(node.x - glowSize, node.y - glowSize, glowSize * 2, glowSize * 2);
-        
-        // Core
-        ctx.fillStyle = node.activated ? '#00ffff' : '#a855f7';
+      
+      // Draw grid lines
+      ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      
+      for (let i = 0; i < canvas.width; i += 50) {
         ctx.beginPath();
-        ctx.arc(node.x, node.y, size, 0, Math.PI * 2);
+        ctx.moveTo(i + Math.sin(time) * 10, 0);
+        ctx.lineTo(i + Math.sin(time + Math.PI) * 10, canvas.height);
+        ctx.stroke();
+      }
+      
+      for (let i = 0; i < canvas.height; i += 50) {
+        ctx.beginPath();
+        ctx.moveTo(0, i + Math.cos(time) * 10);
+        ctx.lineTo(canvas.width, i + Math.cos(time + Math.PI) * 10);
+        ctx.stroke();
+      }
+      
+      // Draw neural connections
+      const nodes = 20;
+      for (let i = 0; i < nodes; i++) {
+        const x = (canvas.width / 2) + Math.cos(time + i * Math.PI / nodes) * 200;
+        const y = (canvas.height / 2) + Math.sin(time + i * Math.PI / nodes) * 200;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(0, 255, 255, 0.5)' : 'rgba(192, 132, 252, 0.5)';
         ctx.fill();
-      });
-
+        
+        // Connect to center
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, canvas.height / 2);
+        ctx.lineTo(x, y);
+        ctx.strokeStyle = i % 2 === 0 ? 'rgba(0, 255, 255, 0.1)' : 'rgba(192, 132, 252, 0.1)';
+        ctx.stroke();
+      }
+      
       requestAnimationFrame(animate);
     };
-
     animate();
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setIsAuthenticating(true);
+    if (!username || !password) return;
 
+    setIsScanning(true);
+    
     // Simulate biometric scanning
-    let scan = 0;
     const scanInterval = setInterval(() => {
-      scan += 10;
-      setBiometricScan(scan);
-      
-      if (scan >= 100) {
-        clearInterval(scanInterval);
-        
-        // Validate credentials
-        if (username && password) {
-          setTimeout(() => {
-            onLogin(username);
-          }, 500);
-        } else {
-          setError('AUTHENTICATION FAILED - INVALID CREDENTIALS');
-          setIsAuthenticating(false);
-          setBiometricScan(0);
+      setScanProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(scanInterval);
+          setTimeout(() => onLogin(username), 500);
+          return 100;
         }
-      }
+        
+        // Update biometrics
+        if (prev > 30 && !bioMetrics.fingerprint) {
+          setBioMetrics(prev => ({ ...prev, fingerprint: true }));
+        }
+        if (prev > 60 && !bioMetrics.iris) {
+          setBioMetrics(prev => ({ ...prev, iris: true }));
+        }
+        if (prev > 90 && !bioMetrics.voice) {
+          setBioMetrics(prev => ({ ...prev, voice: true }));
+        }
+        
+        return prev + 5;
+      });
     }, 100);
   };
 
   return (
-    <div ref={containerRef} className="fixed inset-0 bg-black overflow-hidden">
-      {/* Neural network background */}
-      <canvas ref={canvasRef} className="absolute inset-0 opacity-40" />
-
-      {/* Animated gradient background */}
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-purple-900/20 to-pink-900/20"
-             style={{
-               transform: `perspective(1000px) rotateX(${mousePosition.y}deg) rotateY(${mousePosition.x}deg)`,
-               transformStyle: 'preserve-3d'
-             }} />
-      </div>
-
-      {/* Hexagon grid pattern */}
-      <div className="absolute inset-0 opacity-10">
-        <svg width="100%" height="100%" style={{ position: 'absolute' }}>
-          <defs>
-            <pattern id="hexagon" width="60" height="70" patternUnits="userSpaceOnUse">
-              <polygon points="30,0 60,17.5 60,52.5 30,70 0,52.5 0,17.5" 
-                       fill="none" 
-                       stroke="rgba(0, 255, 255, 0.3)" 
-                       strokeWidth="1"/>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#hexagon)" />
-        </svg>
-      </div>
-
-      {/* Main login container */}
+    <div className="fixed inset-0 bg-black overflow-hidden">
+      {/* Animated background canvas */}
+      <canvas ref={canvasRef} className="absolute inset-0 opacity-50" />
+      
+      {/* Floating particles */}
+      {particles.map((particle, i) => (
+        <div
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            left: `${particle.x}%`,
+            top: `${particle.y}%`,
+            width: `${particle.size}px`,
+            height: `${particle.size}px`,
+            background: i % 2 === 0 ? '#00ffff' : '#c084fc',
+            boxShadow: i % 2 === 0 
+              ? `0 0 ${particle.size * 5}px #00ffff`
+              : `0 0 ${particle.size * 5}px #c084fc`,
+            animation: `float-holo ${10 + i * 0.5}s ease-in-out infinite`
+          }}
+        />
+      ))}
+      
+      {/* Quantum grid overlay */}
+      <div className="quantum-grid opacity-30" />
+      
+      {/* Main content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
-          {/* Holographic card effect */}
-          <div className="relative">
-            {/* Glow effects */}
-            <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-3xl opacity-30 blur-2xl animate-pulse" />
-            
-            {/* Main card */}
-            <div className="relative backdrop-blur-2xl bg-black/40 rounded-3xl border border-cyan-400/30 overflow-hidden"
-                 style={{
-                   boxShadow: `
-                     0 0 50px rgba(0, 255, 255, 0.2),
-                     inset 0 0 50px rgba(0, 0, 0, 0.5),
-                     0 20px 60px rgba(0, 0, 0, 0.5)
-                   `,
-                   transform: `perspective(1000px) rotateX(${-mousePosition.y * 0.1}deg) rotateY(${mousePosition.x * 0.1}deg)`,
-                   transformStyle: 'preserve-3d'
-                 }}>
-              
-              {/* Scanning line animation */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-80"
-                     style={{
-                       top: '0%',
-                       animation: 'scan-vertical 3s linear infinite',
-                       boxShadow: '0 0 20px rgba(0, 255, 255, 0.8)'
-                     }} />
-              </div>
-
-              {/* Header section */}
-              <div className="p-8 text-center relative">
-                {/* Animated logo */}
-                <div className="relative inline-block mb-6">
-                  <div className="absolute inset-0 animate-spin-slow">
-                    <div className="absolute inset-0 rounded-full border-2 border-cyan-400/30" />
-                    <div className="absolute inset-2 rounded-full border-2 border-purple-400/30" />
-                    <div className="absolute inset-4 rounded-full border-2 border-pink-400/30" />
-                  </div>
-                  
-                  <div className="relative bg-black/60 p-6 rounded-2xl border border-cyan-400/50">
-                    <Brain className="w-16 h-16 text-cyan-400" style={{
-                      filter: 'drop-shadow(0 0 20px rgba(0, 255, 255, 0.8))'
-                    }} />
-                  </div>
+        <div 
+          className="w-full max-w-md"
+          style={{
+            transform: `perspective(1000px) rotateX(${mousePosition.y * 0.05}deg) rotateY(${mousePosition.x * 0.05}deg)`
+          }}
+        >
+          {/* Login card */}
+          <div className="glass-panel rounded-3xl p-8 cyber-noise">
+            {/* Logo section */}
+            <div className="text-center mb-8">
+              <div className="relative inline-block mb-6">
+                <div className="absolute inset-0 animate-pulse">
+                  <Hexagon className="w-24 h-24 text-cyan-400/20" />
                 </div>
-
-                <h1 className="text-3xl font-bold mb-2" style={{
-                  fontFamily: 'Orbitron, monospace',
-                  textShadow: '0 0 30px rgba(0, 255, 255, 0.8)'
-                }}>
-                  <span style={{
-                    background: 'linear-gradient(135deg, #00ffff, #00d4ff, #a855f7)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent'
-                  }}>
-                    NEURAL AUTH
-                  </span>
-                </h1>
-                
-                <p className="text-cyan-400/60 text-sm font-mono">
-                  QUANTUM BIOMETRIC VERIFICATION
-                </p>
-              </div>
-
-              {/* Form section */}
-              <form onSubmit={handleLogin} className="p-8 pt-0 space-y-6">
-                {/* Username field */}
                 <div className="relative">
-                  <label className="block text-cyan-400 text-xs font-bold uppercase tracking-wider mb-2">
-                    AGENT IDENTIFIER
+                  <Shield className="w-24 h-24 text-cyan-400" style={{
+                    filter: 'drop-shadow(0 0 30px rgba(0, 255, 255, 0.8))'
+                  }} />
+                </div>
+              </div>
+              
+              <h1 className="text-4xl font-bold mb-2 holo-text">
+                QUANTUM AUTH
+              </h1>
+              <p className="text-sm text-gray-400 uppercase tracking-widest">
+                Biometric Security Portal
+              </p>
+            </div>
+
+            {!isScanning ? (
+              <form onSubmit={handleLogin} className="space-y-6">
+                {/* Username field */}
+                <div className="space-y-2">
+                  <label className="text-xs text-cyan-300 uppercase tracking-wider">
+                    Agent Identifier
                   </label>
-                  <div className="relative group">
-                    <div className={`absolute -inset-1 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-lg opacity-0 group-hover:opacity-30 blur transition-opacity ${
-                      focusedField === 'username' ? 'opacity-30' : ''
-                    }`} />
-                    
-                    <div className="relative flex items-center">
-                      <User className="absolute left-3 w-5 h-5 text-cyan-400/60" />
-                      <input
-                        type="text"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        onFocus={() => setFocusedField('username')}
-                        onBlur={() => setFocusedField(null)}
-                        className="w-full bg-black/50 border border-cyan-500/30 rounded-lg pl-12 pr-4 py-3 text-cyan-300 placeholder-cyan-800/50 focus:outline-none focus:border-cyan-400 transition-all"
-                        placeholder="Enter Agent ID"
-                        disabled={isAuthenticating}
-                        style={{
-                          fontFamily: 'Fira Code, monospace',
-                          boxShadow: focusedField === 'username' 
-                            ? 'inset 0 0 20px rgba(0, 255, 255, 0.1)' 
-                            : 'inset 0 0 20px rgba(0, 0, 0, 0.5)'
-                        }}
-                      />
-                      {username && (
-                        <div className="absolute right-3">
-                          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                        </div>
-                      )}
-                    </div>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-cyan-400/50" />
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full pl-12 pr-4 py-3 rounded-xl"
+                      placeholder="Enter clearance code"
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1px solid rgba(0, 255, 255, 0.2)'
+                      }}
+                    />
                   </div>
                 </div>
 
                 {/* Password field */}
-                <div className="relative">
-                  <label className="block text-cyan-400 text-xs font-bold uppercase tracking-wider mb-2">
-                    ENCRYPTION KEY
+                <div className="space-y-2">
+                  <label className="text-xs text-purple-300 uppercase tracking-wider">
+                    Quantum Key
                   </label>
-                  <div className="relative group">
-                    <div className={`absolute -inset-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg opacity-0 group-hover:opacity-30 blur transition-opacity ${
-                      focusedField === 'password' ? 'opacity-30' : ''
-                    }`} />
-                    
-                    <div className="relative flex items-center">
-                      <Key className="absolute left-3 w-5 h-5 text-cyan-400/60" />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        onFocus={() => setFocusedField('password')}
-                        onBlur={() => setFocusedField(null)}
-                        className="w-full bg-black/50 border border-cyan-500/30 rounded-lg pl-12 pr-12 py-3 text-cyan-300 placeholder-cyan-800/50 focus:outline-none focus:border-cyan-400 transition-all"
-                        placeholder="Enter Security Key"
-                        disabled={isAuthenticating}
-                        style={{
-                          fontFamily: 'Fira Code, monospace',
-                          boxShadow: focusedField === 'password' 
-                            ? 'inset 0 0 20px rgba(168, 85, 247, 0.1)' 
-                            : 'inset 0 0 20px rgba(0, 0, 0, 0.5)'
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 text-cyan-500/50 hover:text-cyan-400 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
-                    </div>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-purple-400/50" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-12 pr-12 py-3 rounded-xl"
+                      placeholder="Enter quantum key"
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1px solid rgba(192, 132, 252, 0.2)'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400/50 hover:text-purple-400"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
                   </div>
                 </div>
 
-                {/* Biometric scanner */}
-                {isAuthenticating && (
-                  <div className="space-y-3">
-                    <div className="backdrop-blur-xl bg-gradient-to-r from-green-500/10 to-cyan-500/10 rounded-lg p-4 border border-green-400/30">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-green-400 text-xs font-bold uppercase tracking-wider">
-                          BIOMETRIC SCAN
-                        </span>
-                        <Fingerprint className="w-5 h-5 text-green-400 animate-pulse" />
-                      </div>
-                      
-                      <div className="h-2 bg-black/50 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-gradient-to-r from-green-400 via-cyan-400 to-blue-400 transition-all duration-300"
-                          style={{ 
-                            width: `${biometricScan}%`,
-                            boxShadow: '0 0 10px currentColor'
-                          }}
-                        />
-                      </div>
-                      
-                      <div className="mt-2 flex justify-between text-xs font-mono">
-                        <span className="text-green-400/60">ANALYZING PATTERN</span>
-                        <span className="text-green-400">{biometricScan}%</span>
-                      </div>
-                    </div>
-
-                    {/* Security checks */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {['RETINA', 'VOICE', 'DNA'].map((check, index) => (
-                        <div key={check} className={`
-                          text-center p-2 rounded border text-xs font-mono transition-all
-                          ${biometricScan > (index + 1) * 33
-                            ? 'bg-green-400/10 border-green-400/30 text-green-400'
-                            : 'bg-black/30 border-cyan-400/20 text-cyan-400/40'
-                          }
-                        `}>
-                          {check}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Error message */}
-                {error && (
-                  <div className="backdrop-blur-xl bg-red-400/10 rounded-lg p-3 border border-red-400/30">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" />
-                      <span className="text-red-400 text-sm font-mono">{error}</span>
-                    </div>
-                  </div>
-                )}
-
                 {/* Submit button */}
-                <button
+                <button 
                   type="submit"
-                  disabled={isAuthenticating}
-                  className="w-full relative group overflow-hidden rounded-lg"
+                  className="w-full neon-btn py-4 rounded-xl font-semibold uppercase tracking-wider transition-all"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 opacity-80 group-hover:opacity-100 transition-opacity" />
-                  
-                  <div className="relative backdrop-blur-xl bg-black/30 px-6 py-4 border border-cyan-400/50 group-hover:border-cyan-400 transition-all">
-                    <div className="flex items-center justify-center gap-3">
-                      {isAuthenticating ? (
-                        <>
-                          <Activity className="w-5 h-5 animate-spin" />
-                          <span className="font-bold uppercase tracking-wider" style={{
-                            fontFamily: 'Orbitron, monospace'
-                          }}>
-                            AUTHENTICATING...
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <Lock className="w-5 h-5" />
-                          <span className="font-bold uppercase tracking-wider" style={{
-                            fontFamily: 'Orbitron, monospace'
-                          }}>
-                            INITIATE NEURAL LINK
-                          </span>
-                          <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                        </>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <Lock className="w-5 h-5" />
+                    <span>Initialize Quantum Link</span>
+                    <ChevronRight className="w-5 h-5" />
                   </div>
                 </button>
               </form>
+            ) : (
+              <div className="space-y-6">
+                {/* Scanning animation */}
+                <div className="text-center mb-6">
+                  <div className="relative inline-block">
+                    <Fingerprint className="w-24 h-24 text-cyan-400 animate-pulse" />
+                    <div className="absolute inset-0 w-24 h-24 border-2 border-cyan-400 rounded-full animate-ping" />
+                  </div>
+                </div>
 
-              {/* Footer */}
-              <div className="p-6 pt-0">
-                <div className="flex items-center justify-center gap-6 text-xs font-mono">
-                  <div className="flex items-center gap-2 text-cyan-400/60">
-                    <Wifi className="w-3 h-3" />
-                    <span>QUANTUM ENCRYPTED</span>
+                {/* Progress bar */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-cyan-300">BIOMETRIC SCAN</span>
+                    <span className="text-cyan-400">{scanProgress}%</span>
                   </div>
-                  <div className="flex items-center gap-2 text-purple-400/60">
-                    <Shield className="w-3 h-3" />
-                    <span>AES-512</span>
+                  <div className="h-2 bg-black/50 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full transition-all duration-300 rounded-full"
+                      style={{
+                        width: `${scanProgress}%`,
+                        background: 'linear-gradient(90deg, #00ffff, #c084fc, #ff00ff)'
+                      }}
+                    />
                   </div>
-                  <div className="flex items-center gap-2 text-pink-400/60">
-                    <Zap className="w-3 h-3" />
-                    <span>2FA ENABLED</span>
+                </div>
+
+                {/* Biometric indicators */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className={`glass-panel p-3 rounded-lg text-center transition-all ${
+                    bioMetrics.fingerprint ? 'border-green-400/50' : 'border-gray-600/50'
+                  }`}>
+                    <Fingerprint className={`w-6 h-6 mx-auto mb-1 ${
+                      bioMetrics.fingerprint ? 'text-green-400' : 'text-gray-500'
+                    }`} />
+                    <span className="text-xs">FINGERPRINT</span>
                   </div>
+                  
+                  <div className={`glass-panel p-3 rounded-lg text-center transition-all ${
+                    bioMetrics.iris ? 'border-green-400/50' : 'border-gray-600/50'
+                  }`}>
+                    <Eye className={`w-6 h-6 mx-auto mb-1 ${
+                      bioMetrics.iris ? 'text-green-400' : 'text-gray-500'
+                    }`} />
+                    <span className="text-xs">IRIS</span>
+                  </div>
+                  
+                  <div className={`glass-panel p-3 rounded-lg text-center transition-all ${
+                    bioMetrics.voice ? 'border-green-400/50' : 'border-gray-600/50'
+                  }`}>
+                    <Activity className={`w-6 h-6 mx-auto mb-1 ${
+                      bioMetrics.voice ? 'text-green-400' : 'text-gray-500'
+                    }`} />
+                    <span className="text-xs">VOICE</span>
+                  </div>
+                </div>
+
+                {/* Status text */}
+                <div className="text-center text-sm text-purple-300 animate-pulse">
+                  Establishing quantum encryption tunnel...
+                </div>
+              </div>
+            )}
+
+            {/* Security badges */}
+            <div className="mt-8 pt-6 border-t border-gray-800">
+              <div className="flex justify-center gap-6 text-xs text-gray-500">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  <span>AES-512</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4" />
+                  <span>QUANTUM</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Wifi className="w-4 h-4" />
+                  <span>SECURE</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Demo mode indicator */}
-          <div className="mt-6 backdrop-blur-xl bg-green-400/5 rounded-lg p-3 border border-green-400/30">
-            <p className="text-green-400/70 text-xs font-mono text-center">
-              DEMO MODE: Use any credentials to access system
+          <div className="mt-6 glass-panel rounded-2xl p-4 text-center">
+            <p className="text-xs text-cyan-400/70 uppercase tracking-wider">
+              Demo Mode: Use any credentials to access
             </p>
           </div>
         </div>
       </div>
-
-      {/* HUD elements */}
-      <div className="absolute top-4 left-4 text-xs font-mono text-cyan-400/30">
-        <div>SYSTEM: ONLINE</div>
-        <div>FIREWALL: ACTIVE</div>
-        <div>THREATS: 0</div>
-      </div>
-
-      <div className="absolute top-4 right-4 text-xs font-mono text-cyan-400/30 text-right">
-        <div>{new Date().toLocaleTimeString()}</div>
-        <div>LAT: CLASSIFIED</div>
-        <div>LON: CLASSIFIED</div>
-      </div>
-
-      <style jsx>{`
-        @keyframes scan-vertical {
-          0% { top: 0%; }
-          100% { top: 100%; }
-        }
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .animate-spin-slow {
-          animation: spin-slow 20s linear infinite;
-        }
-      `}</style>
     </div>
   );
 };

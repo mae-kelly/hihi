@@ -1,401 +1,408 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, Activity, AlertTriangle, Database, Server, Cloud, Wifi, Terminal, Zap, Globe, Lock, Eye, Target, TrendingUp, Users, BarChart3, AlertCircle, ChevronRight, Monitor, Cpu, HardDrive, Network } from 'lucide-react';
-import { DashboardData, SystemVisibility } from '@/types';
-import { generateMockDashboardData, generateTimeSeriesData } from '@/data/mockData';
+import React, { useState, useEffect, useRef } from 'react';
+import { Shield, Activity, AlertTriangle, Database, Server, Cloud, Wifi, Terminal, Zap, Globe, Lock, Eye, Target, TrendingUp, Users, BarChart3, AlertCircle, ChevronRight, Monitor, Cpu, HardDrive, Network, Layers, Box, Hexagon, Triangle, Circle } from 'lucide-react';
 
 interface DashboardProps {
   user: string;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ user }) => {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [selectedSystem, setSelectedSystem] = useState<SystemVisibility | null>(null);
-  const [timeRange, setTimeRange] = useState('24h');
-  const [refreshing, setRefreshing] = useState(false);
-  const [threatPulse, setThreatPulse] = useState(false);
+  const [activeMetric, setActiveMetric] = useState<string | null>(null);
+  const [dataPoints, setDataPoints] = useState<number[]>([]);
+  const [hoveredCard, setHoveredCard] = useState<number | null>(null);
+  const [systemHealth, setSystemHealth] = useState(92);
+  const [threats, setThreats] = useState(3);
+  const [dataFlow, setDataFlow] = useState(0);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [particles, setParticles] = useState<Array<{x: number, y: number, vx: number, vy: number}>>([]);
 
+  // Initialize particle system
   useEffect(() => {
-    setData(generateMockDashboardData());
+    const newParticles = [];
+    for (let i = 0; i < 50; i++) {
+      newParticles.push({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5
+      });
+    }
+    setParticles(newParticles);
+  }, []);
 
+  // Animate particles
+  useEffect(() => {
     const interval = setInterval(() => {
-      setData(generateMockDashboardData());
-      setThreatPulse(true);
-      setTimeout(() => setThreatPulse(false), 1000);
-    }, 5000);
-
+      setParticles(prev => prev.map(p => ({
+        x: (p.x + p.vx + window.innerWidth) % window.innerWidth,
+        y: (p.y + p.vy + window.innerHeight) % window.innerHeight,
+        vx: p.vx,
+        vy: p.vy
+      })));
+    }, 50);
     return () => clearInterval(interval);
   }, []);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => {
-      setData(generateMockDashboardData());
-      setRefreshing(false);
-    }, 1000);
-  };
+  // Generate random data for visualization
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDataPoints(Array.from({ length: 20 }, () => Math.random() * 100));
+      setDataFlow(prev => (prev + 1) % 100);
+      setSystemHealth(85 + Math.random() * 15);
+      setThreats(Math.floor(Math.random() * 10));
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
-  if (!data) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-cyan-400 font-mono animate-pulse">LOADING SECURITY DATA...</div>
-      </div>
-    );
-  }
+  // 3D holographic wave animation
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    let time = 0;
+    const animate = () => {
+      time += 0.02;
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw holographic waves
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.strokeStyle = i % 2 === 0 
+          ? `rgba(0, 255, 255, ${0.3 - i * 0.05})`
+          : `rgba(192, 132, 252, ${0.3 - i * 0.05})`;
+        ctx.lineWidth = 2;
+        
+        for (let x = 0; x < canvas.width; x += 5) {
+          const y = canvas.height / 2 + 
+                   Math.sin((x / 50) + time + i * 0.5) * 30 * (1 - i * 0.1) +
+                   Math.sin((x / 30) + time * 1.5 + i * 0.3) * 20 * (1 - i * 0.1);
+          
+          if (x === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+      
+      requestAnimationFrame(animate);
+    };
+    animate();
+  }, []);
+
+  const metrics = [
+    {
+      icon: Eye,
+      label: 'VISIBILITY',
+      value: systemHealth,
+      unit: '%',
+      color: 'cyan',
+      gradient: 'from-cyan-400 to-blue-400'
+    },
+    {
+      icon: Shield,
+      label: 'SECURITY',
+      value: 95.5,
+      unit: '%',
+      color: 'purple',
+      gradient: 'from-purple-400 to-pink-400'
+    },
+    {
+      icon: AlertTriangle,
+      label: 'THREATS',
+      value: threats,
+      unit: '',
+      color: 'pink',
+      gradient: 'from-pink-400 to-rose-400'
+    },
+    {
+      icon: Activity,
+      label: 'UPTIME',
+      value: 99.9,
+      unit: '%',
+      color: 'cyan',
+      gradient: 'from-blue-400 to-cyan-400'
+    }
+  ];
 
   return (
-    <div className="min-h-screen bg-black text-cyan-400 overflow-x-hidden">
-      {/* Background effects */}
-      <div className="fixed inset-0 bg-gradient-to-br from-blue-900/5 via-purple-900/5 to-pink-900/5"></div>
-      <div className="fixed inset-0" style={{
-        backgroundImage: `linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px)`,
-        backgroundSize: '50px 50px'
-      }}></div>
+    <div className="min-h-screen bg-black relative overflow-hidden">
+      {/* Quantum grid background */}
+      <div className="quantum-grid" />
       
-      {/* Header */}
-      <header className="relative backdrop-blur-xl bg-black/60 border-b border-cyan-400/20 z-20">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Shield className="w-8 h-8 text-cyan-400" />
-                  <div className="absolute -inset-1 bg-cyan-400/20 blur-lg"></div>
-                </div>
-                <h1 className="text-3xl font-black" style={{
-                  fontFamily: 'Orbitron, monospace',
-                  background: 'linear-gradient(135deg, #00ffff, #00d4ff, #a855f7)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}>
-                  CYBERVISION <span className="text-pink-400">5000</span>
-                </h1>
-              </div>
-              <div className="h-8 w-px bg-cyan-400/30"></div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-400/50"></div>
-                <span className="text-green-400 text-sm font-mono font-bold">SYSTEM ONLINE</span>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleRefresh}
-                className={`backdrop-blur-xl bg-black/40 px-5 py-2.5 rounded-lg border border-cyan-400/30 hover:border-cyan-400 hover:bg-cyan-400/10 transition-all flex items-center gap-2 ${refreshing ? 'animate-spin' : ''}`}
-                style={{ boxShadow: 'inset 0 0 20px rgba(0, 0, 0, 0.5)' }}
-              >
-                <Zap className="w-4 h-4 text-cyan-400" />
-                <span className="text-sm font-mono font-bold text-cyan-400">REFRESH</span>
-              </button>
-              
-              <div className="flex items-center gap-3 backdrop-blur-xl bg-purple-400/10 px-5 py-2.5 rounded-lg border border-purple-400/30">
-                <Lock className="w-4 h-4 text-purple-400" />
-                <span className="text-sm font-mono font-bold text-purple-400">{user.toUpperCase()}</span>
-                <span className="text-xs text-purple-400/60 font-mono">OMEGA</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Floating particles */}
+      {particles.map((particle, i) => (
+        <div
+          key={i}
+          className="quantum-particle"
+          style={{
+            left: particle.x,
+            top: particle.y,
+            background: i % 2 === 0 ? '#00ffff' : '#c084fc',
+            boxShadow: i % 2 === 0 
+              ? '0 0 10px #00ffff, 0 0 20px rgba(0, 255, 255, 0.5)'
+              : '0 0 10px #c084fc, 0 0 20px rgba(192, 132, 252, 0.5)'
+          }}
+        />
+      ))}
 
       {/* Main content */}
-      <main className="relative z-10 p-6">
-        {/* Top metrics cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="backdrop-blur-xl bg-gradient-to-br from-cyan-500/10 to-blue-500/10 rounded-xl p-6 border border-cyan-400/30 hover:border-cyan-400/60 transition-all group"
-               style={{ boxShadow: '0 0 30px rgba(0, 255, 255, 0.1), inset 0 0 30px rgba(0, 0, 0, 0.5)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <Eye className="w-6 h-6 text-cyan-400 group-hover:animate-pulse" />
-              <span className="text-xs font-mono text-cyan-400/60 uppercase tracking-wider">Visibility</span>
+      <div className="relative z-10 p-8">
+        {/* Header */}
+        <div className="mb-12">
+          <h1 className="text-6xl font-black mb-4 holo-text">
+            QUANTUM SECURITY MATRIX
+          </h1>
+          <div className="flex items-center gap-4">
+            <div className="glass-panel px-4 py-2 rounded-full">
+              <span className="text-sm font-medium text-cyan-300">
+                AGENT: {user.toUpperCase()}
+              </span>
             </div>
-            <div className="text-4xl font-black font-mono text-cyan-400" style={{ textShadow: '0 0 20px currentColor' }}>
-              {data.overallVisibility.toFixed(1)}%
+            <div className="glass-panel px-4 py-2 rounded-full">
+              <span className="text-sm font-medium text-purple-300">
+                CLEARANCE: OMEGA
+              </span>
             </div>
-            <div className="mt-3 h-2 bg-black/50 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-cyan-400 to-blue-400 relative"
-                style={{ width: `${data.overallVisibility}%` }}
+            <div className="glass-panel px-4 py-2 rounded-full flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span className="text-sm font-medium text-green-400">
+                SYSTEM ONLINE
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-4 gap-6 mb-8">
+          {metrics.map((metric, index) => {
+            const Icon = metric.icon;
+            return (
+              <div
+                key={metric.label}
+                className="holo-card rounded-2xl p-6 cursor-pointer transition-all duration-500 holo-shine"
+                onMouseEnter={() => setHoveredCard(index)}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={{
+                  transform: hoveredCard === index ? 'scale(1.05) translateY(-10px)' : 'scale(1)',
+                  boxShadow: hoveredCard === index 
+                    ? `0 20px 60px rgba(0, 255, 255, 0.3), 0 0 100px rgba(192, 132, 252, 0.2)`
+                    : 'none'
+                }}
               >
-                <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="backdrop-blur-xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-xl p-6 border border-purple-400/30 hover:border-purple-400/60 transition-all group"
-               style={{ boxShadow: '0 0 30px rgba(168, 85, 247, 0.1), inset 0 0 30px rgba(0, 0, 0, 0.5)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <Server className="w-6 h-6 text-purple-400 group-hover:animate-pulse" />
-              <span className="text-xs font-mono text-purple-400/60 uppercase tracking-wider">Systems</span>
-            </div>
-            <div className="text-4xl font-black font-mono text-purple-400" style={{ textShadow: '0 0 20px currentColor' }}>
-              {data.systemsMonitored}
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-green-400" />
-              <span className="text-xs font-mono text-green-400">+12 this week</span>
-            </div>
-          </div>
-
-          <div className={`backdrop-blur-xl bg-gradient-to-br from-red-500/10 to-orange-500/10 rounded-xl p-6 border transition-all group ${
-            threatPulse ? 'border-red-400 animate-pulse shadow-lg shadow-red-400/50' : 'border-red-400/30 hover:border-red-400/60'
-          }`} style={{ boxShadow: `0 0 30px rgba(255, 0, 68, ${threatPulse ? 0.3 : 0.1}), inset 0 0 30px rgba(0, 0, 0, 0.5)` }}>
-            <div className="flex items-center justify-between mb-3">
-              <AlertTriangle className="w-6 h-6 text-red-400 group-hover:animate-pulse" />
-              <span className="text-xs font-mono text-red-400/60 uppercase tracking-wider">Threats</span>
-            </div>
-            <div className="text-4xl font-black font-mono text-red-400" style={{ textShadow: '0 0 20px currentColor' }}>
-              {data.activeThreats}
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-orange-400 animate-pulse" />
-              <span className="text-xs font-mono text-orange-400">2 critical</span>
-            </div>
-          </div>
-
-          <div className="backdrop-blur-xl bg-gradient-to-br from-green-500/10 to-cyan-500/10 rounded-xl p-6 border border-green-400/30 hover:border-green-400/60 transition-all group"
-               style={{ boxShadow: '0 0 30px rgba(0, 255, 136, 0.1), inset 0 0 30px rgba(0, 0, 0, 0.5)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <Shield className="w-6 h-6 text-green-400 group-hover:animate-pulse" />
-              <span className="text-xs font-mono text-green-400/60 uppercase tracking-wider">Compliance</span>
-            </div>
-            <div className="text-4xl font-black font-mono text-green-400" style={{ textShadow: '0 0 20px currentColor' }}>
-              {data.complianceScore.toFixed(1)}%
-            </div>
-            <div className="mt-3 h-2 bg-black/50 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-green-400 to-cyan-400 relative"
-                style={{ width: `${data.complianceScore}%` }}
-              >
-                <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Main content grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* System Visibility Matrix */}
-          <div className="backdrop-blur-xl bg-black/40 rounded-xl border border-cyan-400/30"
-               style={{ boxShadow: '0 0 40px rgba(0, 255, 255, 0.1), inset 0 0 40px rgba(0, 0, 0, 0.5)' }}>
-            <div className="p-6 border-b border-cyan-400/20">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-cyan-400" style={{ fontFamily: 'Orbitron, monospace' }}>
-                  SYSTEM VISIBILITY MATRIX
-                </h2>
-                <Database className="w-5 h-5 text-cyan-400 animate-pulse" />
-              </div>
-            </div>
-            
-            <div className="p-6 space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
-              {data.systems.map((system) => (
-                <div
-                  key={system.name}
-                  className="backdrop-blur bg-black/30 rounded-lg p-4 border border-cyan-400/10 hover:border-cyan-400/30 hover:bg-cyan-400/5 transition-all cursor-pointer group"
-                  onClick={() => setSelectedSystem(system)}
-                  style={{ boxShadow: 'inset 0 0 20px rgba(0, 0, 0, 0.5)' }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-3 h-3 rounded-full ${
-                        system.status === 'secure' ? 'bg-green-400 shadow-lg shadow-green-400/50' :
-                        system.status === 'warning' ? 'bg-orange-400 shadow-lg shadow-orange-400/50' :
-                        system.status === 'critical' ? 'bg-red-400 shadow-lg shadow-red-400/50 animate-pulse' : 
-                        'bg-gray-500'
-                      }`} />
-                      <span className="text-sm font-mono font-bold text-cyan-300 group-hover:text-cyan-400">
-                        {system.name}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <span className="text-xs text-cyan-400/60">Coverage</span>
-                        <p className="text-sm font-mono font-bold text-green-400">{system.coverage}%</p>
-                      </div>
-                      {system.threats > 0 && (
-                        <div className="flex items-center gap-1 bg-red-400/10 px-2 py-1 rounded">
-                          <AlertTriangle className="w-3 h-3 text-red-400" />
-                          <span className="text-xs font-mono text-red-400">{system.threats}</span>
-                        </div>
-                      )}
-                      <ChevronRight className="w-4 h-4 text-cyan-400/30 group-hover:text-cyan-400" />
-                    </div>
-                  </div>
+                <div className="flex items-center justify-between mb-4">
+                  <Icon className={`w-8 h-8 ${
+                    metric.color === 'cyan' ? 'text-cyan-400' :
+                    metric.color === 'purple' ? 'text-purple-400' :
+                    'text-pink-400'
+                  }`} />
+                  <Hexagon className="w-6 h-6 text-gray-600" />
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Threat Intelligence Panel */}
-          <div className="backdrop-blur-xl bg-black/40 rounded-xl border border-purple-400/30"
-               style={{ boxShadow: '0 0 40px rgba(168, 85, 247, 0.1), inset 0 0 40px rgba(0, 0, 0, 0.5)' }}>
-            <div className="p-6 border-b border-purple-400/20">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-purple-400" style={{ fontFamily: 'Orbitron, monospace' }}>
-                  THREAT INTELLIGENCE
-                </h2>
-                <Target className="w-5 h-5 text-purple-400 animate-pulse" />
-              </div>
-            </div>
-            
-            <div className="p-6 space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
-              {data.threats.map((threat) => (
-                <div
-                  key={threat.id}
-                  className="backdrop-blur bg-black/30 rounded-lg p-4 border border-purple-400/10 hover:border-purple-400/30 hover:bg-purple-400/5 transition-all"
-                  style={{ boxShadow: 'inset 0 0 20px rgba(0, 0, 0, 0.5)' }}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`px-3 py-1 rounded-full text-xs font-mono font-bold ${
-                        threat.severity === 'critical' ? 'bg-red-400/20 text-red-400 border border-red-400/30' :
-                        threat.severity === 'high' ? 'bg-orange-400/20 text-orange-400 border border-orange-400/30' :
-                        threat.severity === 'medium' ? 'bg-yellow-400/20 text-yellow-400 border border-yellow-400/30' :
-                        'bg-blue-400/20 text-blue-400 border border-blue-400/30'
-                      }`}>
-                        {threat.severity.toUpperCase()}
-                      </div>
-                      <span className="text-sm font-mono text-cyan-300">{threat.type}</span>
-                    </div>
-                    <div className={`px-3 py-1 rounded text-xs font-mono font-bold ${
-                      threat.status === 'active' ? 'bg-red-400/10 text-red-400 animate-pulse' :
-                      threat.status === 'investigating' ? 'bg-orange-400/10 text-orange-400' :
-                      'bg-green-400/10 text-green-400'
-                    }`}>
-                      {threat.status.toUpperCase()}
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-purple-400/60">
-                    <span className="font-mono">Source: {threat.source}</span>
-                    <span className="font-mono">{threat.affectedSystems} systems affected</span>
-                  </div>
+                
+                <div className="text-4xl font-bold mb-2">
+                  <span className={`bg-gradient-to-r ${metric.gradient} bg-clip-text text-transparent`}>
+                    {metric.value}{metric.unit}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
+                
+                <div className="text-sm text-gray-400 uppercase tracking-wider">
+                  {metric.label}
+                </div>
+                
+                {/* Mini chart */}
+                <div className="mt-4 flex items-end gap-1 h-12">
+                  {dataPoints.slice(0, 10).map((point, i) => (
+                    <div
+                      key={i}
+                      className="flex-1 bg-gradient-to-t rounded-t"
+                      style={{
+                        height: `${point * 0.5}px`,
+                        background: metric.color === 'cyan' 
+                          ? 'linear-gradient(to top, rgba(0, 255, 255, 0.5), rgba(0, 255, 255, 0.1))'
+                          : metric.color === 'purple'
+                          ? 'linear-gradient(to top, rgba(192, 132, 252, 0.5), rgba(192, 132, 252, 0.1))'
+                          : 'linear-gradient(to top, rgba(255, 0, 255, 0.5), rgba(255, 0, 255, 0.1))'
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Real-time metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="backdrop-blur-xl bg-gradient-to-br from-cyan-500/5 to-blue-500/5 rounded-xl p-5 border border-cyan-400/30"
-               style={{ boxShadow: '0 0 30px rgba(0, 255, 255, 0.1), inset 0 0 30px rgba(0, 0, 0, 0.5)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <Activity className="w-5 h-5 text-cyan-400" />
-              <span className="text-xs font-mono text-cyan-400/60">EVENTS/SEC</span>
-            </div>
-            <div className="text-3xl font-black font-mono text-cyan-400">
-              {data.metrics.eventsPerSecond.toLocaleString()}
-            </div>
-            <div className="mt-3 h-8 bg-black/50 rounded flex items-end p-1 gap-px">
-              {[...Array(20)].map((_, i) => (
-                <div
-                  key={i}
-                  className="flex-1 bg-gradient-to-t from-cyan-400 to-blue-400 rounded-t"
-                  style={{
-                    height: `${Math.random() * 100}%`,
-                    animation: `pulse ${1 + Math.random()}s ease-in-out infinite`,
-                    animationDelay: `${i * 50}ms`
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="backdrop-blur-xl bg-gradient-to-br from-purple-500/5 to-pink-500/5 rounded-xl p-5 border border-purple-400/30"
-               style={{ boxShadow: '0 0 30px rgba(168, 85, 247, 0.1), inset 0 0 30px rgba(0, 0, 0, 0.5)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <Database className="w-5 h-5 text-purple-400" />
-              <span className="text-xs font-mono text-purple-400/60">DATA</span>
-            </div>
-            <div className="text-3xl font-black font-mono text-purple-400">{data.metrics.dataIngested}</div>
-            <div className="mt-3 text-xs font-mono text-purple-400/60">Per 24 hours</div>
-          </div>
-
-          <div className="backdrop-blur-xl bg-gradient-to-br from-orange-500/5 to-red-500/5 rounded-xl p-5 border border-orange-400/30"
-               style={{ boxShadow: '0 0 30px rgba(255, 136, 0, 0.1), inset 0 0 30px rgba(0, 0, 0, 0.5)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <AlertTriangle className="w-5 h-5 text-orange-400" />
-              <span className="text-xs font-mono text-orange-400/60">ALERTS</span>
-            </div>
-            <div className="text-3xl font-black font-mono text-orange-400">{data.metrics.alertsGenerated}</div>
-            <div className="mt-3 text-xs font-mono text-orange-400/60">Last 24 hours</div>
-          </div>
-
-          <div className="backdrop-blur-xl bg-gradient-to-br from-green-500/5 to-cyan-500/5 rounded-xl p-5 border border-green-400/30"
-               style={{ boxShadow: '0 0 30px rgba(0, 255, 136, 0.1), inset 0 0 30px rgba(0, 0, 0, 0.5)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <Zap className="w-5 h-5 text-green-400" />
-              <span className="text-xs font-mono text-green-400/60">MTTR</span>
-            </div>
-            <div className="text-3xl font-black font-mono text-green-400">{data.metrics.mttr} min</div>
-            <div className="mt-3 text-xs font-mono text-green-400/60">Response time</div>
-          </div>
-        </div>
-      </main>
-
-      {/* System detail modal */}
-      {selectedSystem && (
-        <div 
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedSystem(null)}
-        >
-          <div 
-            className="backdrop-blur-xl bg-black/60 rounded-xl border border-cyan-400/30 max-w-md w-full"
-            onClick={(e) => e.stopPropagation()}
-            style={{ boxShadow: '0 0 60px rgba(0, 255, 255, 0.3), inset 0 0 40px rgba(0, 0, 0, 0.5)' }}
-          >
-            <div className="p-6 border-b border-cyan-400/20">
-              <h3 className="text-2xl font-bold text-cyan-400" style={{ fontFamily: 'Orbitron, monospace' }}>
-                {selectedSystem.name}
+        {/* Main visualization area */}
+        <div className="grid grid-cols-12 gap-6">
+          {/* 3D Wave Visualization */}
+          <div className="col-span-8">
+            <div className="glass-panel rounded-2xl p-6 h-[400px] relative">
+              <h3 className="text-lg font-semibold mb-4 text-cyan-300 uppercase tracking-wider">
+                Quantum Data Flow
               </h3>
+              <canvas 
+                ref={canvasRef}
+                className="w-full h-[300px]"
+                style={{
+                  filter: 'drop-shadow(0 0 20px rgba(0, 255, 255, 0.5))'
+                }}
+              />
+              
+              {/* Overlay metrics */}
+              <div className="absolute bottom-6 left-6 right-6 flex justify-between">
+                <div className="glass-panel px-3 py-2 rounded">
+                  <span className="text-xs text-gray-400">THROUGHPUT</span>
+                  <div className="text-lg font-bold text-cyan-400">2.4 TB/s</div>
+                </div>
+                <div className="glass-panel px-3 py-2 rounded">
+                  <span className="text-xs text-gray-400">LATENCY</span>
+                  <div className="text-lg font-bold text-purple-400">0.3ms</div>
+                </div>
+                <div className="glass-panel px-3 py-2 rounded">
+                  <span className="text-xs text-gray-400">PACKETS</span>
+                  <div className="text-lg font-bold text-pink-400">1.2M/s</div>
+                </div>
+              </div>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between p-3 bg-black/30 rounded-lg">
-                <span className="text-sm font-mono text-cyan-400/60">Coverage</span>
-                <span className="text-lg font-bold font-mono text-green-400">{selectedSystem.coverage}%</span>
+          </div>
+
+          {/* System Status */}
+          <div className="col-span-4">
+            <div className="glass-panel rounded-2xl p-6 h-[400px]">
+              <h3 className="text-lg font-semibold mb-4 text-purple-300 uppercase tracking-wider">
+                System Status
+              </h3>
+              
+              <div className="space-y-4">
+                {['Core Systems', 'Neural Network', 'Quantum Engine', 'Data Pipeline'].map((system, index) => {
+                  const status = index === 2 ? 'warning' : 'online';
+                  const progress = index === 2 ? 67 : 90 + Math.random() * 10;
+                  
+                  return (
+                    <div key={system} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-300">{system}</span>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          status === 'online' 
+                            ? 'bg-green-400/20 text-green-400'
+                            : 'bg-yellow-400/20 text-yellow-400'
+                        }`}>
+                          {status.toUpperCase()}
+                        </span>
+                      </div>
+                      
+                      <div className="h-2 bg-black/50 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full transition-all duration-500 rounded-full"
+                          style={{
+                            width: `${progress}%`,
+                            background: status === 'online'
+                              ? 'linear-gradient(90deg, #00ffff, #00e5ff)'
+                              : 'linear-gradient(90deg, #f0abfc, #e879f9)'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="flex items-center justify-between p-3 bg-black/30 rounded-lg">
-                <span className="text-sm font-mono text-cyan-400/60">Status</span>
-                <span className={`text-lg font-bold font-mono ${
-                  selectedSystem.status === 'secure' ? 'text-green-400' :
-                  selectedSystem.status === 'warning' ? 'text-orange-400' :
-                  'text-red-400'
-                }`}>{selectedSystem.status.toUpperCase()}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-black/30 rounded-lg">
-                <span className="text-sm font-mono text-cyan-400/60">Active Threats</span>
-                <span className="text-lg font-bold font-mono text-orange-400">{selectedSystem.threats}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-black/30 rounded-lg">
-                <span className="text-sm font-mono text-cyan-400/60">Last Scan</span>
-                <span className="text-sm font-mono text-cyan-300">
-                  {new Date(selectedSystem.lastScan).toLocaleTimeString()}
-                </span>
+
+              {/* Circular progress indicator */}
+              <div className="mt-8 flex justify-center">
+                <div className="relative w-32 h-32">
+                  <svg className="w-32 h-32 transform -rotate-90">
+                    <circle
+                      cx="64"
+                      cy="64"
+                      r="56"
+                      stroke="rgba(0, 255, 255, 0.1)"
+                      strokeWidth="8"
+                      fill="none"
+                    />
+                    <circle
+                      cx="64"
+                      cy="64"
+                      r="56"
+                      stroke="url(#gradient)"
+                      strokeWidth="8"
+                      fill="none"
+                      strokeDasharray={`${2 * Math.PI * 56}`}
+                      strokeDashoffset={`${2 * Math.PI * 56 * (1 - systemHealth / 100)}`}
+                      className="transition-all duration-1000"
+                    />
+                    <defs>
+                      <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#00ffff" />
+                        <stop offset="100%" stopColor="#c084fc" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-cyan-400">{systemHealth.toFixed(1)}%</div>
+                      <div className="text-xs text-gray-400">HEALTH</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="p-6 pt-0">
-              <button
-                onClick={() => setSelectedSystem(null)}
-                className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 text-black font-bold py-3 rounded-lg hover:from-cyan-400 hover:to-blue-400 transition-all"
-                style={{ boxShadow: '0 0 20px rgba(0, 255, 255, 0.5)' }}
-              >
-                CLOSE
+          </div>
+        </div>
+
+        {/* Bottom monitoring strip */}
+        <div className="mt-8 glass-panel rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-8">
+              <div className="flex items-center gap-3">
+                <Activity className="w-5 h-5 text-cyan-400" />
+                <div>
+                  <div className="text-xs text-gray-400">CPU</div>
+                  <div className="text-sm font-bold text-cyan-400">42%</div>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <HardDrive className="w-5 h-5 text-purple-400" />
+                <div>
+                  <div className="text-xs text-gray-400">MEMORY</div>
+                  <div className="text-sm font-bold text-purple-400">8.6 GB</div>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <Wifi className="w-5 h-5 text-pink-400" />
+                <div>
+                  <div className="text-xs text-gray-400">NETWORK</div>
+                  <div className="text-sm font-bold text-pink-400">1.2 Gbps</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-gray-500">
+                {typeof window !== 'undefined' 
+                  ? new Date().toLocaleTimeString('en-US', { 
+                      hour: '2-digit', 
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: false 
+                    })
+                  : '00:00:00'
+                }
+              </span>
+              <button className="neon-btn px-6 py-2 rounded-lg text-sm font-medium">
+                SCAN NETWORK
               </button>
             </div>
           </div>
         </div>
-      )}
-
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(0, 212, 255, 0.1);
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: linear-gradient(135deg, #00d4ff, #a855f7);
-          border-radius: 3px;
-        }
-      `}</style>
+      </div>
     </div>
   );
 };

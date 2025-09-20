@@ -1,117 +1,142 @@
-import React, { useState } from 'react';
-import { AlertCircle, XCircle, TrendingUp, Database, Shield, Activity, Network, Cloud } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { AlertCircle, XCircle, TrendingUp, Database, Shield, Activity, Network, Cloud, Hexagon, Triangle, Zap, Wifi } from 'lucide-react';
 
 const VisibilityGapsPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [animatedGaps, setAnimatedGaps] = useState<any[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const visibilityGaps = [
     {
       id: 'GAP-001',
       category: 'infrastructure',
-      system: 'Hyper-V Server',
-      gap: 'No Chronicle Integration',
+      system: 'QUANTUM-NODE-07',
+      gap: 'Neural Link Disconnected',
       coverage: 0,
       impact: 'critical',
-      description: 'Hyper-V servers have 0% visibility in Chronicle platform',
-      recommendation: 'Deploy Chronicle forwarders on all Hyper-V hosts',
+      description: 'Quantum nodes showing 0% visibility in neural pathways',
+      recommendation: 'Deploy quantum forwarders on all nodes',
       effort: 'high',
       priority: 1
     },
     {
       id: 'GAP-002',
-      category: 'infrastructure',
-      system: 'IBM HMC Server',
-      gap: 'Missing Splunk Logs',
-      coverage: 0,
-      impact: 'critical',
-      description: 'IBM HMC servers not forwarding logs to Splunk',
-      recommendation: 'Configure syslog forwarding to Splunk indexers',
-      effort: 'medium',
-      priority: 1
-    },
-    {
-      id: 'GAP-003',
       category: 'cloud',
-      system: 'AWS CloudTrail',
-      gap: 'Incomplete Event Coverage',
+      system: 'PHOTON-CLOUD',
+      gap: 'Incomplete Event Matrix',
       coverage: 45,
       impact: 'high',
-      description: 'Only management events logged, data events missing',
-      recommendation: 'Enable data event logging for S3 and Lambda',
+      description: 'Only partial photon events captured',
+      recommendation: 'Enable full spectrum event logging',
       effort: 'low',
       priority: 2
     },
     {
+      id: 'GAP-003',
+      category: 'network',
+      system: 'VOID-DNS',
+      gap: 'Query Logs Missing',
+      coverage: 20,
+      impact: 'medium',
+      description: 'DNS quantum queries not captured',
+      recommendation: 'Activate void query logging',
+      effort: 'low',
+      priority: 3
+    },
+    {
       id: 'GAP-004',
-      category: 'application',
-      system: 'API Gateway',
-      gap: 'No Request/Response Logging',
-      coverage: 30,
+      category: 'endpoint',
+      system: 'HOLO-DEVICES',
+      gap: 'No Holographic Coverage',
+      coverage: 0,
       impact: 'high',
-      description: 'API Gateway not logging full request/response data',
-      recommendation: 'Enable comprehensive API logging with body capture',
-      effort: 'medium',
+      description: 'Holographic endpoints lack detection',
+      recommendation: 'Deploy holo-detection matrix',
+      effort: 'high',
       priority: 2
     },
     {
       id: 'GAP-005',
-      category: 'endpoint',
-      system: 'Mobile Devices',
-      gap: 'No EDR Coverage',
-      coverage: 0,
+      category: 'application',
+      system: 'PLASMA-GATEWAY',
+      gap: 'API Stream Gaps',
+      coverage: 30,
       impact: 'high',
-      description: 'Mobile devices lack endpoint detection and response',
-      recommendation: 'Deploy mobile EDR solution',
-      effort: 'high',
-      priority: 3
-    },
-    {
-      id: 'GAP-006',
-      category: 'network',
-      system: 'DNS Servers',
-      gap: 'Query Logging Disabled',
-      coverage: 20,
-      impact: 'medium',
-      description: 'DNS query logs not captured for threat hunting',
-      recommendation: 'Enable DNS query logging on all resolvers',
-      effort: 'low',
-      priority: 3
-    },
-    {
-      id: 'GAP-007',
-      category: 'identity',
-      system: 'Privileged Access',
-      gap: 'PAM Events Not Forwarded',
-      coverage: 60,
-      impact: 'high',
-      description: 'Privileged access management events not in SIEM',
-      recommendation: 'Integrate PAM solution with SIEM platforms',
+      description: 'Plasma API streams not fully monitored',
+      recommendation: 'Enable quantum API logging',
       effort: 'medium',
       priority: 2
-    },
-    {
-      id: 'GAP-008',
-      category: 'cloud',
-      system: 'Container Orchestration',
-      gap: 'Kubernetes Audit Logs Missing',
-      coverage: 10,
-      impact: 'critical',
-      description: 'K8s audit logs not collected from clusters',
-      recommendation: 'Deploy Falco and forward to SIEM',
-      effort: 'medium',
-      priority: 1
     }
   ];
 
   const categories = [
-    { id: 'all', label: 'All', icon: Database },
-    { id: 'infrastructure', label: 'Infrastructure', icon: Shield },
-    { id: 'cloud', label: 'Cloud', icon: Cloud },
-    { id: 'network', label: 'Network', icon: Network },
-    { id: 'endpoint', label: 'Endpoint', icon: Activity },
-    { id: 'application', label: 'Application', icon: Database },
-    { id: 'identity', label: 'Identity', icon: Shield }
+    { id: 'all', label: 'ALL', icon: Database },
+    { id: 'infrastructure', label: 'INFRA', icon: Shield },
+    { id: 'cloud', label: 'CLOUD', icon: Cloud },
+    { id: 'network', label: 'NETWORK', icon: Network },
+    { id: 'endpoint', label: 'ENDPOINT', icon: Activity },
+    { id: 'application', label: 'APPS', icon: Database }
   ];
+
+  // 3D visualization of gaps
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = 200;
+
+    let time = 0;
+    const animate = () => {
+      time += 0.02;
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw gap visualization
+      visibilityGaps.forEach((gap, index) => {
+        const x = (canvas.width / visibilityGaps.length) * index + 50;
+        const baseY = canvas.height - 20;
+        const height = (100 - gap.coverage) * 1.5;
+        
+        // Draw bar
+        const gradient = ctx.createLinearGradient(x, baseY, x, baseY - height);
+        if (gap.impact === 'critical') {
+          gradient.addColorStop(0, '#ff00ff');
+          gradient.addColorStop(1, 'rgba(255, 0, 255, 0.2)');
+        } else if (gap.impact === 'high') {
+          gradient.addColorStop(0, '#c084fc');
+          gradient.addColorStop(1, 'rgba(192, 132, 252, 0.2)');
+        } else {
+          gradient.addColorStop(0, '#00ffff');
+          gradient.addColorStop(1, 'rgba(0, 255, 255, 0.2)');
+        }
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x - 20, baseY - height, 40, height);
+        
+        // Add pulsing effect
+        if (gap.impact === 'critical') {
+          ctx.strokeStyle = '#ff00ff';
+          ctx.globalAlpha = Math.sin(time * 3) * 0.5 + 0.5;
+          ctx.strokeRect(x - 22, baseY - height - 2, 44, height + 4);
+          ctx.globalAlpha = 1;
+        }
+        
+        // Label
+        ctx.fillStyle = '#00ffff';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(gap.coverage + '%', x, baseY + 15);
+      });
+
+      requestAnimationFrame(animate);
+    };
+    animate();
+  }, []);
 
   const filteredGaps = selectedCategory === 'all' 
     ? visibilityGaps 
@@ -119,19 +144,10 @@ const VisibilityGapsPage: React.FC = () => {
 
   const getImpactColor = (impact: string) => {
     switch(impact) {
-      case 'critical': return 'text-red-400 bg-red-400/10 border-red-400/30';
-      case 'high': return 'text-orange-400 bg-orange-400/10 border-orange-400/30';
-      case 'medium': return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30';
-      default: return 'text-blue-400 bg-blue-400/10 border-blue-400/30';
-    }
-  };
-
-  const getEffortColor = (effort: string) => {
-    switch(effort) {
-      case 'high': return 'text-purple-400';
-      case 'medium': return 'text-cyan-400';
-      case 'low': return 'text-green-400';
-      default: return 'text-gray-400';
+      case 'critical': return { bg: 'bg-pink-400/20', text: 'text-pink-400', border: 'border-pink-400/30' };
+      case 'high': return { bg: 'bg-purple-400/20', text: 'text-purple-400', border: 'border-purple-400/30' };
+      case 'medium': return { bg: 'bg-cyan-400/20', text: 'text-cyan-400', border: 'border-cyan-400/30' };
+      default: return { bg: 'bg-cyan-300/20', text: 'text-cyan-300', border: 'border-cyan-300/30' };
     }
   };
 
@@ -140,43 +156,50 @@ const VisibilityGapsPage: React.FC = () => {
   const avgCoverage = visibilityGaps.reduce((acc, g) => acc + g.coverage, 0) / totalGaps;
 
   return (
-    <div className="p-6">
+    <div className="p-8 min-h-screen">
+      {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-black mb-2" style={{
-          fontFamily: 'Orbitron, monospace',
-          background: 'linear-gradient(135deg, #ff8800, #ffff00, #00ff88)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent'
-        }}>
-          VISIBILITY GAP ANALYSIS
+        <h1 className="text-5xl font-black mb-3 holo-text">
+          VISIBILITY ANOMALIES
         </h1>
-        <p className="text-orange-400/60 font-mono text-sm">
-          Identify and remediate critical blind spots in security monitoring coverage
+        <p className="text-cyan-300/60 uppercase tracking-widest text-sm">
+          Quantum Gap Analysis • System Blind Spot Detection
         </p>
       </div>
 
       {/* Summary Metrics */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <div className="backdrop-blur-xl bg-gradient-to-br from-red-500/10 to-orange-500/10 rounded-xl p-4 border border-red-400/30">
-          <XCircle className="w-6 h-6 text-red-400 mb-2" />
-          <div className="text-3xl font-bold font-mono text-red-400">{totalGaps}</div>
-          <div className="text-xs text-red-400/60 font-mono">TOTAL GAPS</div>
+      <div className="grid grid-cols-4 gap-6 mb-8">
+        <div className="glass-panel rounded-xl p-6 holo-shine">
+          <XCircle className="w-6 h-6 text-pink-400 mb-2" />
+          <div className="text-3xl font-bold text-pink-400">{totalGaps}</div>
+          <div className="text-xs text-pink-400/60 uppercase">Total Gaps</div>
         </div>
-        <div className="backdrop-blur-xl bg-gradient-to-br from-orange-500/10 to-yellow-500/10 rounded-xl p-4 border border-orange-400/30">
-          <AlertCircle className="w-6 h-6 text-orange-400 mb-2" />
-          <div className="text-3xl font-bold font-mono text-orange-400">{criticalGaps}</div>
-          <div className="text-xs text-orange-400/60 font-mono">CRITICAL</div>
+        
+        <div className="glass-panel rounded-xl p-6 holo-shine">
+          <AlertCircle className="w-6 h-6 text-purple-400 mb-2" />
+          <div className="text-3xl font-bold text-purple-400">{criticalGaps}</div>
+          <div className="text-xs text-purple-400/60 uppercase">Critical</div>
         </div>
-        <div className="backdrop-blur-xl bg-gradient-to-br from-yellow-500/10 to-green-500/10 rounded-xl p-4 border border-yellow-400/30">
-          <Activity className="w-6 h-6 text-yellow-400 mb-2" />
-          <div className="text-3xl font-bold font-mono text-yellow-400">{avgCoverage.toFixed(0)}%</div>
-          <div className="text-xs text-yellow-400/60 font-mono">AVG COVERAGE</div>
+        
+        <div className="glass-panel rounded-xl p-6 holo-shine">
+          <Activity className="w-6 h-6 text-cyan-400 mb-2" />
+          <div className="text-3xl font-bold text-cyan-400">{avgCoverage.toFixed(0)}%</div>
+          <div className="text-xs text-cyan-400/60 uppercase">Avg Coverage</div>
         </div>
-        <div className="backdrop-blur-xl bg-gradient-to-br from-green-500/10 to-cyan-500/10 rounded-xl p-4 border border-green-400/30">
+        
+        <div className="glass-panel rounded-xl p-6 holo-shine">
           <TrendingUp className="w-6 h-6 text-green-400 mb-2" />
-          <div className="text-3xl font-bold font-mono text-green-400">+5%</div>
-          <div className="text-xs text-green-400/60 font-mono">IMPROVEMENT</div>
+          <div className="text-3xl font-bold text-green-400">+5%</div>
+          <div className="text-xs text-green-400/60 uppercase">Improvement</div>
         </div>
+      </div>
+
+      {/* Gap Visualization */}
+      <div className="glass-panel rounded-2xl p-6 mb-8">
+        <h3 className="text-sm font-semibold text-purple-300 mb-4 uppercase tracking-wider">
+          Gap Magnitude Analysis
+        </h3>
+        <canvas ref={canvasRef} className="w-full" />
       </div>
 
       {/* Category Filter */}
@@ -187,105 +210,116 @@ const VisibilityGapsPage: React.FC = () => {
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold uppercase tracking-wider transition-all ${
                 selectedCategory === cat.id
-                  ? 'bg-orange-400/20 border border-orange-400/50 text-orange-400'
-                  : 'bg-black/40 border border-orange-400/20 text-orange-400/60 hover:border-orange-400/40'
+                  ? 'glass-panel scale-105'
+                  : 'bg-black/30 hover:bg-black/50'
               }`}
+              style={{
+                borderColor: selectedCategory === cat.id ? 'rgba(0, 255, 255, 0.3)' : 'transparent',
+                boxShadow: selectedCategory === cat.id ? '0 0 20px rgba(0, 255, 255, 0.3)' : 'none'
+              }}
             >
               <Icon className="w-4 h-4" />
-              {cat.label}
+              <span className={selectedCategory === cat.id ? 'text-cyan-300' : 'text-gray-500'}>
+                {cat.label}
+              </span>
             </button>
           );
         })}
       </div>
 
-      {/* Gaps Grid */}
+      {/* Gaps List */}
       <div className="grid grid-cols-1 gap-6">
-        {filteredGaps.map(gap => (
-          <div
-            key={gap.id}
-            className="backdrop-blur-xl bg-black/40 rounded-xl border border-orange-400/20 hover:border-orange-400/40 transition-all"
-            style={{ boxShadow: '0 0 30px rgba(255, 136, 0, 0.05), inset 0 0 30px rgba(0, 0, 0, 0.5)' }}
-          >
-            <div className="p-6">
-              {/* Header */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-4">
-                  <div className={`px-3 py-1 rounded-full text-xs font-mono font-bold border ${getImpactColor(gap.impact)}`}>
-                    {gap.impact.toUpperCase()}
+        {filteredGaps.map(gap => {
+          const colors = getImpactColor(gap.impact);
+          return (
+            <div
+              key={gap.id}
+              className="glass-panel rounded-xl hover:scale-101 transition-all holo-shine"
+            >
+              <div className="p-6">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-4">
+                    <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${colors.bg} ${colors.text} ${colors.border} border`}>
+                      {gap.impact}
+                    </div>
+                    <div>
+                      <h3 className="font-mono font-bold text-purple-300">{gap.system}</h3>
+                      <p className="text-sm text-cyan-400">{gap.gap}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-mono font-bold text-cyan-300">{gap.system}</h3>
-                    <p className="text-sm text-orange-400">{gap.gap}</p>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-pink-400">{gap.coverage}%</div>
+                    <div className="text-xs text-cyan-400/60 uppercase">Coverage</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold font-mono text-red-400">{gap.coverage}%</div>
-                  <div className="text-xs text-cyan-400/60">CURRENT COVERAGE</div>
-                </div>
-              </div>
 
-              {/* Description */}
-              <div className="bg-black/30 rounded-lg p-4 mb-4">
-                <p className="text-sm text-cyan-300 mb-3">{gap.description}</p>
-                <div className="flex items-center gap-6">
-                  <div>
-                    <span className="text-xs text-cyan-400/60">PRIORITY</span>
-                    <div className="flex gap-1 mt-1">
-                      {[1,2,3,4,5].map(p => (
-                        <div key={p} className={`w-2 h-2 rounded-full ${
-                          p <= gap.priority ? 'bg-red-400' : 'bg-gray-600'
-                        }`} />
-                      ))}
+                {/* Description */}
+                <div className="glass-panel rounded-lg p-4 mb-4">
+                  <p className="text-sm text-cyan-300 mb-3">{gap.description}</p>
+                  <div className="flex items-center gap-6">
+                    <div>
+                      <span className="text-xs text-cyan-400/60 uppercase">Priority</span>
+                      <div className="flex gap-1 mt-1">
+                        {[1,2,3,4,5].map(p => (
+                          <div key={p} className={`w-2 h-2 rounded-full ${
+                            p <= gap.priority ? 'bg-pink-400' : 'bg-gray-600'
+                          }`} />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <span className="text-xs text-cyan-400/60">EFFORT</span>
-                    <div className={`text-sm font-mono font-bold mt-1 ${getEffortColor(gap.effort)}`}>
-                      {gap.effort.toUpperCase()}
+                    <div>
+                      <span className="text-xs text-purple-400/60 uppercase">Effort</span>
+                      <div className={`text-sm font-bold mt-1 ${
+                        gap.effort === 'high' ? 'text-pink-400' :
+                        gap.effort === 'medium' ? 'text-purple-400' :
+                        'text-cyan-400'
+                      }`}>
+                        {gap.effort.toUpperCase()}
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <span className="text-xs text-cyan-400/60">CATEGORY</span>
-                    <div className="text-sm font-mono text-cyan-400 mt-1">
-                      {gap.category.toUpperCase()}
+                    <div>
+                      <span className="text-xs text-cyan-400/60 uppercase">Category</span>
+                      <div className="text-sm font-mono text-cyan-400 mt-1">
+                        {gap.category.toUpperCase()}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Recommendation */}
-              <div className="flex items-center gap-2 bg-green-400/5 rounded-lg p-3 border border-green-400/20">
-                <TrendingUp className="w-4 h-4 text-green-400" />
-                <div className="flex-1">
-                  <div className="text-xs text-green-400/60 mb-1">RECOMMENDATION</div>
-                  <p className="text-sm text-green-400">{gap.recommendation}</p>
+                {/* Recommendation */}
+                <div className="flex items-center gap-2 glass-panel rounded-lg p-3">
+                  <TrendingUp className="w-4 h-4 text-green-400" />
+                  <div className="flex-1">
+                    <div className="text-xs text-green-400/60 uppercase mb-1">Recommendation</div>
+                    <p className="text-sm text-green-400">{gap.recommendation}</p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Impact Matrix */}
-      <div className="mt-8 backdrop-blur-xl bg-black/40 rounded-xl border border-cyan-400/30 p-6"
-           style={{ boxShadow: '0 0 40px rgba(0, 255, 255, 0.1), inset 0 0 40px rgba(0, 0, 0, 0.5)' }}>
-        <h2 className="text-xl font-bold text-cyan-400 mb-4" style={{ fontFamily: 'Orbitron, monospace' }}>
-          IMPACT vs EFFORT MATRIX
+      <div className="mt-8 glass-panel rounded-2xl p-6">
+        <h2 className="text-xl font-bold text-purple-300 mb-4 uppercase tracking-wider">
+          Impact vs Effort Matrix
         </h2>
         <div className="grid grid-cols-3 gap-4">
-          <div className="bg-red-400/10 rounded-lg p-4 border border-red-400/30">
-            <h3 className="text-sm font-mono font-bold text-red-400 mb-2">HIGH IMPACT / LOW EFFORT</h3>
-            <p className="text-xs text-red-400/80">Quick wins - DNS logging, API logging</p>
+          <div className="glass-panel rounded-lg p-4">
+            <h3 className="text-sm font-bold text-cyan-400 mb-2 uppercase">Quick Wins</h3>
+            <p className="text-xs text-cyan-400/80">High impact, low effort gaps</p>
           </div>
-          <div className="bg-orange-400/10 rounded-lg p-4 border border-orange-400/30">
-            <h3 className="text-sm font-mono font-bold text-orange-400 mb-2">HIGH IMPACT / HIGH EFFORT</h3>
-            <p className="text-xs text-orange-400/80">Strategic - Mobile EDR, Chronicle integration</p>
+          <div className="glass-panel rounded-lg p-4">
+            <h3 className="text-sm font-bold text-purple-400 mb-2 uppercase">Strategic</h3>
+            <p className="text-xs text-purple-400/80">High impact, high effort gaps</p>
           </div>
-          <div className="bg-yellow-400/10 rounded-lg p-4 border border-yellow-400/30">
-            <h3 className="text-sm font-mono font-bold text-yellow-400 mb-2">LOW IMPACT / LOW EFFORT</h3>
-            <p className="text-xs text-yellow-400/80">Fill-ins - Minor configuration updates</p>
+          <div className="glass-panel rounded-lg p-4">
+            <h3 className="text-sm font-bold text-pink-400 mb-2 uppercase">Fill-ins</h3>
+            <p className="text-xs text-pink-400/80">Low impact, low effort gaps</p>
           </div>
         </div>
       </div>
