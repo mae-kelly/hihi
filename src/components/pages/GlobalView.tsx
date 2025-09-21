@@ -2,63 +2,169 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Globe, Database, Server, Cloud, Shield, Activity, Zap, Wifi, Eye, AlertTriangle, TrendingDown, Satellite, Radio, Radar } from 'lucide-react';
 import * as THREE from 'three';
 
+interface GlobalData {
+  total_assets: number;
+  splunk_forwarding: number;
+  qso_enabled: number;
+  cmdb_present: number;
+  edr_covered: number;
+  tanium_managed: number;
+  dlp_covered: number;
+  csoc_coverage: number;
+  splunk_coverage: number;
+  cmdb_coverage: number;
+  edr_coverage: number;
+  critical_gaps: number;
+}
+
+interface RegionalData {
+  region_s: string;
+  country_s: string;
+  total_assets: number;
+  visible_assets: number;
+  cmdb_assets: number;
+  edr_assets: number;
+  visibility_percentage: number;
+  cmdb_coverage: number;
+  edr_coverage: number;
+  visibility_gap: number;
+}
+
 const GlobalView: React.FC = () => {
-  const [selectedPlatform, setSelectedPlatform] = useState<'csoc' | 'splunk' | 'chronicle'>('csoc');
+  const [selectedPlatform, setSelectedPlatform] = useState<'csoc' | 'splunk' | 'cmdb'>('csoc');
+  const [globalData, setGlobalData] = useState<GlobalData | null>(null);
+  const [regionalData, setRegionalData] = useState<RegionalData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   const globeRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const frameRef = useRef<number>(0);
   const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
-  
-  // ACTUAL DATA FROM AO1 REQUIREMENTS
-  const globalData = {
-    csoc: {
-      totalAssets: 262032,
-      covered: 50237,
-      percentage: 19.17,
-      missing: 211795,
+
+  // Fetch real data from Python backend
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch global overview
+        const globalResponse = await fetch('http://localhost:5000/api/global-view');
+        if (!globalResponse.ok) throw new Error('Failed to fetch global data');
+        const globalResult = await globalResponse.json();
+        setGlobalData(globalResult);
+
+        // Fetch regional breakdown
+        const regionalResponse = await fetch('http://localhost:5000/api/regional-view');
+        if (!regionalResponse.ok) throw new Error('Failed to fetch regional data');
+        const regionalResult = await regionalResponse.json();
+        setRegionalData(regionalResult);
+
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Calculate current platform data
+  const currentData = React.useMemo(() => {
+    if (!globalData) return null;
+
+    const baseData = {
+      totalAssets: globalData.total_assets,
+      missing: 0,
       color: '#00ffff',
       glowColor: '#00ffff',
-      status: 'CRITICAL',
-      trend: -2.3,
-    },
-    splunk: {
-      totalAssets: 262032,
-      covered: 167517,
-      percentage: 63.93,
-      missing: 94515,
-      color: '#c084fc',
-      glowColor: '#c084fc',
-      status: 'WARNING',
-      trend: 0.8,
-    },
-    chronicle: {
-      totalAssets: 262032,
-      covered: 241691,
-      percentage: 92.24,
-      missing: 20341,
-      color: '#00ff88',
-      glowColor: '#00ff88',
-      status: 'GOOD',
-      trend: 3.2,
+      status: 'UNKNOWN',
+      trend: 0,
+    };
+
+    switch (selectedPlatform) {
+      case 'csoc':
+        return {
+          ...baseData,
+          covered: globalData.splunk_forwarding + globalData.qso_enabled, // Combined CSOC coverage
+          percentage: globalData.csoc_coverage,
+          missing: globalData.critical_gaps,
+          status: globalData.csoc_coverage < 20 ? 'CRITICAL' : globalData.csoc_coverage < 50 ? 'WARNING' : 'GOOD',
+          color: globalData.csoc_coverage < 20 ? '#ff00ff' : globalData.csoc_coverage < 50 ? '#c084fc' : '#00ffff'
+        };
+      
+      case 'splunk':
+        return {
+          ...baseData,
+          covered: globalData.splunk_forwarding,
+          percentage: globalData.splunk_coverage,
+          missing: globalData.total_assets - globalData.splunk_forwarding,
+          status: globalData.splunk_coverage < 50 ? 'WARNING' : 'GOOD',
+          color: globalData.splunk_coverage < 50 ? '#c084fc' : '#00ffff'
+        };
+      
+      case 'cmdb':
+        return {
+          ...baseData,
+          covered: globalData.cmdb_present,
+          percentage: globalData.cmdb_coverage,
+          missing: globalData.total_assets - globalData.cmdb_present,
+          status: globalData.cmdb_coverage < 80 ? 'WARNING' : 'GOOD',
+          color: globalData.cmdb_coverage < 80 ? '#c084fc' : '#00ff88'
+        };
+      
+      default:
+        return baseData;
     }
-  };
+  }, [globalData, selectedPlatform]);
 
-  const currentData = globalData[selectedPlatform];
+  // Group regional data by region for better visualization
+  const regionSummary = React.useMemo(() => {
+    const regions: Record<string, {
+      name: string;
+      totalAssets: number;
+      coverage: number;
+      status: string;
+      countries: number;
+    }> = {};
 
-  // Regional data with coordinates
-  const regions = [
-    { name: 'AMERICAS', lat: 40, lon: -100, coverage: 32.5, assets: 105234, status: 'warning' },
-    { name: 'EMEA', lat: 50, lon: 10, coverage: 12.3, assets: 89456, status: 'critical' },
-    { name: 'APAC', lat: 20, lon: 120, coverage: 15.8, assets: 67342, status: 'critical' },
-    { name: 'NORTH POLE', lat: 90, lon: 0, coverage: 95.2, assets: 12, status: 'secure' },
-    { name: 'ANTARCTICA', lat: -82, lon: 0, coverage: 88.9, assets: 8, status: 'secure' }
-  ];
+    regionalData.forEach(item => {
+      if (!regions[item.region_s]) {
+        regions[item.region_s] = {
+          name: item.region_s,
+          totalAssets: 0,
+          coverage: 0,
+          status: 'unknown',
+          countries: 0
+        };
+      }
+      
+      regions[item.region_s].totalAssets += item.total_assets;
+      regions[item.region_s].countries += 1;
+    });
 
-  // 3D Globe Setup
+    // Calculate average coverage per region
+    Object.keys(regions).forEach(regionKey => {
+      const regionCountries = regionalData.filter(item => item.region_s === regionKey);
+      const totalAssets = regionCountries.reduce((sum, country) => sum + country.total_assets, 0);
+      const weightedCoverage = regionCountries.reduce((sum, country) => 
+        sum + (country.visibility_percentage * country.total_assets), 0
+      );
+      
+      regions[regionKey].coverage = totalAssets > 0 ? weightedCoverage / totalAssets : 0;
+      regions[regionKey].status = regions[regionKey].coverage < 30 ? 'critical' : 
+                                 regions[regionKey].coverage < 60 ? 'warning' : 'secure';
+    });
+
+    return Object.values(regions);
+  }, [regionalData]);
+
+  // 3D Globe Setup with Real Data
   useEffect(() => {
-    if (!globeRef.current) return;
+    if (!globeRef.current || !globalData) return;
 
     // Scene setup
     const scene = new THREE.Scene();
@@ -91,7 +197,7 @@ const GlobalView: React.FC = () => {
     const globeGeometry = new THREE.SphereGeometry(80, 64, 64);
     const globeMaterial = new THREE.MeshPhongMaterial({
       color: 0x001122,
-      emissive: currentData.color,
+      emissive: currentData?.color || 0x00ffff,
       emissiveIntensity: 0.1,
       wireframe: false,
       transparent: true,
@@ -103,7 +209,7 @@ const GlobalView: React.FC = () => {
     // Wireframe overlay
     const wireframeGeometry = new THREE.SphereGeometry(81, 32, 32);
     const wireframeMaterial = new THREE.MeshBasicMaterial({
-      color: currentData.color,
+      color: currentData?.color || 0x00ffff,
       wireframe: true,
       transparent: true,
       opacity: 0.3,
@@ -125,7 +231,7 @@ const GlobalView: React.FC = () => {
         varying vec3 vNormal;
         void main() {
           float intensity = pow(0.7 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
-          gl_FragColor = vec4(${currentData.color === '#00ffff' ? '0.0, 1.0, 1.0' : currentData.color === '#c084fc' ? '0.75, 0.52, 0.99' : '0.0, 1.0, 0.53'}, 1.0) * intensity;
+          gl_FragColor = vec4(${currentData?.color === '#00ffff' ? '0.0, 1.0, 1.0' : currentData?.color === '#c084fc' ? '0.75, 0.52, 0.99' : '0.0, 1.0, 0.53'}, 1.0) * intensity;
         }
       `,
       blending: THREE.AdditiveBlending,
@@ -135,16 +241,28 @@ const GlobalView: React.FC = () => {
     const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
     scene.add(atmosphere);
 
-    // Data points for regions
-    regions.forEach(region => {
-      const phi = (90 - region.lat) * (Math.PI / 180);
-      const theta = (region.lon + 180) * (Math.PI / 180);
+    // Regional data points with REAL coordinates and coverage
+    const regionCoordinates: Record<string, { lat: number; lon: number }> = {
+      'North America': { lat: 45, lon: -100 },
+      'Europe': { lat: 55, lon: 10 },
+      'Asia Pacific': { lat: 25, lon: 120 },
+      'Latin America': { lat: -15, lon: -60 },
+      'Middle East': { lat: 25, lon: 45 },
+      'Africa': { lat: 0, lon: 20 },
+    };
+
+    regionSummary.forEach(region => {
+      const coords = regionCoordinates[region.name];
+      if (!coords) return;
+
+      const phi = (90 - coords.lat) * (Math.PI / 180);
+      const theta = (coords.lon + 180) * (Math.PI / 180);
       
       const x = 80 * Math.sin(phi) * Math.cos(theta);
       const y = 80 * Math.cos(phi);
       const z = 80 * Math.sin(phi) * Math.sin(theta);
 
-      // Create beacon
+      // Create beacon based on real coverage data
       const beaconGeometry = new THREE.ConeGeometry(3, 10, 4);
       const beaconMaterial = new THREE.MeshPhongMaterial({
         color: region.status === 'critical' ? 0xff00ff : 
@@ -158,14 +276,15 @@ const GlobalView: React.FC = () => {
       const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
       beacon.position.set(x, y, z);
       beacon.lookAt(0, 0, 0);
+      beacon.userData = { region: region.name, coverage: region.coverage, assets: region.totalAssets };
       scene.add(beacon);
 
-      // Pulse ring
+      // Pulse ring based on coverage intensity
       const ringGeometry = new THREE.RingGeometry(5, 7, 32);
       const ringMaterial = new THREE.MeshBasicMaterial({
         color: beaconMaterial.color,
         transparent: true,
-        opacity: 0.5,
+        opacity: region.coverage / 100,
         side: THREE.DoubleSide,
       });
       const ring = new THREE.Mesh(ringGeometry, ringMaterial);
@@ -174,9 +293,9 @@ const GlobalView: React.FC = () => {
       scene.add(ring);
     });
 
-    // Particle system for data flow
+    // Particle system for data flow - intensity based on real metrics
     const particlesGeometry = new THREE.BufferGeometry();
-    const particlesCount = 1500;
+    const particlesCount = Math.min(1500, Math.max(500, globalData.total_assets / 100));
     const positions = new Float32Array(particlesCount * 3);
     const colors = new Float32Array(particlesCount * 3);
 
@@ -189,7 +308,8 @@ const GlobalView: React.FC = () => {
       positions[i + 1] = radius * Math.cos(phi);
       positions[i + 2] = radius * Math.sin(phi) * Math.sin(theta);
       
-      const color = new THREE.Color(currentData.color);
+      // Color based on current platform and coverage
+      const color = new THREE.Color(currentData?.color || '#00ffff');
       colors[i] = color.r;
       colors[i + 1] = color.g;
       colors[i + 2] = color.b;
@@ -199,10 +319,10 @@ const GlobalView: React.FC = () => {
     particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const particlesMaterial = new THREE.PointsMaterial({
-      size: 1,
+      size: currentData?.percentage < 50 ? 0.5 : 1,
       vertexColors: true,
       transparent: true,
-      opacity: 0.6,
+      opacity: Math.max(0.3, (currentData?.percentage || 50) / 100),
       blending: THREE.AdditiveBlending,
     });
 
@@ -226,15 +346,16 @@ const GlobalView: React.FC = () => {
       wireframe.rotation.y += 0.002;
       atmosphere.rotation.y += 0.001;
       
-      // Animate particles
-      particles.rotation.y -= 0.001;
+      // Animate particles based on real coverage
+      particles.rotation.y -= 0.001 * ((currentData?.percentage || 50) / 50);
       
-      // Pulse beacons
+      // Pulse beacons based on real status
       scene.children.forEach(child => {
         if (child instanceof THREE.Mesh && child.geometry instanceof THREE.RingGeometry) {
-          child.scale.x = 1 + Math.sin(Date.now() * 0.002) * 0.2;
-          child.scale.y = 1 + Math.sin(Date.now() * 0.002) * 0.2;
-          child.material.opacity = 0.5 - Math.sin(Date.now() * 0.002) * 0.3;
+          const pulseSpeed = child.material.opacity < 0.5 ? 4 : 2; // Faster pulse for low coverage
+          child.scale.x = 1 + Math.sin(Date.now() * 0.002 * pulseSpeed) * 0.2;
+          child.scale.y = 1 + Math.sin(Date.now() * 0.002 * pulseSpeed) * 0.2;
+          child.material.opacity = Math.max(0.2, 0.5 - Math.sin(Date.now() * 0.002 * pulseSpeed) * 0.3);
         }
       });
       
@@ -267,18 +388,45 @@ const GlobalView: React.FC = () => {
       }
       renderer.dispose();
     };
-  }, [selectedPlatform, zoomLevel]);
+  }, [globalData, currentData, zoomLevel, regionSummary]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-32 w-32 border-b-2 border-cyan-400"></div>
+          <div className="mt-4 text-xl font-bold text-cyan-400">LOADING REAL DATA</div>
+          <div className="text-sm text-gray-400">Querying Universal CMDB...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center glass-panel rounded-xl p-8">
+          <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <div className="text-xl font-bold text-red-400 mb-2">API CONNECTION ERROR</div>
+          <div className="text-sm text-gray-400 mb-4">{error}</div>
+          <div className="text-xs text-gray-500">Make sure Python backend is running on port 5000</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 h-full bg-black flex flex-col">
-      {/* Critical Alert */}
-      {selectedPlatform === 'csoc' && (
+      {/* Critical Alert based on real data */}
+      {currentData && currentData.percentage < 50 && (
         <div className="mb-3 bg-black border border-red-500/30 rounded-lg p-2 flex-shrink-0">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse" />
             <div>
-              <span className="text-red-400 font-bold text-sm">CRITICAL BREACH:</span>
-              <span className="text-white ml-2 text-sm">Coverage at 19.17% - {currentData.missing.toLocaleString()} nodes compromised</span>
+              <span className="text-red-400 font-bold text-sm">CRITICAL VISIBILITY BREACH:</span>
+              <span className="text-white ml-2 text-sm">
+                Coverage at {currentData.percentage.toFixed(1)}% - {currentData.missing.toLocaleString()} nodes compromised
+              </span>
             </div>
           </div>
         </div>
@@ -286,28 +434,41 @@ const GlobalView: React.FC = () => {
 
       {/* Platform Selector */}
       <div className="flex gap-2 mb-3 flex-shrink-0">
-        {(['csoc', 'splunk', 'chronicle'] as const).map(platform => (
-          <button
-            key={platform}
-            onClick={() => setSelectedPlatform(platform)}
-            className={`px-4 py-2 rounded-lg font-bold uppercase tracking-wider transition-all text-sm ${
-              selectedPlatform === platform
-                ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20'
-                : 'bg-black/50 hover:bg-gray-900/50'
-            }`}
-            style={{
-              border: selectedPlatform === platform 
-                ? `2px solid ${globalData[platform].color}` 
-                : '2px solid transparent'
-            }}
-          >
-            <span style={{ 
-              color: selectedPlatform === platform ? globalData[platform].color : '#ffffff60'
-            }}>
-              {platform.toUpperCase()}
-            </span>
-          </button>
-        ))}
+        {(['csoc', 'splunk', 'cmdb'] as const).map(platform => {
+          const platformData = globalData ? {
+            csoc: { coverage: globalData.csoc_coverage, color: '#00ffff' },
+            splunk: { coverage: globalData.splunk_coverage, color: '#c084fc' },
+            cmdb: { coverage: globalData.cmdb_coverage, color: '#00ff88' }
+          }[platform] : null;
+
+          return (
+            <button
+              key={platform}
+              onClick={() => setSelectedPlatform(platform)}
+              className={`px-4 py-2 rounded-lg font-bold uppercase tracking-wider transition-all text-sm ${
+                selectedPlatform === platform
+                  ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20'
+                  : 'bg-gray-900/50 hover:bg-gray-800/50'
+              }`}
+              style={{
+                border: selectedPlatform === platform 
+                  ? `2px solid ${platformData?.color || '#00ffff'}` 
+                  : '2px solid transparent'
+              }}
+            >
+              <span style={{ 
+                color: selectedPlatform === platform ? platformData?.color || '#00ffff' : '#ffffff60'
+              }}>
+                {platform.toUpperCase()}
+                {platformData && (
+                  <span className="ml-2 text-xs">
+                    {platformData.coverage.toFixed(1)}%
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex-1 grid grid-cols-12 gap-3 min-h-0">
@@ -315,8 +476,9 @@ const GlobalView: React.FC = () => {
         <div className="col-span-8">
           <div className="bg-black border border-cyan-500/30 rounded-xl overflow-hidden h-full">
             <div className="absolute top-2 left-2 z-10 text-cyan-400 text-xs font-mono space-y-0.5">
-              <div>ORBITAL VIEW: ACTIVE</div>
-              <div>ENCRYPTION: AES-256</div>
+              <div>REAL-TIME VIEW: ACTIVE</div>
+              <div>ASSETS: {globalData?.total_assets.toLocaleString()}</div>
+              <div>PLATFORM: {selectedPlatform.toUpperCase()}</div>
             </div>
             
             <div className="absolute top-2 right-2 z-10 space-y-1">
@@ -357,32 +519,32 @@ const GlobalView: React.FC = () => {
                     cx="64"
                     cy="64"
                     r="58"
-                    stroke={currentData.color}
+                    stroke={currentData?.color || '#00ffff'}
                     strokeWidth="6"
                     fill="none"
                     strokeDasharray={`${2 * Math.PI * 58}`}
-                    strokeDashoffset={`${2 * Math.PI * 58 * (1 - currentData.percentage / 100)}`}
+                    strokeDashoffset={`${2 * Math.PI * 58 * (1 - (currentData?.percentage || 0) / 100)}`}
                     className="transition-all duration-1000"
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div>
                     <div className="text-3xl font-black text-white">
-                      {currentData.percentage}%
+                      {currentData?.percentage.toFixed(1) || '0'}%
                     </div>
                     <div className="text-xs text-white/60 uppercase">
-                      Coverage
+                      {selectedPlatform} Coverage
                     </div>
                   </div>
                 </div>
               </div>
               
               <div className={`mt-2 px-2 py-1 inline-block rounded-full text-xs font-bold ${
-                currentData.status === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/50' :
-                currentData.status === 'WARNING' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' :
+                currentData?.status === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/50' :
+                currentData?.status === 'WARNING' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' :
                 'bg-green-500/20 text-green-400 border border-green-500/50'
               }`}>
-                {currentData.status}
+                {currentData?.status || 'UNKNOWN'}
               </div>
             </div>
           </div>
@@ -391,13 +553,13 @@ const GlobalView: React.FC = () => {
           <div className="bg-black border border-purple-500/30 rounded-xl p-3 flex-1">
             <h3 className="text-xs font-bold text-purple-400 mb-2 uppercase tracking-wider flex items-center gap-1">
               <Radar className="w-3 h-3" />
-              Regional Status
+              Regional Status (Real Data)
             </h3>
             
-            <div className="space-y-1.5 text-xs">
-              {regions.slice(0, 3).map(region => (
+            <div className="space-y-1.5 text-xs max-h-64 overflow-y-auto">
+              {regionSummary.map((region, index) => (
                 <div 
-                  key={region.name}
+                  key={index}
                   className="flex items-center justify-between p-2 bg-black/50 rounded border border-white/10 hover:border-cyan-500/50 transition-all"
                 >
                   <div className="flex items-center gap-2">
@@ -410,11 +572,14 @@ const GlobalView: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <div className={`text-sm font-bold ${
-                      region.coverage < 20 ? 'text-red-400' :
-                      region.coverage < 50 ? 'text-yellow-400' :
+                      region.coverage < 30 ? 'text-red-400' :
+                      region.coverage < 60 ? 'text-yellow-400' :
                       'text-green-400'
                     }`}>
-                      {region.coverage}%
+                      {region.coverage.toFixed(1)}%
+                    </div>
+                    <div className="text-[9px] text-gray-400">
+                      {(region.totalAssets / 1000).toFixed(0)}K assets
                     </div>
                   </div>
                 </div>
@@ -422,16 +587,20 @@ const GlobalView: React.FC = () => {
             </div>
           </div>
 
-          {/* Metrics */}
+          {/* Key Metrics */}
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-black border border-cyan-500/30 rounded-lg p-2">
               <Eye className="w-4 h-4 text-cyan-400 mb-1" />
-              <div className="text-lg font-bold text-cyan-400">{(currentData.covered / 1000).toFixed(1)}K</div>
+              <div className="text-lg font-bold text-cyan-400">
+                {currentData ? (currentData.covered / 1000).toFixed(1) + 'K' : '0K'}
+              </div>
               <div className="text-xs text-white/60">Monitored</div>
             </div>
             <div className="bg-black border border-red-500/30 rounded-lg p-2">
               <Shield className="w-4 h-4 text-red-400 mb-1" />
-              <div className="text-lg font-bold text-red-400">{(currentData.missing / 1000).toFixed(1)}K</div>
+              <div className="text-lg font-bold text-red-400">
+                {currentData ? (currentData.missing / 1000).toFixed(1) + 'K' : '0K'}
+              </div>
               <div className="text-xs text-white/60">Vulnerable</div>
             </div>
           </div>

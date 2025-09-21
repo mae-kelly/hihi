@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, BarChart3, Database, Globe, Activity, Settings, Network, FileSearch, Layers, Eye, Cpu, Lock, Zap, Hexagon, Triangle, Server, Cloud } from 'lucide-react';
+import { useGlobalView } from '@/hooks/useVisibilityData';
 
 interface NavigationProps {
   currentPage: string;
@@ -9,6 +10,9 @@ interface NavigationProps {
 const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [pulseAnimation, setPulseAnimation] = useState<Record<string, boolean>>({});
+  
+  // Get real data for navigation status
+  const { data: globalData, loading } = useGlobalView();
 
   const navItems = [
     { id: 'dashboard', label: 'DASHBOARD', icon: BarChart3, color: '#00d4ff' },
@@ -23,19 +27,42 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
     { id: 'logging-standards', label: 'STANDARDS', icon: Activity, color: '#a855f7' },
   ];
 
-  // Simulate data updates
+  // Simulate data updates for critical items
   useEffect(() => {
     const interval = setInterval(() => {
-      const randomItem = navItems[Math.floor(Math.random() * navItems.length)];
-      setPulseAnimation(prev => ({ ...prev, [randomItem.id]: true }));
-      
-      setTimeout(() => {
-        setPulseAnimation(prev => ({ ...prev, [randomItem.id]: false }));
-      }, 1000);
-    }, 5000);
+      if (globalData && globalData.splunk_coverage < 50) {
+        // Pulse critical navigation items when coverage is low
+        const criticalItems = ['dashboard', 'global-view', 'security-coverage'];
+        const randomItem = criticalItems[Math.floor(Math.random() * criticalItems.length)];
+        setPulseAnimation(prev => ({ ...prev, [randomItem]: true }));
+        
+        setTimeout(() => {
+          setPulseAnimation(prev => ({ ...prev, [randomItem]: false }));
+        }, 1000);
+      }
+    }, 3000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [globalData]);
+
+  // Calculate real-time status indicators
+  const getRealTimeStatus = () => {
+    if (loading || !globalData) {
+      return {
+        cmdb: 'Loading...',
+        splunk: 'Loading...',
+        chronicle: 'Loading...'
+      };
+    }
+
+    return {
+      cmdb: globalData.cmdb_coverage?.toFixed(1) + '%' || '0%',
+      splunk: globalData.splunk_coverage?.toFixed(1) + '%' || '0%',
+      chronicle: globalData.edr_coverage?.toFixed(1) + '%' || '0%'
+    };
+  };
+
+  const status = getRealTimeStatus();
 
   return (
     <nav className="fixed left-0 top-0 h-full w-64 z-40">
@@ -56,7 +83,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
                 </span>
               </h1>
               <p className="text-xs text-white/60 uppercase tracking-widest">
-                AO1 Visibility
+                Real-Time CMDB
               </p>
             </div>
           </div>
@@ -140,32 +167,58 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
           </div>
         </div>
 
-        {/* Platform Status - Fixed at bottom */}
+        {/* Platform Status - Fixed at bottom with Real Data */}
         <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-white/10 bg-black/95">
           <div className="bg-black/50 rounded-lg p-3 border border-white/10">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-white/60 uppercase">Status</span>
+                <span className="text-xs text-white/60 uppercase">Real-Time Status</span>
                 <div className="flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-                  <span className="text-xs text-blue-400">LIVE</span>
+                  <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                    loading ? 'bg-yellow-400' : 
+                    globalData && globalData.splunk_coverage > 80 ? 'bg-green-400' :
+                    globalData && globalData.splunk_coverage > 50 ? 'bg-yellow-400' :
+                    'bg-red-400'
+                  }`} />
+                  <span className={`text-xs ${
+                    loading ? 'text-yellow-400' :
+                    globalData && globalData.splunk_coverage > 50 ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {loading ? 'SYNC' : globalData && globalData.splunk_coverage > 50 ? 'LIVE' : 'ALERT'}
+                  </span>
                 </div>
               </div>
               
               <div className="space-y-1 text-xs">
                 <div className="flex justify-between">
                   <span className="text-white/40">CMDB</span>
-                  <span className="text-blue-400">100%</span>
+                  <span className={`${loading ? 'text-gray-400' : 'text-blue-400'}`}>
+                    {status.cmdb}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/40">SPLUNK</span>
-                  <span className="text-purple-400">63.9%</span>
+                  <span className={`${
+                    loading ? 'text-gray-400' :
+                    globalData && globalData.splunk_coverage > 50 ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {status.splunk}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-white/40">CHRONICLE</span>
-                  <span className="text-blue-400">19.2%</span>
+                  <span className="text-white/40">EDR</span>
+                  <span className={`${loading ? 'text-gray-400' : 'text-purple-400'}`}>
+                    {status.chronicle}
+                  </span>
                 </div>
               </div>
+
+              {globalData && globalData.splunk_coverage < 50 && (
+                <div className="mt-2 p-1.5 bg-red-500/10 border border-red-500/30 rounded">
+                  <div className="text-[10px] text-red-400 font-bold">CRITICAL ALERT</div>
+                  <div className="text-[9px] text-red-400">Coverage below threshold</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
