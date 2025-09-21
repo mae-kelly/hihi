@@ -1,61 +1,239 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Activity, AlertTriangle, Database, Server, Cloud, Wifi, Terminal, Zap, Globe, Lock, Eye, Target, TrendingUp, Users, BarChart3, AlertCircle, ChevronRight, Monitor, Cpu, HardDrive, Network, Layers, Box, Hexagon, Triangle, Circle } from 'lucide-react';
+import { Shield, Activity, Database, Server, Cloud, AlertCircle, TrendingDown, Eye, BarChart3, Network, Layers, Zap, Cpu, HardDrive, Lock, Globe, Radar, Satellite, Binary, Code } from 'lucide-react';
+import * as THREE from 'three';
 
 interface DashboardProps {
-  user: string;
+  metrics: {
+    totalAssets: number;
+    csocCoverage: number;
+    splunkCoverage: number;
+    chronicleCoverage: number;
+    criticalGaps: number;
+    complianceStatus: string;
+    riskLevel: string;
+  };
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ user }) => {
-  const [activeMetric, setActiveMetric] = useState<string | null>(null);
-  const [dataPoints, setDataPoints] = useState<number[]>([]);
-  const [hoveredCard, setHoveredCard] = useState<number | null>(null);
-  const [systemHealth, setSystemHealth] = useState(92);
-  const [threats, setThreats] = useState(3);
-  const [dataFlow, setDataFlow] = useState(0);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [particles, setParticles] = useState<Array<{x: number, y: number, vx: number, vy: number}>>([]);
+const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
+  const [animatedValues, setAnimatedValues] = useState<Record<string, number>>({});
+  const hologramRef = useRef<HTMLDivElement>(null);
+  const matrixRef = useRef<HTMLCanvasElement>(null);
+  const pulseRef = useRef<HTMLCanvasElement>(null);
+  const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
 
-  // Initialize particle system
+  // 3D Holographic Core Visualization
   useEffect(() => {
-    const newParticles = [];
-    for (let i = 0; i < 50; i++) {
-      newParticles.push({
-        x: Math.random() * window.innerWidth,
-        y: Math.random() * window.innerHeight,
-        vx: (Math.random() - 0.5) * 0.5,
-        vy: (Math.random() - 0.5) * 0.5
+    if (!hologramRef.current) return;
+
+    // Scene setup
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.002);
+
+    // Camera
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      hologramRef.current.clientWidth / hologramRef.current.clientHeight,
+      0.1,
+      1000
+    );
+    camera.position.set(0, 50, 150);
+    camera.lookAt(0, 0, 0);
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true, 
+      alpha: true 
+    });
+    renderer.setSize(hologramRef.current.clientWidth, hologramRef.current.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    hologramRef.current.appendChild(renderer.domElement);
+
+    // Central Core - Multi-layered sphere
+    const coreGroup = new THREE.Group();
+    
+    // Inner core
+    const innerGeometry = new THREE.IcosahedronGeometry(15, 2);
+    const innerMaterial = new THREE.MeshPhongMaterial({
+      color: 0xff00ff,
+      emissive: 0xff00ff,
+      emissiveIntensity: 0.5,
+      wireframe: false,
+      transparent: true,
+      opacity: 0.8
+    });
+    const innerCore = new THREE.Mesh(innerGeometry, innerMaterial);
+    coreGroup.add(innerCore);
+
+    // Middle layer - represents coverage
+    const middleGeometry = new THREE.IcosahedronGeometry(25, 1);
+    const middleMaterial = new THREE.MeshPhongMaterial({
+      color: 0xc084fc,
+      wireframe: true,
+      transparent: true,
+      opacity: metrics.csocCoverage / 100
+    });
+    const middleCore = new THREE.Mesh(middleGeometry, middleMaterial);
+    coreGroup.add(middleCore);
+
+    // Outer shield
+    const outerGeometry = new THREE.IcosahedronGeometry(35, 1);
+    const outerMaterial = new THREE.MeshPhongMaterial({
+      color: 0x00ffff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.3
+    });
+    const outerCore = new THREE.Mesh(outerGeometry, outerMaterial);
+    coreGroup.add(outerCore);
+
+    scene.add(coreGroup);
+
+    // Orbital rings representing different platforms
+    const createRing = (radius: number, color: number, coverage: number) => {
+      const ringGeometry = new THREE.TorusGeometry(radius, 2, 8, 100);
+      const ringMaterial = new THREE.MeshPhongMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.2,
+        transparent: true,
+        opacity: coverage / 100
       });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.rotation.x = Math.random() * Math.PI;
+      ring.rotation.y = Math.random() * Math.PI;
+      return ring;
+    };
+
+    const csocRing = createRing(50, 0x00ffff, metrics.csocCoverage);
+    const splunkRing = createRing(60, 0xc084fc, metrics.splunkCoverage);
+    const chronicleRing = createRing(70, 0xff00ff, metrics.chronicleCoverage);
+    
+    scene.add(csocRing);
+    scene.add(splunkRing);
+    scene.add(chronicleRing);
+
+    // Threat particles
+    const particleCount = 1000;
+    const particlesGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      const radius = 30 + Math.random() * 100;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+      
+      positions[i] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
+      positions[i + 2] = radius * Math.cos(phi);
+      
+      // Color based on threat level
+      if (metrics.csocCoverage < 20) {
+        colors[i] = 1; colors[i + 1] = 0; colors[i + 2] = 1; // Pink for critical
+      } else if (metrics.csocCoverage < 50) {
+        colors[i] = 0.75; colors[i + 1] = 0.52; colors[i + 2] = 0.99; // Purple for warning
+      } else {
+        colors[i] = 0; colors[i + 1] = 1; colors[i + 2] = 1; // Blue for normal
+      }
     }
-    setParticles(newParticles);
-  }, []);
 
-  // Animate particles
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setParticles(prev => prev.map(p => ({
-        x: (p.x + p.vx + window.innerWidth) % window.innerWidth,
-        y: (p.y + p.vy + window.innerHeight) % window.innerHeight,
-        vx: p.vx,
-        vy: p.vy
-      })));
-    }, 50);
-    return () => clearInterval(interval);
-  }, []);
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  // Generate random data for visualization
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setDataPoints(Array.from({ length: 20 }, () => Math.random() * 100));
-      setDataFlow(prev => (prev + 1) % 100);
-      setSystemHealth(85 + Math.random() * 15);
-      setThreats(Math.floor(Math.random() * 10));
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
+    const particlesMaterial = new THREE.PointsMaterial({
+      size: 1,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
 
-  // 3D holographic wave animation
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
+
+    // Data streams
+    const streamGroup = new THREE.Group();
+    for (let i = 0; i < 5; i++) {
+      const streamGeometry = new THREE.CylinderGeometry(0.5, 0.5, 100, 8);
+      const streamMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.3
+      });
+      const stream = new THREE.Mesh(streamGeometry, streamMaterial);
+      const angle = (i / 5) * Math.PI * 2;
+      stream.position.x = Math.cos(angle) * 80;
+      stream.position.z = Math.sin(angle) * 80;
+      streamGroup.add(stream);
+    }
+    scene.add(streamGroup);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+
+    const pointLight1 = new THREE.PointLight(0x00ffff, 1, 200);
+    pointLight1.position.set(100, 50, 100);
+    scene.add(pointLight1);
+
+    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 200);
+    pointLight2.position.set(-100, 50, -100);
+    scene.add(pointLight2);
+
+    // Animation loop
+    let frameId: number;
+    const animate = () => {
+      frameId = requestAnimationFrame(animate);
+      
+      // Rotate cores
+      innerCore.rotation.x += 0.01;
+      innerCore.rotation.y += 0.01;
+      middleCore.rotation.x -= 0.005;
+      middleCore.rotation.z += 0.005;
+      outerCore.rotation.y += 0.003;
+      
+      // Rotate rings
+      csocRing.rotation.x += 0.002;
+      csocRing.rotation.y += 0.003;
+      splunkRing.rotation.x -= 0.003;
+      splunkRing.rotation.z += 0.002;
+      chronicleRing.rotation.y += 0.004;
+      chronicleRing.rotation.z -= 0.002;
+      
+      // Animate particles
+      particles.rotation.y += 0.001;
+      
+      // Pulse core based on coverage
+      const scale = 1 + Math.sin(Date.now() * 0.002) * 0.1;
+      innerCore.scale.setScalar(scale);
+      
+      // Rotate data streams
+      streamGroup.rotation.y += 0.001;
+      
+      // Camera movement
+      const time = Date.now() * 0.0005;
+      camera.position.x = Math.sin(time) * 150;
+      camera.position.z = Math.cos(time) * 150;
+      camera.lookAt(0, 0, 0);
+      
+      renderer.render(scene, camera);
+    };
+
+    animate();
+
+    // Cleanup
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      if (hologramRef.current && renderer.domElement) {
+        hologramRef.current.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+    };
+  }, [metrics]);
+
+  // Matrix Rain Effect
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = matrixRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
@@ -64,341 +242,333 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
-    let time = 0;
+    const columns = Math.floor(canvas.width / 20);
+    const drops: number[] = [];
+    for (let i = 0; i < columns; i++) {
+      drops[i] = Math.random() * -100;
+    }
+
+    const matrix = '01';
     const animate = () => {
-      time += 0.02;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = '15px monospace';
       
-      // Draw holographic waves
-      for (let i = 0; i < 5; i++) {
-        ctx.beginPath();
-        ctx.strokeStyle = i % 2 === 0 
-          ? `rgba(0, 255, 255, ${0.3 - i * 0.05})`
-          : `rgba(192, 132, 252, ${0.3 - i * 0.05})`;
-        ctx.lineWidth = 2;
+      for (let i = 0; i < drops.length; i++) {
+        const text = matrix[Math.floor(Math.random() * matrix.length)];
+        const x = i * 20;
+        const y = drops[i] * 20;
         
-        for (let x = 0; x < canvas.width; x += 5) {
-          const y = canvas.height / 2 + 
-                   Math.sin((x / 50) + time + i * 0.5) * 30 * (1 - i * 0.1) +
-                   Math.sin((x / 30) + time * 1.5 + i * 0.3) * 20 * (1 - i * 0.1);
-          
-          if (x === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
+        // Color based on platform
+        if (i % 3 === 0) ctx.fillStyle = '#00ffff';
+        else if (i % 3 === 1) ctx.fillStyle = '#c084fc';
+        else ctx.fillStyle = '#ff00ff';
+        
+        ctx.fillText(text, x, y);
+        
+        if (y > canvas.height && Math.random() > 0.975) {
+          drops[i] = 0;
         }
-        ctx.stroke();
+        drops[i]++;
       }
       
       requestAnimationFrame(animate);
     };
+
     animate();
   }, []);
 
-  const metrics = [
-    {
-      icon: Eye,
-      label: 'VISIBILITY',
-      value: systemHealth,
-      unit: '%',
-      color: 'cyan',
-      gradient: 'from-cyan-400 to-blue-400'
-    },
-    {
-      icon: Shield,
-      label: 'SECURITY',
-      value: 95.5,
-      unit: '%',
-      color: 'purple',
-      gradient: 'from-purple-400 to-pink-400'
-    },
-    {
-      icon: AlertTriangle,
-      label: 'THREATS',
-      value: threats,
-      unit: '',
-      color: 'pink',
-      gradient: 'from-pink-400 to-rose-400'
-    },
-    {
-      icon: Activity,
-      label: 'UPTIME',
-      value: 99.9,
-      unit: '%',
-      color: 'cyan',
-      gradient: 'from-blue-400 to-cyan-400'
-    }
+  // Pulse Wave Visualization
+  useEffect(() => {
+    const canvas = pulseRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const time = Date.now() * 0.001;
+      
+      // Draw three waves for each platform
+      const platforms = [
+        { coverage: metrics.csocCoverage, color: '#00ffff', offset: 0 },
+        { coverage: metrics.splunkCoverage, color: '#c084fc', offset: 2 },
+        { coverage: metrics.chronicleCoverage, color: '#ff00ff', offset: 4 }
+      ];
+
+      platforms.forEach(platform => {
+        ctx.strokeStyle = platform.color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        
+        for (let x = 0; x < canvas.width; x += 2) {
+          const y = canvas.height / 2 + 
+                   Math.sin((x / 50) + time + platform.offset) * 
+                   (platform.coverage / 2) * 
+                   Math.sin(time * 0.5);
+          
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        
+        ctx.stroke();
+      });
+      
+      ctx.globalAlpha = 1;
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  }, [metrics]);
+
+  // Animate values
+  useEffect(() => {
+    setTimeout(() => {
+      setAnimatedValues({
+        csoc: metrics.csocCoverage,
+        splunk: metrics.splunkCoverage,
+        chronicle: metrics.chronicleCoverage,
+        assets: metrics.totalAssets,
+        gaps: metrics.criticalGaps
+      });
+    }, 100);
+  }, [metrics]);
+
+  const criticalSystems = [
+    { name: 'EMEA Region', coverage: 12.3, gap: 78456, status: 'critical' },
+    { name: 'Linux Servers', coverage: 69.29, gap: 24001, status: 'warning' },
+    { name: 'Network Appliances', coverage: 45.2, gap: 7537, status: 'warning' },
+    { name: 'Cloud Infrastructure', coverage: 19.17, gap: 40626, status: 'critical' }
   ];
 
   return (
-    <div className="min-h-screen bg-black relative overflow-hidden">
-      {/* Quantum grid background */}
-      <div className="quantum-grid" />
-      
-      {/* Floating particles */}
-      {particles.map((particle, i) => (
-        <div
-          key={i}
-          className="quantum-particle"
-          style={{
-            left: particle.x,
-            top: particle.y,
-            background: i % 2 === 0 ? '#00ffff' : '#c084fc',
-            boxShadow: i % 2 === 0 
-              ? '0 0 10px #00ffff, 0 0 20px rgba(0, 255, 255, 0.5)'
-              : '0 0 10px #c084fc, 0 0 20px rgba(192, 132, 252, 0.5)'
-          }}
-        />
-      ))}
+    <div className="p-8 bg-black min-h-screen">
+      {/* Header Section */}
+      <div className="mb-8">
+        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+          QUANTUM SECURITY COMMAND CENTER
+        </h1>
+        <p className="text-gray-400 uppercase tracking-widest text-xs">
+          Real-Time Visibility Matrix • {metrics.totalAssets.toLocaleString()} Assets Under Surveillance
+        </p>
+      </div>
 
-      {/* Main content */}
-      <div className="relative z-10 p-8">
-        {/* Header */}
-        <div className="mb-12">
-          <h1 className="text-6xl font-black mb-4 holo-text">
-            QUANTUM SECURITY MATRIX
-          </h1>
-          <div className="flex items-center gap-4">
-            <div className="glass-panel px-4 py-2 rounded-full">
-              <span className="text-sm font-medium text-cyan-300">
-                AGENT: {user.toUpperCase()}
-              </span>
+      {/* Critical Alert */}
+      <div className="mb-8 bg-black border border-pink-500/30 rounded-xl p-6">
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <AlertCircle className="w-8 h-8 text-pink-400 animate-pulse" />
+            <div className="absolute inset-0 w-8 h-8">
+              <AlertCircle className="w-8 h-8 text-pink-400 animate-ping" />
             </div>
-            <div className="glass-panel px-4 py-2 rounded-full">
-              <span className="text-sm font-medium text-purple-300">
-                CLEARANCE: OMEGA
-              </span>
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-pink-400">CRITICAL VISIBILITY BREACH</h3>
+            <p className="text-white mt-1">
+              CSOC coverage at {metrics.csocCoverage}% - {metrics.criticalGaps.toLocaleString()} assets compromised
+            </p>
+            <p className="text-gray-400 text-sm mt-2">
+              Immediate deployment required: 80% minimum coverage for compliance
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Dashboard Grid */}
+      <div className="grid grid-cols-12 gap-6 mb-8">
+        {/* 3D Holographic Core */}
+        <div className="col-span-7">
+          <div className="bg-black border border-blue-500/30 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-blue-500/20">
+              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                <Globe className="w-4 h-4" />
+                Security Core Matrix
+              </h3>
             </div>
-            <div className="glass-panel px-4 py-2 rounded-full flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-sm font-medium text-green-400">
-                SYSTEM ONLINE
-              </span>
+            <div ref={hologramRef} className="w-full h-[400px]" />
+            <div className="p-4 grid grid-cols-3 gap-4 border-t border-blue-500/20">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-400">{animatedValues.csoc?.toFixed(1) || 0}%</div>
+                <div className="text-xs text-gray-400">CSOC Shield</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-400">{animatedValues.splunk?.toFixed(1) || 0}%</div>
+                <div className="text-xs text-gray-400">Splunk Grid</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-pink-400">{animatedValues.chronicle?.toFixed(1) || 0}%</div>
+                <div className="text-xs text-gray-400">Chronicle Net</div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-4 gap-6 mb-8">
-          {metrics.map((metric, index) => {
-            const Icon = metric.icon;
-            return (
-              <div
-                key={metric.label}
-                className="holo-card rounded-2xl p-6 cursor-pointer transition-all duration-500 holo-shine"
-                onMouseEnter={() => setHoveredCard(index)}
-                onMouseLeave={() => setHoveredCard(null)}
-                style={{
-                  transform: hoveredCard === index ? 'scale(1.05) translateY(-10px)' : 'scale(1)',
-                  boxShadow: hoveredCard === index 
-                    ? `0 20px 60px rgba(0, 255, 255, 0.3), 0 0 100px rgba(192, 132, 252, 0.2)`
-                    : 'none'
-                }}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <Icon className={`w-8 h-8 ${
-                    metric.color === 'cyan' ? 'text-cyan-400' :
-                    metric.color === 'purple' ? 'text-purple-400' :
-                    'text-pink-400'
+        {/* Side Metrics */}
+        <div className="col-span-5 space-y-6">
+          {/* Matrix Rain */}
+          <div className="bg-black border border-purple-500/30 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-purple-500/20">
+              <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                <Binary className="w-4 h-4" />
+                Data Stream Matrix
+              </h3>
+            </div>
+            <canvas ref={matrixRef} className="w-full h-[180px]" />
+          </div>
+
+          {/* Pulse Wave */}
+          <div className="bg-black border border-pink-500/30 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-pink-500/20">
+              <h3 className="text-sm font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Coverage Pulse Analysis
+              </h3>
+            </div>
+            <canvas ref={pulseRef} className="w-full h-[180px]" />
+          </div>
+        </div>
+      </div>
+
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-5 gap-4 mb-8">
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800 hover:border-blue-500/50 transition-all">
+          <Database className="w-6 h-6 text-blue-400 mb-3" />
+          <div className="text-3xl font-bold text-white">{(animatedValues.assets / 1000 || 0).toFixed(1)}K</div>
+          <div className="text-sm text-gray-400">Total Assets</div>
+          <div className="mt-3 text-xs text-blue-400">100% CMDB</div>
+        </div>
+
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-pink-500/30 hover:border-pink-500/50 transition-all">
+          <Eye className="w-6 h-6 text-pink-400 mb-3" />
+          <div className="text-3xl font-bold text-pink-400">{metrics.csocCoverage}%</div>
+          <div className="text-sm text-gray-400">CSOC Visibility</div>
+          <div className="mt-3 text-xs text-pink-400">↓ 60.83% below</div>
+        </div>
+
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800 hover:border-purple-500/50 transition-all">
+          <Server className="w-6 h-6 text-purple-400 mb-3" />
+          <div className="text-3xl font-bold text-purple-400">{metrics.splunkCoverage}%</div>
+          <div className="text-sm text-gray-400">Splunk Coverage</div>
+          <div className="mt-3 text-xs text-purple-400">Partial deploy</div>
+        </div>
+
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800 hover:border-blue-500/50 transition-all">
+          <Cloud className="w-6 h-6 text-blue-400 mb-3" />
+          <div className="text-3xl font-bold text-blue-400">{metrics.chronicleCoverage}%</div>
+          <div className="text-sm text-gray-400">Chronicle</div>
+          <div className="mt-3 text-xs text-blue-400">Near complete</div>
+        </div>
+
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-pink-500/30 hover:border-pink-500/50 transition-all">
+          <AlertCircle className="w-6 h-6 text-pink-400 mb-3" />
+          <div className="text-3xl font-bold text-pink-400">{(animatedValues.gaps / 1000 || 0).toFixed(0)}K</div>
+          <div className="text-sm text-gray-400">Critical Gaps</div>
+          <div className="mt-3 text-xs text-pink-400">URGENT</div>
+        </div>
+      </div>
+
+      {/* Critical Systems Grid */}
+      <div className="grid grid-cols-2 gap-6 mb-8">
+        <div className="bg-gray-900/30 rounded-2xl p-6 border border-gray-800">
+          <h3 className="text-lg font-semibold text-blue-400 mb-4">CRITICAL SYSTEM GAPS</h3>
+          <div className="space-y-3">
+            {criticalSystems.map((system, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 bg-black/50 rounded-lg border border-gray-800">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full animate-pulse ${
+                    system.status === 'critical' ? 'bg-pink-400' : 'bg-purple-400'
                   }`} />
-                  <Hexagon className="w-6 h-6 text-gray-600" />
+                  <span className="text-white">{system.name}</span>
                 </div>
-                
-                <div className="text-4xl font-bold mb-2">
-                  <span className={`bg-gradient-to-r ${metric.gradient} bg-clip-text text-transparent`}>
-                    {metric.value}{metric.unit}
+                <div className="flex items-center gap-4">
+                  <span className={`text-sm font-mono ${
+                    system.status === 'critical' ? 'text-pink-400' : 'text-purple-400'
+                  }`}>
+                    {system.coverage}%
+                  </span>
+                  <span className="text-sm text-gray-400">
+                    {(system.gap / 1000).toFixed(1)}K gap
                   </span>
                 </div>
-                
-                <div className="text-sm text-gray-400 uppercase tracking-wider">
-                  {metric.label}
-                </div>
-                
-                {/* Mini chart */}
-                <div className="mt-4 flex items-end gap-1 h-12">
-                  {dataPoints.slice(0, 10).map((point, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 bg-gradient-to-t rounded-t"
-                      style={{
-                        height: `${point * 0.5}px`,
-                        background: metric.color === 'cyan' 
-                          ? 'linear-gradient(to top, rgba(0, 255, 255, 0.5), rgba(0, 255, 255, 0.1))'
-                          : metric.color === 'purple'
-                          ? 'linear-gradient(to top, rgba(192, 132, 252, 0.5), rgba(192, 132, 252, 0.1))'
-                          : 'linear-gradient(to top, rgba(255, 0, 255, 0.5), rgba(255, 0, 255, 0.1))'
-                      }}
-                    />
-                  ))}
-                </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
 
-        {/* Main visualization area */}
-        <div className="grid grid-cols-12 gap-6">
-          {/* 3D Wave Visualization */}
-          <div className="col-span-8">
-            <div className="glass-panel rounded-2xl p-6 h-[400px] relative">
-              <h3 className="text-lg font-semibold mb-4 text-cyan-300 uppercase tracking-wider">
-                Quantum Data Flow
-              </h3>
-              <canvas 
-                ref={canvasRef}
-                className="w-full h-[300px]"
-                style={{
-                  filter: 'drop-shadow(0 0 20px rgba(0, 255, 255, 0.5))'
-                }}
+        <div className="bg-gray-900/30 rounded-2xl p-6 border border-gray-800">
+          <h3 className="text-lg font-semibold text-purple-400 mb-4">COMPLIANCE STATUS</h3>
+          <div className="space-y-3">
+            {['ISO 27001', 'NIST CSF', 'PCI DSS', 'SOX'].map((standard, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 bg-black/50 rounded-lg border border-gray-800">
+                <span className="text-white">{standard}</span>
+                <span className={`text-sm font-bold ${
+                  idx === 2 ? 'text-purple-400' : 'text-pink-400'
+                }`}>
+                  {idx === 2 ? 'AT RISK' : 'FAILED'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Platform Coverage Comparison */}
+      <div className="bg-gray-900/30 rounded-2xl p-6 border border-gray-800">
+        <h3 className="text-lg font-semibold text-white mb-6">PLATFORM COVERAGE ANALYSIS</h3>
+        <div className="space-y-4">
+          <div>
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-blue-400">CSOC (Google Chronicle)</span>
+              <span className="font-mono text-blue-400">{animatedValues.csoc?.toFixed(1) || 0}%</span>
+            </div>
+            <div className="relative h-8 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+              <div 
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-400 to-blue-500 transition-all duration-1000 rounded-full"
+                style={{ width: `${animatedValues.csoc || 0}%` }}
               />
-              
-              {/* Overlay metrics */}
-              <div className="absolute bottom-6 left-6 right-6 flex justify-between">
-                <div className="glass-panel px-3 py-2 rounded">
-                  <span className="text-xs text-gray-400">THROUGHPUT</span>
-                  <div className="text-lg font-bold text-cyan-400">2.4 TB/s</div>
-                </div>
-                <div className="glass-panel px-3 py-2 rounded">
-                  <span className="text-xs text-gray-400">LATENCY</span>
-                  <div className="text-lg font-bold text-purple-400">0.3ms</div>
-                </div>
-                <div className="glass-panel px-3 py-2 rounded">
-                  <span className="text-xs text-gray-400">PACKETS</span>
-                  <div className="text-lg font-bold text-pink-400">1.2M/s</div>
-                </div>
+              <div className="absolute inset-0 flex items-center px-4">
+                <span className="text-xs text-gray-400">50,237 / 262,032 assets</span>
               </div>
             </div>
           </div>
 
-          {/* System Status */}
-          <div className="col-span-4">
-            <div className="glass-panel rounded-2xl p-6 h-[400px]">
-              <h3 className="text-lg font-semibold mb-4 text-purple-300 uppercase tracking-wider">
-                System Status
-              </h3>
-              
-              <div className="space-y-4">
-                {['Core Systems', 'Neural Network', 'Quantum Engine', 'Data Pipeline'].map((system, index) => {
-                  const status = index === 2 ? 'warning' : 'online';
-                  const progress = index === 2 ? 67 : 90 + Math.random() * 10;
-                  
-                  return (
-                    <div key={system} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-300">{system}</span>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          status === 'online' 
-                            ? 'bg-green-400/20 text-green-400'
-                            : 'bg-yellow-400/20 text-yellow-400'
-                        }`}>
-                          {status.toUpperCase()}
-                        </span>
-                      </div>
-                      
-                      <div className="h-2 bg-black/50 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full transition-all duration-500 rounded-full"
-                          style={{
-                            width: `${progress}%`,
-                            background: status === 'online'
-                              ? 'linear-gradient(90deg, #00ffff, #00e5ff)'
-                              : 'linear-gradient(90deg, #f0abfc, #e879f9)'
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Circular progress indicator */}
-              <div className="mt-8 flex justify-center">
-                <div className="relative w-32 h-32">
-                  <svg className="w-32 h-32 transform -rotate-90">
-                    <circle
-                      cx="64"
-                      cy="64"
-                      r="56"
-                      stroke="rgba(0, 255, 255, 0.1)"
-                      strokeWidth="8"
-                      fill="none"
-                    />
-                    <circle
-                      cx="64"
-                      cy="64"
-                      r="56"
-                      stroke="url(#gradient)"
-                      strokeWidth="8"
-                      fill="none"
-                      strokeDasharray={`${2 * Math.PI * 56}`}
-                      strokeDashoffset={`${2 * Math.PI * 56 * (1 - systemHealth / 100)}`}
-                      className="transition-all duration-1000"
-                    />
-                    <defs>
-                      <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#00ffff" />
-                        <stop offset="100%" stopColor="#c084fc" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-cyan-400">{systemHealth.toFixed(1)}%</div>
-                      <div className="text-xs text-gray-400">HEALTH</div>
-                    </div>
-                  </div>
-                </div>
+          <div>
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-purple-400">Splunk</span>
+              <span className="font-mono text-purple-400">{animatedValues.splunk?.toFixed(1) || 0}%</span>
+            </div>
+            <div className="relative h-8 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+              <div 
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-purple-400 to-purple-500 transition-all duration-1000 rounded-full"
+                style={{ width: `${animatedValues.splunk || 0}%` }}
+              />
+              <div className="absolute inset-0 flex items-center px-4">
+                <span className="text-xs text-gray-400">167,517 / 262,032 assets</span>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Bottom monitoring strip */}
-        <div className="mt-8 glass-panel rounded-2xl p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
-              <div className="flex items-center gap-3">
-                <Activity className="w-5 h-5 text-cyan-400" />
-                <div>
-                  <div className="text-xs text-gray-400">CPU</div>
-                  <div className="text-sm font-bold text-cyan-400">42%</div>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <HardDrive className="w-5 h-5 text-purple-400" />
-                <div>
-                  <div className="text-xs text-gray-400">MEMORY</div>
-                  <div className="text-sm font-bold text-purple-400">8.6 GB</div>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <Wifi className="w-5 h-5 text-pink-400" />
-                <div>
-                  <div className="text-xs text-gray-400">NETWORK</div>
-                  <div className="text-sm font-bold text-pink-400">1.2 Gbps</div>
-                </div>
-              </div>
+          <div>
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-pink-400">Chronicle (Direct)</span>
+              <span className="font-mono text-pink-400">{animatedValues.chronicle?.toFixed(1) || 0}%</span>
             </div>
-
-            <div className="flex items-center gap-4">
-              <span className="text-xs text-gray-500">
-                {typeof window !== 'undefined' 
-                  ? new Date().toLocaleTimeString('en-US', { 
-                      hour: '2-digit', 
-                      minute: '2-digit',
-                      second: '2-digit',
-                      hour12: false 
-                    })
-                  : '00:00:00'
-                }
-              </span>
-              <button className="neon-btn px-6 py-2 rounded-lg text-sm font-medium">
-                SCAN NETWORK
-              </button>
+            <div className="relative h-8 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+              <div 
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-pink-400 to-pink-500 transition-all duration-1000 rounded-full"
+                style={{ width: `${animatedValues.chronicle || 0}%` }}
+              />
+              <div className="absolute inset-0 flex items-center px-4">
+                <span className="text-xs text-gray-400">241,691 / 262,032 assets</span>
+              </div>
             </div>
           </div>
         </div>

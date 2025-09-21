@@ -19,7 +19,7 @@ const GlobalView: React.FC = () => {
       percentage: 19.17,
       missing: 211795,
       color: '#00ffff',
-      glowColor: '#00ccff',
+      glowColor: '#00ffff',
       status: 'CRITICAL',
       trend: -2.3,
     },
@@ -29,7 +29,7 @@ const GlobalView: React.FC = () => {
       percentage: 63.93,
       missing: 94515,
       color: '#c084fc',
-      glowColor: '#a855f7',
+      glowColor: '#c084fc',
       status: 'WARNING',
       trend: 0.8,
     },
@@ -39,7 +39,7 @@ const GlobalView: React.FC = () => {
       percentage: 92.24,
       missing: 20341,
       color: '#ff00ff',
-      glowColor: '#ff00aa',
+      glowColor: '#ff00ff',
       status: 'GOOD',
       trend: 3.2,
     }
@@ -149,12 +149,12 @@ const GlobalView: React.FC = () => {
       // Create beacon
       const beaconGeometry = new THREE.ConeGeometry(3, 10, 4);
       const beaconMaterial = new THREE.MeshPhongMaterial({
-        color: region.status === 'critical' ? 0xff0044 : 
-               region.status === 'warning' ? 0xffaa00 : 
-               0x00ff88,
-        emissive: region.status === 'critical' ? 0xff0044 : 
-                  region.status === 'warning' ? 0xffaa00 : 
-                  0x00ff88,
+        color: region.status === 'critical' ? 0xff00ff : 
+               region.status === 'warning' ? 0xc084fc : 
+               0x00ffff,
+        emissive: region.status === 'critical' ? 0xff00ff : 
+                  region.status === 'warning' ? 0xc084fc : 
+                  0x00ffff,
         emissiveIntensity: 0.5,
       });
       const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
@@ -273,63 +273,48 @@ const GlobalView: React.FC = () => {
 
   return (
     <div className="p-8 min-h-screen bg-black">
-      {/* Animated Background */}
-      <div className="fixed inset-0 opacity-20">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-purple-900/20 to-pink-900/20" />
-        <div className="absolute inset-0" style={{
-          backgroundImage: `radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.1) 0%, transparent 50%),
-                           radial-gradient(circle at 80% 80%, rgba(192, 132, 252, 0.1) 0%, transparent 50%),
-                           radial-gradient(circle at 40% 20%, rgba(255, 0, 255, 0.1) 0%, transparent 50%)`,
-          animation: 'pulse 10s ease-in-out infinite'
-        }} />
-      </div>
-
       {/* Header */}
-      <div className="relative z-20 mb-8">
-        <h1 className="text-6xl font-black mb-3 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 animate-pulse">
-          GLOBAL QUANTUM SURVEILLANCE MATRIX
+      <div className="mb-8">
+        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+          GLOBAL SURVEILLANCE MATRIX
         </h1>
-        <p className="text-gray-400 uppercase tracking-[0.3em] text-sm">
-          CLASSIFICATION: COSMIC TOP SECRET • {currentData.totalAssets.toLocaleString()} ASSETS • YEAR 5000
+        <p className="text-gray-400 uppercase tracking-widest text-xs">
+          {currentData.totalAssets.toLocaleString()} ASSETS • REAL-TIME MONITORING
         </p>
       </div>
 
       {/* Critical Alert */}
       {selectedPlatform === 'csoc' && (
-        <div className="relative z-20 mb-6 border border-red-500/50 bg-red-500/10 rounded-lg p-4 backdrop-blur-lg">
+        <div className="mb-6 bg-black border border-pink-500/30 rounded-lg p-4">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="w-6 h-6 text-red-400 animate-pulse" />
+            <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
             <div>
-              <span className="text-red-400 font-bold">QUANTUM BREACH DETECTED:</span>
-              <span className="text-white ml-2">Timeline corruption at 19.17% - {currentData.missing.toLocaleString()} nodes compromised</span>
+              <span className="text-pink-400 font-bold">CRITICAL BREACH:</span>
+              <span className="text-white ml-2">Coverage at 19.17% - {currentData.missing.toLocaleString()} nodes compromised</span>
             </div>
           </div>
         </div>
       )}
 
       {/* Platform Selector */}
-      <div className="relative z-20 flex gap-2 mb-8">
+      <div className="flex gap-2 mb-8">
         {(['csoc', 'splunk', 'chronicle'] as const).map(platform => (
           <button
             key={platform}
             onClick={() => setSelectedPlatform(platform)}
-            className={`px-8 py-4 rounded-lg font-bold uppercase tracking-wider transition-all duration-300 backdrop-blur-lg ${
+            className={`px-6 py-3 rounded-lg font-bold uppercase tracking-wider transition-all ${
               selectedPlatform === platform
-                ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 scale-105 shadow-2xl'
+                ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20'
                 : 'bg-gray-900/50 hover:bg-gray-800/50'
             }`}
             style={{
               border: selectedPlatform === platform 
                 ? `2px solid ${globalData[platform].color}` 
-                : '2px solid transparent',
-              boxShadow: selectedPlatform === platform 
-                ? `0 0 40px ${globalData[platform].glowColor}40, inset 0 0 20px ${globalData[platform].glowColor}20` 
-                : 'none'
+                : '2px solid transparent'
             }}
           >
             <span style={{ 
-              color: selectedPlatform === platform ? globalData[platform].color : '#666',
-              textShadow: selectedPlatform === platform ? `0 0 20px ${globalData[platform].glowColor}` : 'none'
+              color: selectedPlatform === platform ? globalData[platform].color : '#666'
             }}>
               {platform.toUpperCase()}
             </span>
@@ -337,54 +322,38 @@ const GlobalView: React.FC = () => {
         ))}
       </div>
 
-      <div className="relative z-10 grid grid-cols-12 gap-6">
+      <div className="grid grid-cols-12 gap-6">
         {/* 3D Globe Container */}
         <div className="col-span-8">
-          <div className="relative bg-black/80 backdrop-blur-xl rounded-2xl border border-cyan-500/30 overflow-hidden" 
-               style={{
-                 boxShadow: `0 0 80px ${currentData.glowColor}30, inset 0 0 40px rgba(0,0,0,0.8)`
-               }}>
-            {/* HUD Overlay */}
-            <div className="absolute top-4 left-4 z-10">
-              <div className="text-cyan-400 text-xs font-mono space-y-1">
-                <div>ORBITAL VIEW: ACTIVE</div>
-                <div>QUANTUM ENCRYPTION: AES-5000</div>
-                <div>TIMELINE: {new Date().toISOString()}</div>
-              </div>
+          <div className="bg-black border border-blue-500/30 rounded-2xl overflow-hidden">
+            <div className="absolute top-4 left-4 z-10 text-blue-400 text-xs font-mono space-y-1">
+              <div>ORBITAL VIEW: ACTIVE</div>
+              <div>ENCRYPTION: AES-256</div>
             </div>
             
             <div className="absolute top-4 right-4 z-10 space-y-2">
               <button 
                 onClick={() => setZoomLevel(Math.max(0.5, zoomLevel - 0.2))}
-                className="block p-2 bg-cyan-500/20 border border-cyan-500/50 rounded hover:bg-cyan-500/30 transition-colors"
+                className="block p-2 bg-blue-500/20 border border-blue-500/50 rounded hover:bg-blue-500/30"
               >
-                <Zap className="w-4 h-4 text-cyan-400" />
+                <Zap className="w-4 h-4 text-blue-400" />
               </button>
               <button 
                 onClick={() => setZoomLevel(Math.min(2, zoomLevel + 0.2))}
-                className="block p-2 bg-cyan-500/20 border border-cyan-500/50 rounded hover:bg-cyan-500/30 transition-colors"
+                className="block p-2 bg-blue-500/20 border border-blue-500/50 rounded hover:bg-blue-500/30"
               >
-                <Satellite className="w-4 h-4 text-cyan-400" />
+                <Satellite className="w-4 h-4 text-blue-400" />
               </button>
             </div>
 
-            {/* Globe Viewport */}
             <div ref={globeRef} className="w-full h-[600px]" />
-            
-            {/* Scanner Line Effect */}
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-scan" />
-            </div>
           </div>
         </div>
 
         {/* Metrics Panel */}
         <div className="col-span-4 space-y-6">
           {/* Coverage Meter */}
-          <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-6"
-               style={{
-                 boxShadow: `0 0 60px ${currentData.glowColor}20, inset 0 0 30px rgba(0,0,0,0.8)`
-               }}>
+          <div className="bg-black border border-purple-500/30 rounded-2xl p-6">
             <div className="text-center">
               <div className="relative inline-block">
                 <svg className="w-48 h-48 transform -rotate-90">
@@ -406,9 +375,6 @@ const GlobalView: React.FC = () => {
                     strokeDasharray={`${2 * Math.PI * 88}`}
                     strokeDashoffset={`${2 * Math.PI * 88 * (1 - currentData.percentage / 100)}`}
                     className="transition-all duration-1000"
-                    style={{
-                      filter: `drop-shadow(0 0 10px ${currentData.glowColor})`
-                    }}
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -417,56 +383,48 @@ const GlobalView: React.FC = () => {
                       {currentData.percentage}%
                     </div>
                     <div className="text-sm text-gray-400 uppercase tracking-wider">
-                      Quantum Coverage
+                      Coverage
                     </div>
                   </div>
                 </div>
               </div>
               
               <div className={`mt-4 px-3 py-1 inline-block rounded-full text-sm font-bold ${
-                currentData.status === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/50' :
-                currentData.status === 'WARNING' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' :
-                'bg-green-500/20 text-green-400 border border-green-500/50'
+                currentData.status === 'CRITICAL' ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50' :
+                currentData.status === 'WARNING' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50' :
+                'bg-blue-500/20 text-blue-400 border border-blue-500/50'
               }`}>
-                {currentData.status} PROTOCOL
+                {currentData.status}
               </div>
             </div>
           </div>
 
-          {/* Regional Threats */}
-          <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-pink-500/30 p-6"
-               style={{
-                 boxShadow: `0 0 60px rgba(255, 0, 255, 0.2), inset 0 0 30px rgba(0,0,0,0.8)`
-               }}>
+          {/* Regional Status */}
+          <div className="bg-black border border-pink-500/30 rounded-2xl p-6">
             <h3 className="text-sm font-bold text-pink-400 mb-4 uppercase tracking-wider flex items-center gap-2">
               <Radar className="w-4 h-4" />
-              Regional Quantum States
+              Regional Status
             </h3>
             
             <div className="space-y-3">
               {regions.map(region => (
                 <div 
                   key={region.name}
-                  className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-800 hover:border-cyan-500/50 transition-all cursor-pointer"
-                  onMouseEnter={() => setHoveredCountry(region.name)}
-                  onMouseLeave={() => setHoveredCountry(null)}
-                  style={{
-                    boxShadow: hoveredCountry === region.name ? '0 0 20px rgba(0, 255, 255, 0.3)' : 'none'
-                  }}
+                  className="flex items-center justify-between p-3 bg-gray-900/30 rounded-lg border border-gray-800 hover:border-blue-500/50 transition-all"
                 >
                   <div className="flex items-center gap-3">
                     <div className={`w-2 h-2 rounded-full animate-pulse ${
-                      region.status === 'critical' ? 'bg-red-400' :
-                      region.status === 'warning' ? 'bg-yellow-400' :
-                      'bg-green-400'
+                      region.status === 'critical' ? 'bg-pink-400' :
+                      region.status === 'warning' ? 'bg-purple-400' :
+                      'bg-blue-400'
                     }`} />
                     <span className="text-white font-medium">{region.name}</span>
                   </div>
                   <div className="text-right">
                     <div className={`text-xl font-bold ${
-                      region.coverage < 20 ? 'text-red-400' :
-                      region.coverage < 50 ? 'text-yellow-400' :
-                      'text-green-400'
+                      region.coverage < 20 ? 'text-pink-400' :
+                      region.coverage < 50 ? 'text-purple-400' :
+                      'text-blue-400'
                     }`}>
                       {region.coverage}%
                     </div>
@@ -477,65 +435,19 @@ const GlobalView: React.FC = () => {
             </div>
           </div>
 
-          {/* Quantum Metrics */}
+          {/* Metrics */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-cyan-500/30 p-4">
-              <Eye className="w-6 h-6 text-cyan-400 mb-2" />
-              <div className="text-2xl font-bold text-cyan-400">{(currentData.covered / 1000).toFixed(1)}K</div>
+            <div className="bg-black border border-blue-500/30 rounded-xl p-4">
+              <Eye className="w-6 h-6 text-blue-400 mb-2" />
+              <div className="text-2xl font-bold text-blue-400">{(currentData.covered / 1000).toFixed(1)}K</div>
               <div className="text-xs text-gray-400">Monitored</div>
             </div>
-            <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-red-500/30 p-4">
-              <Shield className="w-6 h-6 text-red-400 mb-2" />
-              <div className="text-2xl font-bold text-red-400">{(currentData.missing / 1000).toFixed(1)}K</div>
+            <div className="bg-black border border-pink-500/30 rounded-xl p-4">
+              <Shield className="w-6 h-6 text-pink-400 mb-2" />
+              <div className="text-2xl font-bold text-pink-400">{(currentData.missing / 1000).toFixed(1)}K</div>
               <div className="text-xs text-gray-400">Vulnerable</div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Quantum Wave Interference Pattern */}
-      <div className="relative z-10 mt-8 bg-black/80 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-6">
-        <h3 className="text-sm font-bold text-purple-400 mb-4 uppercase tracking-wider">
-          Quantum Wave Interference Analysis
-        </h3>
-        <div className="h-32 relative overflow-hidden rounded-lg bg-gray-950">
-          <svg className="w-full h-full">
-            {/* Wave patterns for each platform */}
-            <path
-              d={`M 0 66 ${Array.from({length: 50}, (_, i) => {
-                const x = (i / 49) * 100;
-                const y = 50 + Math.sin(i * 0.3) * 20 * (globalData.csoc.percentage / 100);
-                return `L ${x}% ${y}%`;
-              }).join(' ')}`}
-              stroke="#00ffff"
-              strokeWidth="2"
-              fill="none"
-              opacity="0.8"
-            />
-            <path
-              d={`M 0 66 ${Array.from({length: 50}, (_, i) => {
-                const x = (i / 49) * 100;
-                const y = 50 + Math.sin(i * 0.3 + 2) * 20 * (globalData.splunk.percentage / 100);
-                return `L ${x}% ${y}%`;
-              }).join(' ')}`}
-              stroke="#c084fc"
-              strokeWidth="2"
-              fill="none"
-              opacity="0.8"
-            />
-            <path
-              d={`M 0 66 ${Array.from({length: 50}, (_, i) => {
-                const x = (i / 49) * 100;
-                const y = 50 + Math.sin(i * 0.3 + 4) * 20 * (globalData.chronicle.percentage / 100);
-                return `L ${x}% ${y}%`;
-              }).join(' ')}`}
-              stroke="#ff00ff"
-              strokeWidth="2"
-              fill="none"
-              opacity="0.8"
-            />
-          </svg>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
         </div>
       </div>
     </div>

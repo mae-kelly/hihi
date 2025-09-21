@@ -1,7 +1,7 @@
 {
-  "name": "cybervision-5000",
+  "name": "log-lens",
   "version": "1.0.0",
-  "description": "Ultra-futuristic cyber security visibility dashboard",
+  "description": "Enterprise log visibility and security monitoring dashboard",
   "private": true,
   "scripts": {
     "dev": "next dev",

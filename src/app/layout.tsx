@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'CyberVision 5000 - Quantum Security Visibility Platform',
-  description: 'Ultra-futuristic cyber security visibility and threat intelligence dashboard',
+  title: 'Log Lens - AO1 Visibility Platform',
+  description: 'Enterprise log visibility and threat intelligence dashboard',
   icons: {
     icon: '/favicon.ico',
   },
@@ -20,7 +20,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body className="bg-cyber-black text-cyber-cyan antialiased">
+      <body className="bg-black text-white antialiased">
         {children}
       </body>
     </html>

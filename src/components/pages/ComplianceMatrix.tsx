@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, FileSearch, Database, Server, Cloud, Network, Activity, Lock, AlertTriangle, Scale, Gavel, BookOpen, FileCheck } from 'lucide-react';
+import { Shield, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, FileSearch, Database, Server, Cloud, Network, Activity, Lock, AlertTriangle, Scale, Gavel, BookOpen, FileCheck, Cpu, Zap, Binary, Layers } from 'lucide-react';
 import * as THREE from 'three';
 
 const ComplianceMatrix: React.FC = () => {
   const [selectedFramework, setSelectedFramework] = useState<string>('all');
   const [animatedScores, setAnimatedScores] = useState<Record<string, number>>({});
   const cubeRef = useRef<HTMLDivElement>(null);
-  const scalesRef = useRef<HTMLCanvasElement>(null);
+  const matrixRef = useRef<HTMLCanvasElement>(null);
   const [rotation, setRotation] = useState({ x: 0, y: 0, z: 0 });
   const [isScrambled, setIsScrambled] = useState(true);
 
@@ -212,7 +212,7 @@ const ComplianceMatrix: React.FC = () => {
       actualState: 'CRITICAL',
       gsoScore: 0,
       splunkScore: 0,
-      color: '#ff0044',
+      color: '#ff00ff',
       faceIndex: 3,
       requirements: [
         {
@@ -247,7 +247,7 @@ const ComplianceMatrix: React.FC = () => {
     }
   };
 
-  // 3D Compliance Rubik's Cube
+  // 3D Compliance Cube
   useEffect(() => {
     if (!cubeRef.current) return;
 
@@ -290,12 +290,12 @@ const ComplianceMatrix: React.FC = () => {
             const requirementIndex = x + y * cubeSize + z * cubeSize * cubeSize;
             const requirement = data.requirements[requirementIndex % data.requirements.length];
             
-            let color = 0x00ff88; // Green for complete
+            let color = 0x00ffff; // Blue for complete
             if (requirement) {
               if (requirement.gso === 'failed' || requirement.splunk === 'failed') {
-                color = 0xff0044; // Red for failed
+                color = 0xff00ff; // Pink for failed
               } else if (requirement.gso === 'partial' || requirement.splunk === 'partial') {
-                color = 0xffaa00; // Yellow for partial
+                color = 0xc084fc; // Purple for partial
               }
             }
             
@@ -343,7 +343,7 @@ const ComplianceMatrix: React.FC = () => {
         Math.random() * 10 + 5
       );
       const glitchMaterial = new THREE.MeshBasicMaterial({
-        color: 0xff0044,
+        color: 0xff00ff,
         transparent: true,
         opacity: Math.random() * 0.3,
         side: THREE.DoubleSide
@@ -379,17 +379,11 @@ const ComplianceMatrix: React.FC = () => {
       // Color based on compliance level
       const complianceLevel = Math.random();
       if (complianceLevel < 0.3) {
-        colors[i] = 1; // Red
-        colors[i + 1] = 0;
-        colors[i + 2] = 0;
+        colors[i] = 1; colors[i + 1] = 0; colors[i + 2] = 1; // Pink
       } else if (complianceLevel < 0.7) {
-        colors[i] = 1; // Yellow
-        colors[i + 1] = 0.7;
-        colors[i + 2] = 0;
+        colors[i] = 0.75; colors[i + 1] = 0.52; colors[i + 2] = 0.99; // Purple
       } else {
-        colors[i] = 0; // Green
-        colors[i + 1] = 1;
-        colors[i + 2] = 0.5;
+        colors[i] = 0; colors[i + 1] = 1; colors[i + 2] = 1; // Blue
       }
     }
 
@@ -517,9 +511,9 @@ const ComplianceMatrix: React.FC = () => {
     };
   }, [isScrambled]);
 
-  // Legal Scales Animation
+  // Compliance Matrix Canvas
   useEffect(() => {
-    const canvas = scalesRef.current;
+    const canvas = matrixRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
@@ -531,118 +525,66 @@ const ComplianceMatrix: React.FC = () => {
     let animationId: number;
     
     const animate = () => {
-      // Clear with fade
+      // Matrix rain effect
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const centerX = canvas.width / 2;
-      const baseY = canvas.height - 50;
-      const time = Date.now() * 0.001;
+      // Draw compliance matrix grid
+      const cellSize = 40;
+      const frameworks = Object.keys(complianceData);
+      const platforms = ['GSO', 'Splunk'];
+      
+      // Draw grid
+      frameworks.forEach((framework, fIndex) => {
+        platforms.forEach((platform, pIndex) => {
+          const x = (pIndex + 1) * cellSize * 3;
+          const y = (fIndex + 1) * cellSize * 2;
+          
+          const data = complianceData[framework as keyof typeof complianceData];
+          const score = platform === 'GSO' ? data.gsoScore : data.splunkScore;
+          
+          // Cell background
+          const color = score < 30 ? '#ff00ff' : score < 60 ? '#c084fc' : '#00ffff';
+          ctx.fillStyle = color + '40';
+          ctx.fillRect(x, y, cellSize * 2, cellSize);
+          
+          // Cell border
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x, y, cellSize * 2, cellSize);
+          
+          // Score text
+          ctx.fillStyle = color;
+          ctx.font = 'bold 14px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${score.toFixed(1)}%`, x + cellSize, y + cellSize / 2);
+        });
+      });
 
-      // Draw scales base
-      ctx.strokeStyle = '#c084fc';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(centerX - 100, baseY);
-      ctx.lineTo(centerX + 100, baseY);
-      ctx.stroke();
-      
-      // Central pillar
-      ctx.beginPath();
-      ctx.moveTo(centerX, baseY);
-      ctx.lineTo(centerX, baseY - 150);
-      ctx.stroke();
-      
-      // Balance beam
-      const tilt = Math.sin(time) * 0.2; // Imbalance based on compliance
-      
-      ctx.save();
-      ctx.translate(centerX, baseY - 150);
-      ctx.rotate(tilt);
-      
-      ctx.beginPath();
-      ctx.moveTo(-150, 0);
-      ctx.lineTo(150, 0);
-      ctx.stroke();
-      
-      // Left scale (Requirements)
-      ctx.strokeStyle = '#00ffff';
-      ctx.beginPath();
-      ctx.moveTo(-150, 0);
-      ctx.lineTo(-150, 30);
-      ctx.stroke();
-      
-      // Left pan
-      ctx.strokeRect(-170, 30, 40, 5);
-      
-      // Requirements weight
-      const reqWeight = Object.values(complianceData).reduce((sum, framework) => 
-        sum + framework.requirements.length, 0
-      );
-      
-      for (let i = 0; i < Math.min(reqWeight / 5, 10); i++) {
-        ctx.fillStyle = '#00ffff80';
-        ctx.fillRect(-165 + (i % 3) * 12, 25 - Math.floor(i / 3) * 8, 10, 5);
-      }
-      
-      // Right scale (Compliance)
-      ctx.strokeStyle = '#ff00ff';
-      ctx.beginPath();
-      ctx.moveTo(150, 0);
-      ctx.lineTo(150, 30);
-      ctx.stroke();
-      
-      // Right pan
-      ctx.strokeRect(130, 30, 40, 5);
-      
-      // Compliance weight
-      const complianceWeight = Object.values(complianceData).reduce((sum, framework) => 
-        sum + (framework.gsoScore + framework.splunkScore) / 2, 0
-      ) / Object.keys(complianceData).length;
-      
-      for (let i = 0; i < Math.min(complianceWeight / 10, 10); i++) {
-        ctx.fillStyle = complianceWeight < 50 ? '#ff004480' : '#00ff8880';
-        ctx.fillRect(135 + (i % 3) * 12, 25 - Math.floor(i / 3) * 8, 10, 5);
-      }
-      
-      ctx.restore();
-      
-      // Gavel strikes for audit events
-      if (Math.random() > 0.95) {
-        const gavelX = centerX + (Math.random() - 0.5) * 200;
-        const gavelY = baseY - 100;
+      // Draw flowing data streams
+      const time = Date.now() * 0.001;
+      for (let i = 0; i < 5; i++) {
+        const x = (Math.sin(time + i) + 1) * canvas.width / 2;
+        const gradient = ctx.createLinearGradient(x, 0, x, canvas.height);
+        gradient.addColorStop(0, 'rgba(0, 255, 255, 0)');
+        gradient.addColorStop(0.5, 'rgba(192, 132, 252, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 0, 255, 0)');
         
-        // Gavel impact
-        const impactGradient = ctx.createRadialGradient(gavelX, gavelY, 0, gavelX, gavelY, 50);
-        impactGradient.addColorStop(0, '#ff00ff80');
-        impactGradient.addColorStop(0.5, '#ff00ff40');
-        impactGradient.addColorStop(1, '#ff00ff00');
-        
-        ctx.fillStyle = impactGradient;
-        ctx.fillRect(gavelX - 50, gavelY - 50, 100, 100);
-        
-        // Impact text
-        ctx.fillStyle = '#ff00ff';
-        ctx.font = 'bold 12px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('AUDIT EVENT', gavelX, gavelY - 60);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x - 1, 0, 2, canvas.height);
       }
-      
-      // Labels
-      ctx.fillStyle = '#00ffff';
+
+      // Digital rain characters
+      const chars = '01';
+      ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
       ctx.font = '10px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('REQUIREMENTS', centerX - 150, baseY - 170);
       
-      ctx.fillStyle = '#ff00ff';
-      ctx.fillText('COMPLIANCE', centerX + 150, baseY - 170);
-      
-      // Imbalance indicator
-      const imbalance = Math.abs(reqWeight - complianceWeight);
-      if (imbalance > 20) {
-        ctx.fillStyle = '#ff0044';
-        ctx.font = 'bold 14px monospace';
-        ctx.fillText(`IMBALANCE: ${imbalance.toFixed(0)}%`, centerX, baseY + 30);
+      for (let i = 0; i < 10; i++) {
+        const char = chars[Math.floor(Math.random() * chars.length)];
+        const x = Math.random() * canvas.width;
+        const y = (Date.now() * 0.1 + i * 100) % canvas.height;
+        ctx.fillText(char, x, y);
       }
 
       animationId = requestAnimationFrame(animate);
@@ -671,10 +613,10 @@ const ComplianceMatrix: React.FC = () => {
 
   const getStatusIcon = (status: string) => {
     switch(status) {
-      case 'complete': return <CheckCircle className="w-5 h-5 text-green-400" />;
-      case 'partial': return <AlertCircle className="w-5 h-5 text-yellow-400" />;
-      case 'failed': return <XCircle className="w-5 h-5 text-red-400" />;
-      case 'assumed': return <AlertTriangle className="w-5 h-5 text-orange-400" />;
+      case 'complete': return <CheckCircle className="w-5 h-5 text-blue-400" />;
+      case 'partial': return <AlertCircle className="w-5 h-5 text-purple-400" />;
+      case 'failed': return <XCircle className="w-5 h-5 text-pink-400" />;
+      case 'assumed': return <AlertTriangle className="w-5 h-5 text-purple-400" />;
       case 'notapplicable': return <div className="w-5 h-5 text-gray-500 text-center">N/A</div>;
       default: return null;
     }
@@ -682,132 +624,116 @@ const ComplianceMatrix: React.FC = () => {
 
   return (
     <div className="p-8 min-h-screen bg-black">
-      {/* Animated Background */}
-      <div className="fixed inset-0 opacity-20">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `
-            linear-gradient(45deg, rgba(255, 0, 68, 0.1) 0%, transparent 70%),
-            linear-gradient(-45deg, rgba(192, 132, 252, 0.1) 0%, transparent 70%),
-            linear-gradient(90deg, rgba(0, 255, 255, 0.1) 0%, transparent 70%)
-          `,
-          animation: 'gradient 20s ease infinite',
-          backgroundSize: '400% 400%'
-        }} />
-      </div>
-
       {/* Header */}
-      <div className="relative z-20 mb-8">
-        <h1 className="text-6xl font-black mb-3 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400">
+      <div className="mb-8">
+        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
           QUANTUM COMPLIANCE MATRIX
         </h1>
-        <p className="text-gray-400 uppercase tracking-[0.3em] text-sm">
-          Multi-Dimensional Compliance Analysis • Regulatory Quantum State • Audit Timeline
+        <p className="text-gray-400 uppercase tracking-widest text-xs">
+          Multi-Dimensional Compliance Analysis • Regulatory Quantum State
         </p>
       </div>
 
       {/* Critical Alert */}
-      <div className="relative z-20 mb-6 border border-red-500/50 bg-red-500/10 rounded-lg p-4 backdrop-blur-lg">
+      <div className="mb-6 bg-black border border-pink-500/30 rounded-lg p-4">
         <div className="flex items-center gap-3">
-          <AlertTriangle className="w-6 h-6 text-red-400 animate-pulse" />
+          <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
           <div>
-            <span className="text-red-400 font-bold">COMPLIANCE COLLAPSE:</span>
+            <span className="text-pink-400 font-bold">COMPLIANCE COLLAPSE:</span>
             <span className="text-white ml-2">GSO at 19.17% - ALL regulatory frameworks in CRITICAL FAILURE state</span>
           </div>
         </div>
       </div>
 
       {/* Overall Scores */}
-      <div className="relative z-20 grid grid-cols-5 gap-4 mb-8">
-        <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-red-500/30 p-4">
-          <Shield className="w-6 h-6 text-red-400 mb-2" />
-          <div className="text-2xl font-bold text-red-400">19.17%</div>
+      <div className="grid grid-cols-5 gap-4 mb-8">
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
+          <Shield className="w-6 h-6 text-pink-400 mb-2" />
+          <div className="text-3xl font-bold text-pink-400">19.17%</div>
           <div className="text-xs text-gray-400 uppercase">GSO Score</div>
         </div>
-        <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-yellow-500/30 p-4">
-          <Database className="w-6 h-6 text-yellow-400 mb-2" />
-          <div className="text-2xl font-bold text-yellow-400">63.93%</div>
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
+          <Database className="w-6 h-6 text-purple-400 mb-2" />
+          <div className="text-3xl font-bold text-purple-400">63.93%</div>
           <div className="text-xs text-gray-400 uppercase">Splunk Score</div>
         </div>
-        <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-red-500/30 p-4">
-          <XCircle className="w-6 h-6 text-red-400 mb-2" />
-          <div className="text-2xl font-bold text-red-400">FAILED</div>
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
+          <XCircle className="w-6 h-6 text-pink-400 mb-2" />
+          <div className="text-3xl font-bold text-pink-400">FAILED</div>
           <div className="text-xs text-gray-400 uppercase">Status</div>
         </div>
-        <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-orange-500/30 p-4">
-          <AlertTriangle className="w-6 h-6 text-orange-400 mb-2" />
-          <div className="text-2xl font-bold text-orange-400">27</div>
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
+          <AlertTriangle className="w-6 h-6 text-purple-400 mb-2" />
+          <div className="text-3xl font-bold text-purple-400">27</div>
           <div className="text-xs text-gray-400 uppercase">Violations</div>
         </div>
-        <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-purple-500/30 p-4">
-          <Gavel className="w-6 h-6 text-purple-400 mb-2" />
-          <div className="text-2xl font-bold text-purple-400">0/4</div>
+        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
+          <Gavel className="w-6 h-6 text-blue-400 mb-2" />
+          <div className="text-3xl font-bold text-blue-400">0/4</div>
           <div className="text-xs text-gray-400 uppercase">Compliant</div>
         </div>
       </div>
 
       {/* Control Panel */}
-      <div className="relative z-20 mb-6 flex gap-4">
+      <div className="mb-6 flex gap-4">
         <button
           onClick={() => setIsScrambled(!isScrambled)}
-          className={`px-6 py-3 rounded-xl font-bold uppercase tracking-wider transition-all backdrop-blur-lg ${
+          className={`px-6 py-3 rounded-xl font-bold uppercase tracking-wider transition-all ${
             isScrambled
-              ? 'bg-red-500/20 border-2 border-red-500'
-              : 'bg-green-500/20 border-2 border-green-500'
+              ? 'bg-pink-500/20 border-2 border-pink-500'
+              : 'bg-blue-500/20 border-2 border-blue-500'
           }`}
         >
-          <span className={isScrambled ? 'text-red-400' : 'text-green-400'}>
+          <span className={isScrambled ? 'text-pink-400' : 'text-blue-400'}>
             {isScrambled ? 'SCRAMBLED' : 'SOLVING'}
           </span>
         </button>
       </div>
 
-      <div className="relative z-10 grid grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-12 gap-6 mb-8">
         {/* Compliance Rubik's Cube */}
-        <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-cyan-500/30 overflow-hidden"
-             style={{
-               boxShadow: '0 0 80px rgba(0, 255, 255, 0.3), inset 0 0 40px rgba(0,0,0,0.8)'
-             }}>
-          <div className="p-4 border-b border-cyan-500/20">
-            <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
-              <BookOpen className="w-4 h-4" />
-              Compliance Quantum Cube
-            </h3>
-          </div>
-          <div ref={cubeRef} className="w-full h-[500px] cursor-grab active:cursor-grabbing" />
-          
-          {/* Cube Status */}
-          <div className="absolute top-16 left-4 text-xs font-mono text-cyan-400/60 space-y-1">
-            <div>STATE: {isScrambled ? 'CHAOTIC' : 'STABILIZING'}</div>
-            <div>ROTATION: X:{rotation.x.toFixed(2)} Y:{rotation.y.toFixed(2)}</div>
-            <div>VIOLATIONS: 27 CRITICAL</div>
-            <div>DRAG TO ROTATE</div>
+        <div className="col-span-7">
+          <div className="bg-black border border-blue-500/30 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-blue-500/20">
+              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                <Layers className="w-4 h-4" />
+                Compliance Quantum Cube
+              </h3>
+            </div>
+            <div ref={cubeRef} className="w-full h-[500px] cursor-grab active:cursor-grabbing" />
+            
+            {/* Cube Status */}
+            <div className="absolute top-16 left-4 text-xs font-mono text-blue-400/60 space-y-1">
+              <div>STATE: {isScrambled ? 'CHAOTIC' : 'STABILIZING'}</div>
+              <div>ROTATION: X:{rotation.x.toFixed(2)} Y:{rotation.y.toFixed(2)}</div>
+              <div>VIOLATIONS: 27 CRITICAL</div>
+              <div>DRAG TO ROTATE</div>
+            </div>
           </div>
         </div>
 
-        {/* Legal Scales */}
-        <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-purple-500/30 overflow-hidden"
-             style={{
-               boxShadow: '0 0 80px rgba(192, 132, 252, 0.3), inset 0 0 40px rgba(0,0,0,0.8)'
-             }}>
-          <div className="p-4 border-b border-purple-500/20">
-            <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-              <Scale className="w-4 h-4" />
-              Quantum Justice Scales
-            </h3>
+        {/* Compliance Matrix */}
+        <div className="col-span-5">
+          <div className="bg-black border border-purple-500/30 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-purple-500/20">
+              <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                <Binary className="w-4 h-4" />
+                Digital Compliance Matrix
+              </h3>
+            </div>
+            <canvas ref={matrixRef} className="w-full h-[500px]" />
           </div>
-          <canvas ref={scalesRef} className="w-full h-[500px]" />
         </div>
       </div>
 
       {/* Compliance Frameworks */}
-      <div className="relative z-20 space-y-6">
+      <div className="space-y-6">
         {Object.entries(complianceData).map(([framework, data]) => (
-          <div key={framework} className="bg-black/80 backdrop-blur-xl rounded-2xl border p-6"
+          <div key={framework} className="bg-gray-900/30 rounded-2xl p-6 border"
                style={{
                  borderColor: data.actualState === 'CRITICAL' || data.actualState === 'CRITICAL FAILURE' 
-                   ? 'rgba(255, 0, 68, 0.5)'
-                   : 'rgba(255, 170, 0, 0.5)',
-                 boxShadow: `0 0 40px ${data.color}20`
+                   ? 'rgba(255, 0, 255, 0.3)'
+                   : 'rgba(192, 132, 252, 0.3)'
                }}>
             {/* Framework Header */}
             <div className="flex items-center justify-between mb-6">
@@ -816,8 +742,8 @@ const ComplianceMatrix: React.FC = () => {
                 <p className="text-sm text-gray-400 mt-1">
                   Status: <span className={
                     data.actualState === 'CRITICAL' || data.actualState === 'CRITICAL FAILURE' 
-                      ? 'text-red-400' 
-                      : 'text-yellow-400'
+                      ? 'text-pink-400' 
+                      : 'text-purple-400'
                   }>
                     {data.currentState} → {data.actualState}
                   </span>
@@ -825,11 +751,11 @@ const ComplianceMatrix: React.FC = () => {
               </div>
               <div className="flex gap-6">
                 <div className="text-center">
-                  <div className="text-xs text-cyan-400/60 mb-1">GSO</div>
+                  <div className="text-xs text-blue-400/60 mb-1">GSO</div>
                   <div className={`text-2xl font-bold ${
-                    data.gsoScore < 50 ? 'text-red-400' : 
-                    data.gsoScore < 80 ? 'text-yellow-400' : 
-                    'text-green-400'
+                    data.gsoScore < 50 ? 'text-pink-400' : 
+                    data.gsoScore < 80 ? 'text-purple-400' : 
+                    'text-blue-400'
                   }`}>
                     {animatedScores[`${framework}-gso`]?.toFixed(1) || 0}%
                   </div>
@@ -837,9 +763,9 @@ const ComplianceMatrix: React.FC = () => {
                 <div className="text-center">
                   <div className="text-xs text-purple-400/60 mb-1">SPLUNK</div>
                   <div className={`text-2xl font-bold ${
-                    data.splunkScore < 50 ? 'text-red-400' : 
-                    data.splunkScore < 80 ? 'text-yellow-400' : 
-                    'text-green-400'
+                    data.splunkScore < 50 ? 'text-pink-400' : 
+                    data.splunkScore < 80 ? 'text-purple-400' : 
+                    'text-blue-400'
                   }`}>
                     {animatedScores[`${framework}-splunk`]?.toFixed(1) || 0}%
                   </div>
@@ -847,9 +773,9 @@ const ComplianceMatrix: React.FC = () => {
                 <div className="text-center">
                   <div className="text-xs text-pink-400/60 mb-1">OVERALL</div>
                   <div className={`text-2xl font-bold ${
-                    animatedScores[`${framework}-overall`] < 50 ? 'text-red-400' : 
-                    animatedScores[`${framework}-overall`] < 80 ? 'text-yellow-400' : 
-                    'text-green-400'
+                    animatedScores[`${framework}-overall`] < 50 ? 'text-pink-400' : 
+                    animatedScores[`${framework}-overall`] < 80 ? 'text-purple-400' : 
+                    'text-blue-400'
                   }`}>
                     {animatedScores[`${framework}-overall`]?.toFixed(1) || 0}%
                   </div>
@@ -860,7 +786,7 @@ const ComplianceMatrix: React.FC = () => {
             {/* Requirements Grid */}
             <div className="grid grid-cols-2 gap-3">
               {data.requirements.slice(0, 4).map((req, idx) => (
-                <div key={idx} className="bg-gray-900/50 rounded-lg p-3 border border-gray-800">
+                <div key={idx} className="bg-black/50 rounded-lg p-3 border border-gray-800">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-white font-medium">{req.item}</span>
                   </div>
@@ -874,20 +800,39 @@ const ComplianceMatrix: React.FC = () => {
                       <span className="text-xs text-gray-400">SPL</span>
                     </div>
                     <span className={`ml-auto px-2 py-0.5 rounded text-xs font-bold ${
-                      req.risk === 'CRITICAL' ? 'bg-red-500/20 text-red-400' :
-                      req.risk === 'HIGH' ? 'bg-orange-500/20 text-orange-400' :
-                      req.risk === 'MEDIUM' ? 'bg-yellow-500/20 text-yellow-400' :
-                      'bg-green-500/20 text-green-400'
+                      req.risk === 'CRITICAL' ? 'bg-pink-500/20 text-pink-400' :
+                      req.risk === 'HIGH' ? 'bg-purple-500/20 text-purple-400' :
+                      req.risk === 'MEDIUM' ? 'bg-blue-500/20 text-blue-400' :
+                      'bg-gray-500/20 text-gray-400'
                     }`}>
                       {req.risk}
                     </span>
                   </div>
-                  <p className="text-xs text-red-400 mt-2">{req.gap}</p>
+                  <p className="text-xs text-pink-400 mt-2">{req.gap}</p>
                 </div>
               ))}
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Action Plan */}
+      <div className="mt-8 bg-gray-900/30 rounded-2xl p-6 border border-pink-500/30">
+        <h3 className="text-xl font-bold text-pink-400 mb-4">CRITICAL ACTIONS FOR COMPLIANCE</h3>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="p-4 bg-black/50 rounded-lg border border-gray-800">
+            <div className="text-sm font-bold text-purple-400 mb-2">PRIORITY 1: EMEA DEPLOYMENT</div>
+            <p className="text-xs text-gray-400">Deploy 5 regional collectors. Current 12.3% coverage is critical risk.</p>
+          </div>
+          <div className="p-4 bg-black/50 rounded-lg border border-gray-800">
+            <div className="text-sm font-bold text-purple-400 mb-2">PRIORITY 2: LINUX SYSTEMS</div>
+            <p className="text-xs text-gray-400">Configure rsyslog on 24,001 Linux servers (30.71% gap).</p>
+          </div>
+          <div className="p-4 bg-black/50 rounded-lg border border-gray-800">
+            <div className="text-sm font-bold text-purple-400 mb-2">PRIORITY 3: DLP EXPANSION</div>
+            <p className="text-xs text-gray-400">Deploy DLP to 97,465 unprotected assets immediately.</p>
+          </div>
+        </div>
       </div>
     </div>
   );
