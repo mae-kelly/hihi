@@ -18,8 +18,8 @@ const GlobalView: React.FC = () => {
       covered: 50237,
       percentage: 19.17,
       missing: 211795,
-      color: '#00ffff',
-      glowColor: '#00ffff',
+      color: '#00d4ff',
+      glowColor: '#00d4ff',
       status: 'CRITICAL',
       trend: -2.3,
     },
@@ -28,8 +28,8 @@ const GlobalView: React.FC = () => {
       covered: 167517,
       percentage: 63.93,
       missing: 94515,
-      color: '#c084fc',
-      glowColor: '#c084fc',
+      color: '#a855f7',
+      glowColor: '#a855f7',
       status: 'WARNING',
       trend: 0.8,
     },
@@ -38,8 +38,8 @@ const GlobalView: React.FC = () => {
       covered: 241691,
       percentage: 92.24,
       missing: 20341,
-      color: '#ff00ff',
-      glowColor: '#ff00ff',
+      color: '#00d4ff',
+      glowColor: '#00d4ff',
       status: 'GOOD',
       trend: 3.2,
     }
@@ -125,9 +125,7 @@ const GlobalView: React.FC = () => {
         varying vec3 vNormal;
         void main() {
           float intensity = pow(0.7 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
-          gl_FragColor = vec4(${currentData.color === '#00ffff' ? '0.0, 1.0, 1.0' : 
-                              currentData.color === '#c084fc' ? '0.75, 0.52, 0.99' : 
-                              '1.0, 0.0, 1.0'}, 1.0) * intensity;
+          gl_FragColor = vec4(${currentData.color === '#00d4ff' ? '0.0, 0.831, 1.0' : '0.659, 0.333, 0.969'}, 1.0) * intensity;
         }
       `,
       blending: THREE.AdditiveBlending,
@@ -149,12 +147,12 @@ const GlobalView: React.FC = () => {
       // Create beacon
       const beaconGeometry = new THREE.ConeGeometry(3, 10, 4);
       const beaconMaterial = new THREE.MeshPhongMaterial({
-        color: region.status === 'critical' ? 0xff00ff : 
-               region.status === 'warning' ? 0xc084fc : 
-               0x00ffff,
-        emissive: region.status === 'critical' ? 0xff00ff : 
-                  region.status === 'warning' ? 0xc084fc : 
-                  0x00ffff,
+        color: region.status === 'critical' ? 0xa855f7 : 
+               region.status === 'warning' ? 0xa855f7 : 
+               0x00d4ff,
+        emissive: region.status === 'critical' ? 0xa855f7 : 
+                  region.status === 'warning' ? 0xa855f7 : 
+                  0x00d4ff,
         emissiveIntensity: 0.5,
       });
       const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
@@ -275,21 +273,21 @@ const GlobalView: React.FC = () => {
     <div className="p-8 min-h-screen bg-black">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
           GLOBAL SURVEILLANCE MATRIX
         </h1>
-        <p className="text-gray-400 uppercase tracking-widest text-xs">
+        <p className="text-white/60 uppercase tracking-widest text-xs">
           {currentData.totalAssets.toLocaleString()} ASSETS • REAL-TIME MONITORING
         </p>
       </div>
 
       {/* Critical Alert */}
       {selectedPlatform === 'csoc' && (
-        <div className="mb-6 bg-black border border-pink-500/30 rounded-lg p-4">
+        <div className="mb-6 bg-black border border-purple-500/30 rounded-lg p-4">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
+            <AlertTriangle className="w-6 h-6 text-purple-400 animate-pulse" />
             <div>
-              <span className="text-pink-400 font-bold">CRITICAL BREACH:</span>
+              <span className="text-purple-400 font-bold">CRITICAL BREACH:</span>
               <span className="text-white ml-2">Coverage at 19.17% - {currentData.missing.toLocaleString()} nodes compromised</span>
             </div>
           </div>
@@ -305,7 +303,7 @@ const GlobalView: React.FC = () => {
             className={`px-6 py-3 rounded-lg font-bold uppercase tracking-wider transition-all ${
               selectedPlatform === platform
                 ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20'
-                : 'bg-gray-900/50 hover:bg-gray-800/50'
+                : 'bg-black/50 hover:bg-gray-900/50'
             }`}
             style={{
               border: selectedPlatform === platform 
@@ -314,7 +312,7 @@ const GlobalView: React.FC = () => {
             }}
           >
             <span style={{ 
-              color: selectedPlatform === platform ? globalData[platform].color : '#666'
+              color: selectedPlatform === platform ? globalData[platform].color : '#ffffff60'
             }}>
               {platform.toUpperCase()}
             </span>
@@ -382,7 +380,7 @@ const GlobalView: React.FC = () => {
                     <div className="text-6xl font-black text-white">
                       {currentData.percentage}%
                     </div>
-                    <div className="text-sm text-gray-400 uppercase tracking-wider">
+                    <div className="text-sm text-white/60 uppercase tracking-wider">
                       Coverage
                     </div>
                   </div>
@@ -390,7 +388,7 @@ const GlobalView: React.FC = () => {
               </div>
               
               <div className={`mt-4 px-3 py-1 inline-block rounded-full text-sm font-bold ${
-                currentData.status === 'CRITICAL' ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50' :
+                currentData.status === 'CRITICAL' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50' :
                 currentData.status === 'WARNING' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50' :
                 'bg-blue-500/20 text-blue-400 border border-blue-500/50'
               }`}>
@@ -400,8 +398,8 @@ const GlobalView: React.FC = () => {
           </div>
 
           {/* Regional Status */}
-          <div className="bg-black border border-pink-500/30 rounded-2xl p-6">
-            <h3 className="text-sm font-bold text-pink-400 mb-4 uppercase tracking-wider flex items-center gap-2">
+          <div className="bg-black border border-purple-500/30 rounded-2xl p-6">
+            <h3 className="text-sm font-bold text-purple-400 mb-4 uppercase tracking-wider flex items-center gap-2">
               <Radar className="w-4 h-4" />
               Regional Status
             </h3>
@@ -410,11 +408,11 @@ const GlobalView: React.FC = () => {
               {regions.map(region => (
                 <div 
                   key={region.name}
-                  className="flex items-center justify-between p-3 bg-gray-900/30 rounded-lg border border-gray-800 hover:border-blue-500/50 transition-all"
+                  className="flex items-center justify-between p-3 bg-black/50 rounded-lg border border-white/10 hover:border-blue-500/50 transition-all"
                 >
                   <div className="flex items-center gap-3">
                     <div className={`w-2 h-2 rounded-full animate-pulse ${
-                      region.status === 'critical' ? 'bg-pink-400' :
+                      region.status === 'critical' ? 'bg-purple-400' :
                       region.status === 'warning' ? 'bg-purple-400' :
                       'bg-blue-400'
                     }`} />
@@ -422,13 +420,13 @@ const GlobalView: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <div className={`text-xl font-bold ${
-                      region.coverage < 20 ? 'text-pink-400' :
+                      region.coverage < 20 ? 'text-purple-400' :
                       region.coverage < 50 ? 'text-purple-400' :
                       'text-blue-400'
                     }`}>
                       {region.coverage}%
                     </div>
-                    <div className="text-xs text-gray-400">{region.assets.toLocaleString()} nodes</div>
+                    <div className="text-xs text-white/40">{region.assets.toLocaleString()} nodes</div>
                   </div>
                 </div>
               ))}
@@ -440,12 +438,12 @@ const GlobalView: React.FC = () => {
             <div className="bg-black border border-blue-500/30 rounded-xl p-4">
               <Eye className="w-6 h-6 text-blue-400 mb-2" />
               <div className="text-2xl font-bold text-blue-400">{(currentData.covered / 1000).toFixed(1)}K</div>
-              <div className="text-xs text-gray-400">Monitored</div>
+              <div className="text-xs text-white/60">Monitored</div>
             </div>
-            <div className="bg-black border border-pink-500/30 rounded-xl p-4">
-              <Shield className="w-6 h-6 text-pink-400 mb-2" />
-              <div className="text-2xl font-bold text-pink-400">{(currentData.missing / 1000).toFixed(1)}K</div>
-              <div className="text-xs text-gray-400">Vulnerable</div>
+            <div className="bg-black border border-purple-500/30 rounded-xl p-4">
+              <Shield className="w-6 h-6 text-purple-400 mb-2" />
+              <div className="text-2xl font-bold text-purple-400">{(currentData.missing / 1000).toFixed(1)}K</div>
+              <div className="text-xs text-white/60">Vulnerable</div>
             </div>
           </div>
         </div>

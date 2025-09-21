@@ -19,7 +19,7 @@ const InfrastructureView: React.FC = () => {
       chronicleCoverage: 95.1,
       missing: 107187,
       status: 'critical',
-      color: '#00ffff',
+      color: '#00d4ff',
       icon: Server,
       layer: 0,
       trends: {
@@ -35,7 +35,7 @@ const InfrastructureView: React.FC = () => {
       chronicleCoverage: 78.3,
       missing: 50187,
       status: 'critical',
-      color: '#ff00ff',
+      color: '#a855f7',
       icon: Cloud,
       layer: 1,
       trends: {
@@ -51,7 +51,7 @@ const InfrastructureView: React.FC = () => {
       chronicleCoverage: 88.9,
       missing: 12089,
       status: 'warning',
-      color: '#c084fc',
+      color: '#00d4ff',
       icon: Database,
       layer: 2,
       trends: {
@@ -67,7 +67,7 @@ const InfrastructureView: React.FC = () => {
       chronicleCoverage: 60.0,
       missing: 6042,
       status: 'warning',
-      color: '#00ffff',
+      color: '#a855f7',
       icon: Network,
       layer: 3,
       trends: {
@@ -167,8 +167,8 @@ const InfrastructureView: React.FC = () => {
         const radius = hexRadius * 0.7;
         const nodeGeometry = new THREE.BoxGeometry(5, 10, 5);
         const nodeMaterial = new THREE.MeshPhongMaterial({
-          color: data.missing > 20000 ? 0xff00ff : 0x00ffff,
-          emissive: data.missing > 20000 ? 0xff00ff : 0x00ffff,
+          color: data.missing > 20000 ? 0xa855f7 : 0x00d4ff,
+          emissive: data.missing > 20000 ? 0xa855f7 : 0x00d4ff,
           emissiveIntensity: 0.3
         });
         const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
@@ -220,8 +220,8 @@ const InfrastructureView: React.FC = () => {
     // Central data core
     const coreGeometry = new THREE.OctahedronGeometry(20, 2);
     const coreMaterial = new THREE.MeshPhongMaterial({
-      color: 0xc084fc,
-      emissive: 0xc084fc,
+      color: 0xa855f7,
+      emissive: 0xa855f7,
       emissiveIntensity: 0.5,
       wireframe: false
     });
@@ -242,7 +242,7 @@ const InfrastructureView: React.FC = () => {
       const points = curve.getPoints(50);
       const streamGeometry = new THREE.BufferGeometry().setFromPoints(points);
       const streamMaterial = new THREE.LineBasicMaterial({
-        color: 0x00ffff,
+        color: 0x00d4ff,
         transparent: true,
         opacity: 0.3
       });
@@ -251,7 +251,7 @@ const InfrastructureView: React.FC = () => {
     }
 
     // Grid helper
-    const gridHelper = new THREE.GridHelper(200, 20, 0x00ffff, 0x003366);
+    const gridHelper = new THREE.GridHelper(200, 20, 0x00d4ff, 0x001122);
     gridHelper.position.y = -20;
     scene.add(gridHelper);
 
@@ -263,11 +263,11 @@ const InfrastructureView: React.FC = () => {
     directionalLight.position.set(100, 100, 50);
     scene.add(directionalLight);
 
-    const pointLight = new THREE.PointLight(0x00ffff, 1, 200);
+    const pointLight = new THREE.PointLight(0x00d4ff, 1, 200);
     pointLight.position.set(0, 100, 0);
     scene.add(pointLight);
 
-    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 200);
+    const pointLight2 = new THREE.PointLight(0xa855f7, 1, 200);
     pointLight2.position.set(-100, 50, -100);
     scene.add(pointLight2);
 
@@ -363,7 +363,7 @@ const InfrastructureView: React.FC = () => {
               const px = node.x + (target.x - node.x) * t;
               const py = node.y + (target.y - node.y) * t;
               
-              ctx.fillStyle = '#00ffff';
+              ctx.fillStyle = '#00d4ff';
               ctx.beginPath();
               ctx.arc(px, py, 2, 0, Math.PI * 2);
               ctx.fill();
@@ -426,20 +426,20 @@ const InfrastructureView: React.FC = () => {
     <div className="p-8 min-h-screen bg-black">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
           INFRASTRUCTURE QUANTUM LAYERS
         </h1>
-        <p className="text-gray-400 uppercase tracking-widest text-xs">
+        <p className="text-white/60 uppercase tracking-widest text-xs">
           MULTI-DIMENSIONAL ASSET TOPOLOGY • {totalAssets.toLocaleString()} NODES
         </p>
       </div>
 
       {/* Critical Alert */}
-      <div className="mb-6 bg-black border border-pink-500/30 rounded-lg p-4">
+      <div className="mb-6 bg-black border border-purple-500/30 rounded-lg p-4">
         <div className="flex items-center gap-3">
-          <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
+          <AlertTriangle className="w-6 h-6 text-purple-400 animate-pulse" />
           <div>
-            <span className="text-pink-400 font-bold">INFRASTRUCTURE BREACH:</span>
+            <span className="text-purple-400 font-bold">INFRASTRUCTURE BREACH:</span>
             <span className="text-white ml-2">Cloud infrastructure at 0.1% - Critical failure detected</span>
           </div>
         </div>
@@ -450,17 +450,17 @@ const InfrastructureView: React.FC = () => {
         {Object.entries(infrastructureData).map(([type, data]) => {
           const Icon = data.icon;
           return (
-            <div key={type} className="bg-gray-900/30 rounded-xl border border-gray-800 p-4 hover:border-blue-500/50 transition-all">
+            <div key={type} className="bg-black/50 rounded-xl border border-white/10 p-4 hover:border-blue-500/50 transition-all">
               <Icon className="w-6 h-6 mb-2" style={{ color: data.color }} />
               <div className="text-2xl font-bold text-white">{data.csocCoverage}%</div>
-              <div className="text-xs text-gray-400">{type}</div>
+              <div className="text-xs text-white/60">{type}</div>
             </div>
           );
         })}
-        <div className="bg-gray-900/30 rounded-xl border border-pink-500/30 p-4">
-          <AlertTriangle className="w-6 h-6 text-pink-400 mb-2" />
-          <div className="text-2xl font-bold text-pink-400">{(totalMissing / 1000).toFixed(0)}K</div>
-          <div className="text-xs text-gray-400">Missing</div>
+        <div className="bg-black/50 rounded-xl border border-purple-500/30 p-4">
+          <AlertTriangle className="w-6 h-6 text-purple-400 mb-2" />
+          <div className="text-2xl font-bold text-purple-400">{(totalMissing / 1000).toFixed(0)}K</div>
+          <div className="text-xs text-white/60">Missing</div>
         </div>
       </div>
 
@@ -494,9 +494,9 @@ const InfrastructureView: React.FC = () => {
         {Object.entries(infrastructureData).map(([type, data]) => {
           const Icon = data.icon;
           return (
-            <div key={type} className="bg-gray-900/30 rounded-2xl border p-6 hover:scale-[1.02] transition-all"
+            <div key={type} className="bg-black/50 rounded-2xl border p-6 hover:scale-[1.02] transition-all"
                  style={{
-                   borderColor: data.status === 'critical' ? 'rgba(255, 0, 255, 0.3)' : 'rgba(192, 132, 252, 0.3)'
+                   borderColor: data.status === 'critical' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(0, 212, 255, 0.3)'
                  }}>
               {/* Header */}
               <div className="flex items-center justify-between mb-6">
@@ -504,12 +504,12 @@ const InfrastructureView: React.FC = () => {
                   <Icon className="w-8 h-8" style={{ color: data.color }} />
                   <div>
                     <h3 className="text-2xl font-bold text-white">{type}</h3>
-                    <p className="text-sm text-gray-400">{data.totalAssets.toLocaleString()} nodes</p>
+                    <p className="text-sm text-white/60">{data.totalAssets.toLocaleString()} nodes</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-3xl font-bold text-pink-400">{data.missing.toLocaleString()}</div>
-                  <div className="text-xs text-gray-400 uppercase">Breached</div>
+                  <div className="text-3xl font-bold text-purple-400">{data.missing.toLocaleString()}</div>
+                  <div className="text-xs text-white/60 uppercase">Breached</div>
                 </div>
               </div>
 
@@ -520,7 +520,7 @@ const InfrastructureView: React.FC = () => {
                     <span className="text-blue-400">CSOC Shield</span>
                     <span className="font-mono text-blue-400">{data.csocCoverage}%</span>
                   </div>
-                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-white/10">
                     <div 
                       className="h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-blue-400 to-blue-500"
                       style={{ width: `${animatedMetrics[`${type}-csoc`] || 0}%` }}
@@ -533,7 +533,7 @@ const InfrastructureView: React.FC = () => {
                     <span className="text-purple-400">Splunk Matrix</span>
                     <span className="font-mono text-purple-400">{data.splunkCoverage}%</span>
                   </div>
-                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-white/10">
                     <div 
                       className="h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-purple-400 to-purple-500"
                       style={{ width: `${animatedMetrics[`${type}-splunk`] || 0}%` }}
@@ -543,12 +543,12 @@ const InfrastructureView: React.FC = () => {
 
                 <div>
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="text-pink-400">Chronicle Core</span>
-                    <span className="font-mono text-pink-400">{data.chronicleCoverage}%</span>
+                    <span className="text-blue-400">Chronicle Core</span>
+                    <span className="font-mono text-blue-400">{data.chronicleCoverage}%</span>
                   </div>
-                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-white/10">
                     <div 
-                      className="h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-pink-400 to-pink-500"
+                      className="h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-blue-400 to-blue-500"
                       style={{ width: `${animatedMetrics[`${type}-chronicle`] || 0}%` }}
                     />
                   </div>
@@ -557,21 +557,21 @@ const InfrastructureView: React.FC = () => {
 
               {/* Trends */}
               <div className="grid grid-cols-3 gap-2 mt-4">
-                <div className="text-center bg-black/50 rounded-lg p-2 border border-gray-800">
-                  <div className="text-xs text-gray-400">Daily Δ</div>
-                  <div className={`text-sm font-bold ${data.trends.daily < 0 ? 'text-pink-400' : 'text-blue-400'}`}>
+                <div className="text-center bg-black/50 rounded-lg p-2 border border-white/10">
+                  <div className="text-xs text-white/60">Daily Δ</div>
+                  <div className={`text-sm font-bold ${data.trends.daily < 0 ? 'text-purple-400' : 'text-blue-400'}`}>
                     {data.trends.daily > 0 ? '+' : ''}{data.trends.daily}%
                   </div>
                 </div>
-                <div className="text-center bg-black/50 rounded-lg p-2 border border-gray-800">
-                  <div className="text-xs text-gray-400">Weekly Δ</div>
-                  <div className={`text-sm font-bold ${data.trends.weekly < 0 ? 'text-pink-400' : 'text-blue-400'}`}>
+                <div className="text-center bg-black/50 rounded-lg p-2 border border-white/10">
+                  <div className="text-xs text-white/60">Weekly Δ</div>
+                  <div className={`text-sm font-bold ${data.trends.weekly < 0 ? 'text-purple-400' : 'text-blue-400'}`}>
                     {data.trends.weekly > 0 ? '+' : ''}{data.trends.weekly}%
                   </div>
                 </div>
-                <div className="text-center bg-black/50 rounded-lg p-2 border border-gray-800">
-                  <div className="text-xs text-gray-400">Monthly Δ</div>
-                  <div className={`text-sm font-bold ${data.trends.monthly < 0 ? 'text-pink-400' : 'text-blue-400'}`}>
+                <div className="text-center bg-black/50 rounded-lg p-2 border border-white/10">
+                  <div className="text-xs text-white/60">Monthly Δ</div>
+                  <div className={`text-sm font-bold ${data.trends.monthly < 0 ? 'text-purple-400' : 'text-blue-400'}`}>
                     {data.trends.monthly > 0 ? '+' : ''}{data.trends.monthly}%
                   </div>
                 </div>
