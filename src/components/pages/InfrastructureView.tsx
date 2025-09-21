@@ -94,7 +94,7 @@ const InfrastructureView: React.FC = () => {
       0.1,
       1000
     );
-    camera.position.set(200, 150, 200);
+    camera.position.set(150, 100, 150);
     camera.lookAt(0, 0, 0);
 
     // Renderer
@@ -114,7 +114,7 @@ const InfrastructureView: React.FC = () => {
       const platformGroup = new THREE.Group();
       
       // Hexagonal platform
-      const hexRadius = 80 - index * 15;
+      const hexRadius = 60 - index * 10;
       const hexShape = new THREE.Shape();
       for (let i = 0; i < 6; i++) {
         const angle = (i / 6) * Math.PI * 2;
@@ -126,7 +126,7 @@ const InfrastructureView: React.FC = () => {
       hexShape.closePath();
       
       const extrudeSettings = {
-        depth: 10,
+        depth: 8,
         bevelEnabled: true,
         bevelSegments: 2,
         steps: 2,
@@ -145,7 +145,7 @@ const InfrastructureView: React.FC = () => {
       
       const hexMesh = new THREE.Mesh(hexGeometry, hexMaterial);
       hexMesh.rotation.x = Math.PI / 2;
-      hexMesh.position.y = index * 40;
+      hexMesh.position.y = index * 30;
       platformGroup.add(hexMesh);
       
       // Add wireframe
@@ -157,15 +157,15 @@ const InfrastructureView: React.FC = () => {
       });
       const wireframe = new THREE.Mesh(hexGeometry, wireframeMaterial);
       wireframe.rotation.x = Math.PI / 2;
-      wireframe.position.y = index * 40;
+      wireframe.position.y = index * 30;
       platformGroup.add(wireframe);
       
       // Server nodes on platform
-      const nodeCount = Math.floor(data.totalAssets / 10000);
+      const nodeCount = Math.floor(data.totalAssets / 15000);
       for (let i = 0; i < nodeCount; i++) {
         const angle = (i / nodeCount) * Math.PI * 2;
         const radius = hexRadius * 0.7;
-        const nodeGeometry = new THREE.BoxGeometry(5, 10, 5);
+        const nodeGeometry = new THREE.BoxGeometry(4, 8, 4);
         const nodeMaterial = new THREE.MeshPhongMaterial({
           color: data.missing > 20000 ? 0xa855f7 : 0x00d4ff,
           emissive: data.missing > 20000 ? 0xa855f7 : 0x00d4ff,
@@ -174,7 +174,7 @@ const InfrastructureView: React.FC = () => {
         const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
         node.position.set(
           Math.cos(angle) * radius,
-          index * 40 + 10,
+          index * 30 + 8,
           Math.sin(angle) * radius
         );
         platformGroup.add(node);
@@ -184,16 +184,16 @@ const InfrastructureView: React.FC = () => {
       platforms.push(platformGroup);
       
       // Data particles flowing between layers
-      const particleCount = 100;
+      const particleCount = 50;
       const particlesGeometry = new THREE.BufferGeometry();
       const positions = new Float32Array(particleCount * 3);
       const colors = new Float32Array(particleCount * 3);
       
       for (let i = 0; i < particleCount * 3; i += 3) {
         const angle = Math.random() * Math.PI * 2;
-        const radius = (80 - index * 15) * Math.random();
+        const radius = (60 - index * 10) * Math.random();
         positions[i] = radius * Math.cos(angle);
-        positions[i + 1] = index * 40 + Math.random() * 40;
+        positions[i + 1] = index * 30 + Math.random() * 30;
         positions[i + 2] = radius * Math.sin(angle);
         
         const color = new THREE.Color(data.color);
@@ -218,7 +218,7 @@ const InfrastructureView: React.FC = () => {
     });
 
     // Central data core
-    const coreGeometry = new THREE.OctahedronGeometry(20, 2);
+    const coreGeometry = new THREE.OctahedronGeometry(15, 2);
     const coreMaterial = new THREE.MeshPhongMaterial({
       color: 0xa855f7,
       emissive: 0xa855f7,
@@ -226,33 +226,12 @@ const InfrastructureView: React.FC = () => {
       wireframe: false
     });
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
-    core.position.y = 60;
+    core.position.y = 45;
     scene.add(core);
 
-    // Data streams connecting layers
-    const streamCount = 8;
-    for (let i = 0; i < streamCount; i++) {
-      const angle = (i / streamCount) * Math.PI * 2;
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(Math.cos(angle) * 50, 60, Math.sin(angle) * 50),
-        new THREE.Vector3(Math.cos(angle) * 30, 120, Math.sin(angle) * 30)
-      ]);
-      
-      const points = curve.getPoints(50);
-      const streamGeometry = new THREE.BufferGeometry().setFromPoints(points);
-      const streamMaterial = new THREE.LineBasicMaterial({
-        color: 0x00d4ff,
-        transparent: true,
-        opacity: 0.3
-      });
-      const stream = new THREE.Line(streamGeometry, streamMaterial);
-      scene.add(stream);
-    }
-
     // Grid helper
-    const gridHelper = new THREE.GridHelper(200, 20, 0x00d4ff, 0x001122);
-    gridHelper.position.y = -20;
+    const gridHelper = new THREE.GridHelper(150, 15, 0x00d4ff, 0x001122);
+    gridHelper.position.y = -15;
     scene.add(gridHelper);
 
     // Lighting
@@ -263,12 +242,12 @@ const InfrastructureView: React.FC = () => {
     directionalLight.position.set(100, 100, 50);
     scene.add(directionalLight);
 
-    const pointLight = new THREE.PointLight(0x00d4ff, 1, 200);
-    pointLight.position.set(0, 100, 0);
+    const pointLight = new THREE.PointLight(0x00d4ff, 1, 150);
+    pointLight.position.set(0, 75, 0);
     scene.add(pointLight);
 
-    const pointLight2 = new THREE.PointLight(0xa855f7, 1, 200);
-    pointLight2.position.set(-100, 50, -100);
+    const pointLight2 = new THREE.PointLight(0xa855f7, 1, 150);
+    pointLight2.position.set(-75, 40, -75);
     scene.add(pointLight2);
 
     // Animation loop
@@ -287,10 +266,10 @@ const InfrastructureView: React.FC = () => {
       
       // Camera orbit
       const time = Date.now() * 0.0005;
-      camera.position.x = Math.cos(time) * 250;
-      camera.position.z = Math.sin(time) * 250;
-      camera.position.y = 150 + Math.sin(time * 2) * 50;
-      camera.lookAt(0, 60, 0);
+      camera.position.x = Math.cos(time) * 180;
+      camera.position.z = Math.sin(time) * 180;
+      camera.position.y = 100 + Math.sin(time * 2) * 30;
+      camera.lookAt(0, 45, 0);
       
       renderer.render(scene, camera);
     };
@@ -328,8 +307,8 @@ const InfrastructureView: React.FC = () => {
     canvas.height = canvas.offsetHeight;
 
     const nodes = Object.entries(infrastructureData).map(([type, data], i) => ({
-      x: canvas.width / 2 + Math.cos(i * Math.PI * 2 / 4) * 120,
-      y: canvas.height / 2 + Math.sin(i * Math.PI * 2 / 4) * 120,
+      x: canvas.width / 2 + Math.cos(i * Math.PI * 2 / 4) * 80,
+      y: canvas.height / 2 + Math.sin(i * Math.PI * 2 / 4) * 80,
       type,
       data,
       pulsePhase: Math.random() * Math.PI * 2
@@ -352,8 +331,8 @@ const InfrastructureView: React.FC = () => {
             ctx.beginPath();
             ctx.moveTo(node.x, node.y);
             
-            const cp1x = (node.x + target.x) / 2 + (Math.random() - 0.5) * 30;
-            const cp1y = (node.y + target.y) / 2 + (Math.random() - 0.5) * 30;
+            const cp1x = (node.x + target.x) / 2 + (Math.random() - 0.5) * 20;
+            const cp1y = (node.y + target.y) / 2 + (Math.random() - 0.5) * 20;
             ctx.quadraticCurveTo(cp1x, cp1y, target.x, target.y);
             ctx.stroke();
             
@@ -375,14 +354,14 @@ const InfrastructureView: React.FC = () => {
       // Draw nodes
       nodes.forEach(node => {
         node.pulsePhase += 0.05;
-        const size = Math.sqrt(node.data.totalAssets) / 50 * (1 + Math.sin(node.pulsePhase) * 0.1);
+        const size = Math.sqrt(node.data.totalAssets) / 60 * (1 + Math.sin(node.pulsePhase) * 0.1);
         
         // Node glow
-        const glow = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, size * 3);
+        const glow = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, size * 2);
         glow.addColorStop(0, node.data.color + '80');
         glow.addColorStop(1, node.data.color + '00');
         ctx.fillStyle = glow;
-        ctx.fillRect(node.x - size * 3, node.y - size * 3, size * 6, size * 6);
+        ctx.fillRect(node.x - size * 2, node.y - size * 2, size * 4, size * 4);
         
         // Node core
         ctx.fillStyle = node.data.color;
@@ -392,11 +371,11 @@ const InfrastructureView: React.FC = () => {
         
         // Label
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 12px monospace';
+        ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(node.type, node.x, node.y - size - 15);
-        ctx.font = '10px monospace';
-        ctx.fillText(`${node.data.csocCoverage}%`, node.x, node.y + size + 20);
+        ctx.fillText(node.type, node.x, node.y - size - 10);
+        ctx.font = '9px monospace';
+        ctx.fillText(`${node.data.csocCoverage}%`, node.x, node.y + size + 15);
       });
 
       requestAnimationFrame(animate);
@@ -423,155 +402,143 @@ const InfrastructureView: React.FC = () => {
   const totalMissing = Object.values(infrastructureData).reduce((sum, d) => sum + d.missing, 0);
 
   return (
-    <div className="p-8 min-h-screen bg-black">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-          INFRASTRUCTURE QUANTUM LAYERS
-        </h1>
-        <p className="text-white/60 uppercase tracking-widest text-xs">
-          MULTI-DIMENSIONAL ASSET TOPOLOGY • {totalAssets.toLocaleString()} NODES
-        </p>
-      </div>
-
+    <div className="p-3 h-screen bg-black overflow-hidden flex flex-col">
       {/* Critical Alert */}
-      <div className="mb-6 bg-black border border-purple-500/30 rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="w-6 h-6 text-purple-400 animate-pulse" />
-          <div>
-            <span className="text-purple-400 font-bold">INFRASTRUCTURE BREACH:</span>
-            <span className="text-white ml-2">Cloud infrastructure at 0.1% - Critical failure detected</span>
-          </div>
+      <div className="mb-2 bg-black border border-purple-500/30 rounded-lg p-2">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-purple-400 animate-pulse" />
+          <span className="text-purple-400 font-bold text-xs">BREACH:</span>
+          <span className="text-white text-xs">Cloud infrastructure at 0.1% - Critical failure</span>
         </div>
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-6 gap-2 mb-3">
         {Object.entries(infrastructureData).map(([type, data]) => {
           const Icon = data.icon;
           return (
-            <div key={type} className="bg-black/50 rounded-xl border border-white/10 p-4 hover:border-blue-500/50 transition-all">
-              <Icon className="w-6 h-6 mb-2" style={{ color: data.color }} />
-              <div className="text-2xl font-bold text-white">{data.csocCoverage}%</div>
-              <div className="text-xs text-white/60">{type}</div>
+            <div key={type} className="bg-black/50 rounded-lg border border-white/10 p-2 hover:border-blue-500/50 transition-all">
+              <Icon className="w-4 h-4 mb-1" style={{ color: data.color }} />
+              <div className="text-lg font-bold text-white">{data.csocCoverage}%</div>
+              <div className="text-[10px] text-white/60">{type}</div>
             </div>
           );
         })}
-        <div className="bg-black/50 rounded-xl border border-purple-500/30 p-4">
-          <AlertTriangle className="w-6 h-6 text-purple-400 mb-2" />
-          <div className="text-2xl font-bold text-purple-400">{(totalMissing / 1000).toFixed(0)}K</div>
-          <div className="text-xs text-white/60">Missing</div>
+        <div className="bg-black/50 rounded-lg border border-purple-500/30 p-2">
+          <AlertTriangle className="w-4 h-4 text-purple-400 mb-1" />
+          <div className="text-lg font-bold text-purple-400">{(totalMissing / 1000).toFixed(0)}K</div>
+          <div className="text-[10px] text-white/60">Missing</div>
         </div>
       </div>
 
       {/* Main Visualizations */}
-      <div className="grid grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-2 gap-3 mb-3 flex-1">
         {/* 3D Layered Infrastructure */}
-        <div className="bg-black border border-blue-500/30 rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-blue-500/20">
-            <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
-              <Layers className="w-4 h-4" />
-              Infrastructure Stack Topology
+        <div className="bg-black border border-blue-500/30 rounded-lg overflow-hidden">
+          <div className="p-2 border-b border-blue-500/20">
+            <h3 className="text-[10px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+              <Layers className="w-3 h-3" />
+              Infrastructure Stack
             </h3>
           </div>
-          <div ref={layersRef} className="w-full h-[400px]" />
+          <div ref={layersRef} className="w-full h-[240px]" />
         </div>
 
         {/* Neural Network */}
-        <div className="bg-black border border-purple-500/30 rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-purple-500/20">
-            <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-              <Cpu className="w-4 h-4" />
-              Neural Infrastructure Network
+        <div className="bg-black border border-purple-500/30 rounded-lg overflow-hidden">
+          <div className="p-2 border-b border-purple-500/20">
+            <h3 className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
+              <Cpu className="w-3 h-3" />
+              Neural Network
             </h3>
           </div>
-          <canvas ref={neuralRef} className="w-full h-[400px]" />
+          <canvas ref={neuralRef} className="w-full h-[240px]" />
         </div>
       </div>
 
-      {/* Infrastructure Grid */}
-      <div className="grid grid-cols-2 gap-6">
+      {/* Infrastructure Grid - Compact */}
+      <div className="grid grid-cols-4 gap-2">
         {Object.entries(infrastructureData).map(([type, data]) => {
           const Icon = data.icon;
           return (
-            <div key={type} className="bg-black/50 rounded-2xl border p-6 hover:scale-[1.02] transition-all"
+            <div key={type} className="bg-black/50 rounded-lg border p-2"
                  style={{
                    borderColor: data.status === 'critical' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(0, 212, 255, 0.3)'
                  }}>
               {/* Header */}
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <Icon className="w-8 h-8" style={{ color: data.color }} />
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1">
+                  <Icon className="w-4 h-4" style={{ color: data.color }} />
                   <div>
-                    <h3 className="text-2xl font-bold text-white">{type}</h3>
-                    <p className="text-sm text-white/60">{data.totalAssets.toLocaleString()} nodes</p>
+                    <h3 className="text-sm font-bold text-white">{type}</h3>
+                    <p className="text-[9px] text-white/60">{(data.totalAssets/1000).toFixed(0)}k nodes</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-3xl font-bold text-purple-400">{data.missing.toLocaleString()}</div>
-                  <div className="text-xs text-white/60 uppercase">Breached</div>
+                  <div className="text-sm font-bold text-purple-400">{(data.missing/1000).toFixed(0)}k</div>
+                  <div className="text-[8px] text-white/60">BREACH</div>
                 </div>
               </div>
 
-              {/* Coverage Bars */}
-              <div className="space-y-4">
+              {/* Coverage Bars - Compact */}
+              <div className="space-y-1">
                 <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-blue-400">CSOC Shield</span>
+                  <div className="flex justify-between text-[9px] mb-1">
+                    <span className="text-blue-400">CSOC</span>
                     <span className="font-mono text-blue-400">{data.csocCoverage}%</span>
                   </div>
-                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-white/10">
+                  <div className="h-1.5 bg-black/50 rounded-full overflow-hidden">
                     <div 
-                      className="h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-blue-400 to-blue-500"
+                      className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-500"
                       style={{ width: `${animatedMetrics[`${type}-csoc`] || 0}%` }}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-purple-400">Splunk Matrix</span>
+                  <div className="flex justify-between text-[9px] mb-1">
+                    <span className="text-purple-400">Splunk</span>
                     <span className="font-mono text-purple-400">{data.splunkCoverage}%</span>
                   </div>
-                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-white/10">
+                  <div className="h-1.5 bg-black/50 rounded-full overflow-hidden">
                     <div 
-                      className="h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-purple-400 to-purple-500"
+                      className="h-full rounded-full bg-gradient-to-r from-purple-400 to-purple-500"
                       style={{ width: `${animatedMetrics[`${type}-splunk`] || 0}%` }}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-blue-400">Chronicle Core</span>
+                  <div className="flex justify-between text-[9px] mb-1">
+                    <span className="text-blue-400">Chronicle</span>
                     <span className="font-mono text-blue-400">{data.chronicleCoverage}%</span>
                   </div>
-                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-white/10">
+                  <div className="h-1.5 bg-black/50 rounded-full overflow-hidden">
                     <div 
-                      className="h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-blue-400 to-blue-500"
+                      className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-500"
                       style={{ width: `${animatedMetrics[`${type}-chronicle`] || 0}%` }}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Trends */}
-              <div className="grid grid-cols-3 gap-2 mt-4">
-                <div className="text-center bg-black/50 rounded-lg p-2 border border-white/10">
-                  <div className="text-xs text-white/60">Daily Δ</div>
-                  <div className={`text-sm font-bold ${data.trends.daily < 0 ? 'text-purple-400' : 'text-blue-400'}`}>
+              {/* Trends - Compact */}
+              <div className="grid grid-cols-3 gap-1 mt-2">
+                <div className="text-center bg-black/50 rounded p-1">
+                  <div className="text-[8px] text-white/60">D</div>
+                  <div className={`text-[10px] font-bold ${data.trends.daily < 0 ? 'text-purple-400' : 'text-blue-400'}`}>
                     {data.trends.daily > 0 ? '+' : ''}{data.trends.daily}%
                   </div>
                 </div>
-                <div className="text-center bg-black/50 rounded-lg p-2 border border-white/10">
-                  <div className="text-xs text-white/60">Weekly Δ</div>
-                  <div className={`text-sm font-bold ${data.trends.weekly < 0 ? 'text-purple-400' : 'text-blue-400'}`}>
+                <div className="text-center bg-black/50 rounded p-1">
+                  <div className="text-[8px] text-white/60">W</div>
+                  <div className={`text-[10px] font-bold ${data.trends.weekly < 0 ? 'text-purple-400' : 'text-blue-400'}`}>
                     {data.trends.weekly > 0 ? '+' : ''}{data.trends.weekly}%
                   </div>
                 </div>
-                <div className="text-center bg-black/50 rounded-lg p-2 border border-white/10">
-                  <div className="text-xs text-white/60">Monthly Δ</div>
-                  <div className={`text-sm font-bold ${data.trends.monthly < 0 ? 'text-purple-400' : 'text-blue-400'}`}>
+                <div className="text-center bg-black/50 rounded p-1">
+                  <div className="text-[8px] text-white/60">M</div>
+                  <div className={`text-[10px] font-bold ${data.trends.monthly < 0 ? 'text-purple-400' : 'text-blue-400'}`}>
                     {data.trends.monthly > 0 ? '+' : ''}{data.trends.monthly}%
                   </div>
                 </div>

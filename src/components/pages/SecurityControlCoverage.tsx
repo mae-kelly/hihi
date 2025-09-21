@@ -11,7 +11,7 @@ const SecurityControlCoverage: React.FC = () => {
 
   // ACTUAL DATA FROM AO1 REQUIREMENTS - Security Control Coverage
   const securityControls = {
-    'EDR - Axonius/Console': {
+    'EDR - Axonius': {
       coverage: 87.2,
       assets: 228411,
       missing: 33621,
@@ -34,7 +34,7 @@ const SecurityControlCoverage: React.FC = () => {
         sox: true 
       }
     },
-    'Tanium - Axonius/Console': {
+    'Tanium': {
       coverage: 75.3,
       assets: 197234,
       missing: 64798,
@@ -57,7 +57,7 @@ const SecurityControlCoverage: React.FC = () => {
         sox: false 
       }
     },
-    'DLP Agent - Axonius/Console': {
+    'DLP Agent': {
       coverage: 62.8,
       assets: 164567,
       missing: 97465,
@@ -97,7 +97,7 @@ const SecurityControlCoverage: React.FC = () => {
       0.1,
       1000
     );
-    camera.position.set(0, 0, 150);
+    camera.position.set(0, 0, 120);
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({ 
@@ -115,8 +115,8 @@ const SecurityControlCoverage: React.FC = () => {
     Object.entries(securityControls).forEach(([control, data], index) => {
       const segmentAngle = (Math.PI * 2) / 3;
       const startAngle = index * segmentAngle;
-      const radius = 40;
-      const innerRadius = 20;
+      const radius = 30;
+      const innerRadius = 15;
       
       // Shield segment geometry
       const shape = new THREE.Shape();
@@ -143,7 +143,7 @@ const SecurityControlCoverage: React.FC = () => {
       shape.setFromPoints(points);
       
       const extrudeSettings = {
-        depth: 10,
+        depth: 8,
         bevelEnabled: true,
         bevelSegments: 2,
         steps: 2,
@@ -178,7 +178,7 @@ const SecurityControlCoverage: React.FC = () => {
     scene.add(shieldGroup);
 
     // Central core
-    const coreGeometry = new THREE.IcosahedronGeometry(15, 2);
+    const coreGeometry = new THREE.IcosahedronGeometry(10, 2);
     const coreMaterial = new THREE.MeshPhongMaterial({
       color: 0x00ffff,
       emissive: 0x00ffff,
@@ -189,15 +189,15 @@ const SecurityControlCoverage: React.FC = () => {
     scene.add(core);
 
     // Particle field for threats
-    const particleCount = 500;
+    const particleCount = 300;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount * 3; i += 3) {
-      positions[i] = (Math.random() - 0.5) * 200;
-      positions[i + 1] = (Math.random() - 0.5) * 200;
-      positions[i + 2] = (Math.random() - 0.5) * 200;
+      positions[i] = (Math.random() - 0.5) * 150;
+      positions[i + 1] = (Math.random() - 0.5) * 150;
+      positions[i + 2] = (Math.random() - 0.5) * 150;
       
       // Pink particles for threats
       colors[i] = 1;
@@ -209,7 +209,7 @@ const SecurityControlCoverage: React.FC = () => {
     particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const particlesMaterial = new THREE.PointsMaterial({
-      size: 2,
+      size: 1.5,
       vertexColors: true,
       transparent: true,
       opacity: 0.6,
@@ -223,12 +223,12 @@ const SecurityControlCoverage: React.FC = () => {
     const ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
 
-    const pointLight1 = new THREE.PointLight(0x00ffff, 1, 200);
-    pointLight1.position.set(100, 100, 100);
+    const pointLight1 = new THREE.PointLight(0x00ffff, 1, 150);
+    pointLight1.position.set(80, 80, 80);
     scene.add(pointLight1);
 
-    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 200);
-    pointLight2.position.set(-100, -100, -100);
+    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 150);
+    pointLight2.position.set(-80, -80, -80);
     scene.add(pointLight2);
 
     // Mouse interaction
@@ -272,8 +272,8 @@ const SecurityControlCoverage: React.FC = () => {
       
       // Camera movement
       const time = Date.now() * 0.0005;
-      camera.position.x = Math.sin(time) * 100;
-      camera.position.z = 150 + Math.cos(time) * 50;
+      camera.position.x = Math.sin(time) * 80;
+      camera.position.z = 120 + Math.cos(time) * 40;
       camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
@@ -305,7 +305,7 @@ const SecurityControlCoverage: React.FC = () => {
 
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
-    const maxRadius = Math.min(centerX, centerY) - 40;
+    const maxRadius = Math.min(centerX, centerY) - 20;
 
     const animate = () => {
       // Clear with fade effect
@@ -313,16 +313,16 @@ const SecurityControlCoverage: React.FC = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Draw radar rings
-      for (let i = 1; i <= 5; i++) {
+      for (let i = 1; i <= 3; i++) {
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, (maxRadius / 5) * i, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, (maxRadius / 3) * i, 0, Math.PI * 2);
         ctx.stroke();
       }
 
       // Draw radar lines
-      const angles = 12;
+      const angles = 8;
       for (let i = 0; i < angles; i++) {
         const angle = (i / angles) * Math.PI * 2;
         ctx.strokeStyle = 'rgba(192, 132, 252, 0.2)';
@@ -371,7 +371,7 @@ const SecurityControlCoverage: React.FC = () => {
         points.forEach(point => {
           ctx.fillStyle = data.color;
           ctx.beginPath();
-          ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+          ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
           ctx.fill();
         });
       });
@@ -389,7 +389,7 @@ const SecurityControlCoverage: React.FC = () => {
       gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
       
       ctx.strokeStyle = gradient;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
       ctx.lineTo(
@@ -433,225 +433,194 @@ const SecurityControlCoverage: React.FC = () => {
   );
 
   return (
-    <div className="p-8 min-h-screen bg-black">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-          SECURITY CONTROL COVERAGE
-        </h1>
-        <p className="text-gray-400 uppercase tracking-widest text-xs">
-          EDR • Tanium • DLP Agent Coverage Analysis
-        </p>
-      </div>
-
-      {/* Critical Alert */}
-      <div className="mb-6 bg-black border border-pink-500/30 rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
-          <div>
-            <span className="text-pink-400 font-bold">CRITICAL SECURITY GAP:</span>
-            <span className="text-white ml-2">DLP at 62.8% coverage - 97,465 assets unprotected from data loss</span>
+    <div className="p-4 h-screen bg-black overflow-hidden flex flex-col">
+      {/* Top Bar - Alert and Stats */}
+      <div className="flex gap-3 mb-3">
+        <div className="flex-1 bg-black border border-pink-500/30 rounded-lg p-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-pink-400 animate-pulse" />
+            <span className="text-pink-400 font-bold text-xs">CRITICAL GAP:</span>
+            <span className="text-white text-xs">DLP at 62.8% - 97,465 assets unprotected</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-blue-400">{averageCoverage.toFixed(0)}%</div>
+            <div className="text-[9px] text-gray-400 uppercase">Avg Cover</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-pink-400">{(totalMissing/1000).toFixed(0)}K</div>
+            <div className="text-[9px] text-gray-400 uppercase">Unprotect</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-purple-400">{criticalGaps}</div>
+            <div className="text-[9px] text-gray-400 uppercase">Critical</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-pink-400">0/4</div>
+            <div className="text-[9px] text-gray-400 uppercase">Compliant</div>
           </div>
         </div>
       </div>
 
-      {/* Summary Metrics */}
-      <div className="grid grid-cols-5 gap-4 mb-8">
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <Shield className="w-6 h-6 text-blue-400 mb-2" />
-          <div className="text-3xl font-bold text-blue-400">{averageCoverage.toFixed(1)}%</div>
-          <div className="text-xs text-gray-400 uppercase">Avg Coverage</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <XCircle className="w-6 h-6 text-pink-400 mb-2" />
-          <div className="text-3xl font-bold text-pink-400">{(totalMissing / 1000).toFixed(0)}K</div>
-          <div className="text-xs text-gray-400 uppercase">Unprotected</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <AlertTriangle className="w-6 h-6 text-purple-400 mb-2" />
-          <div className="text-3xl font-bold text-purple-400">{criticalGaps}</div>
-          <div className="text-xs text-gray-400 uppercase">Critical Gaps</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <Activity className="w-6 h-6 text-blue-400 mb-2" />
-          <div className="text-3xl font-bold text-blue-400">3/3</div>
-          <div className="text-xs text-gray-400 uppercase">Controls</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <Lock className="w-6 h-6 text-pink-400 mb-2" />
-          <div className="text-3xl font-bold text-pink-400">0/4</div>
-          <div className="text-xs text-gray-400 uppercase">Compliant</div>
-        </div>
-      </div>
-
-      {/* Main Visualizations */}
-      <div className="grid grid-cols-12 gap-6 mb-8">
-        {/* 3D Shield */}
+      {/* Main Content Grid */}
+      <div className="flex-1 grid grid-cols-12 gap-3">
+        {/* Left - 3D Shield */}
         <div className="col-span-7">
-          <div className="bg-black border border-blue-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-blue-500/20">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                <Shield className="w-4 h-4" />
+          <div className="h-full bg-black border border-blue-500/30 rounded-xl overflow-hidden flex flex-col">
+            <div className="p-2 border-b border-blue-500/20">
+              <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                <Shield className="w-3 h-3" />
                 Security Shield Matrix
               </h3>
             </div>
-            <div ref={shieldRef} className="w-full h-[400px]" />
-            
-            {hoveredSegment && (
-              <div className="absolute bottom-4 left-4 bg-black/90 rounded-lg border border-blue-500/30 p-3">
-                <div className="text-sm font-bold text-blue-400">{hoveredSegment}</div>
-                <div className="text-xs text-gray-400">
-                  Coverage: {securityControls[hoveredSegment as keyof typeof securityControls].coverage}%
+            <div className="relative flex-1">
+              <div ref={shieldRef} className="w-full h-full" />
+              {hoveredSegment && (
+                <div className="absolute bottom-2 left-2 bg-black/90 rounded border border-blue-500/30 px-2 py-1">
+                  <div className="text-xs font-bold text-blue-400">{hoveredSegment}</div>
+                  <div className="text-[9px] text-gray-400">
+                    Coverage: {securityControls[hoveredSegment as keyof typeof securityControls].coverage}%
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Radar Chart */}
-        <div className="col-span-5">
-          <div className="bg-black border border-purple-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-purple-500/20">
-              <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                <Radar className="w-4 h-4" />
+        {/* Right Column */}
+        <div className="col-span-5 flex flex-col gap-3">
+          {/* Radar Chart */}
+          <div className="bg-black border border-purple-500/30 rounded-xl overflow-hidden">
+            <div className="p-2 border-b border-purple-500/20">
+              <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                <Radar className="w-3 h-3" />
                 Coverage Radar
               </h3>
             </div>
-            <canvas ref={radarRef} className="w-full h-[400px]" />
+            <canvas ref={radarRef} className="w-full h-[140px]" />
           </div>
-        </div>
-      </div>
 
-      {/* Security Controls Grid */}
-      <div className="grid grid-cols-1 gap-6">
-        {Object.entries(securityControls).map(([control, data]) => {
-          const statusColors = getStatusColor(data.status);
-          return (
-            <div 
-              key={control}
-              className={`bg-gray-900/30 rounded-2xl p-6 border ${statusColors.border} border-opacity-30 hover:border-opacity-50 transition-all`}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-2xl font-bold text-white">{control}</h3>
-                  <p className="text-sm text-gray-400">Platform: {data.platform}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <div className="text-3xl font-bold" style={{ color: data.color }}>
-                      {data.coverage}%
+          {/* Security Controls Cards */}
+          <div className="flex-1 overflow-y-auto pr-2 space-y-2">
+            {Object.entries(securityControls).map(([control, data]) => {
+              const statusColors = getStatusColor(data.status);
+              return (
+                <div 
+                  key={control}
+                  className={`bg-gray-900/30 rounded-xl p-3 border ${statusColors.border} border-opacity-30`}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-white">{control}</h3>
+                      <p className="text-[9px] text-gray-400">{data.platform}</p>
                     </div>
-                    <div className="text-xs text-gray-400">Coverage</div>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-sm font-bold ${statusColors.bg} ${statusColors.text}`}>
-                    {data.status.toUpperCase()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Coverage Bar */}
-              <div className="mb-4">
-                <div className="relative h-6 bg-black/50 rounded-full overflow-hidden border border-gray-800">
-                  <div 
-                    className="h-full rounded-full transition-all duration-1000"
-                    style={{
-                      width: `${animatedValues[control] || 0}%`,
-                      background: `linear-gradient(90deg, ${data.color}, ${data.color}dd)`
-                    }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-xs font-mono text-white/80">
-                      {data.assets.toLocaleString()} / {data.totalAssets.toLocaleString()} assets
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Metrics and Gaps */}
-              <div className="grid grid-cols-4 gap-4 mb-4">
-                <div className="bg-black/50 rounded-lg p-3 border border-gray-800">
-                  <div className="text-xs text-gray-400">Protected</div>
-                  <div className="text-xl font-bold text-blue-400">{(data.assets / 1000).toFixed(0)}K</div>
-                </div>
-                <div className="bg-black/50 rounded-lg p-3 border border-gray-800">
-                  <div className="text-xs text-gray-400">Missing</div>
-                  <div className="text-xl font-bold text-pink-400">{(data.missing / 1000).toFixed(0)}K</div>
-                </div>
-                <div className="bg-black/50 rounded-lg p-3 border border-gray-800">
-                  <div className="text-xs text-gray-400">Trend</div>
-                  <div className={`text-xl font-bold ${data.trend > 0 ? 'text-blue-400' : 'text-pink-400'}`}>
-                    {data.trend > 0 ? '+' : ''}{data.trend}%
-                  </div>
-                </div>
-                <div className="bg-black/50 rounded-lg p-3 border border-gray-800">
-                  <div className="text-xs text-gray-400">Gaps</div>
-                  <div className="text-xl font-bold text-purple-400">{data.gaps.length}</div>
-                </div>
-              </div>
-
-              {/* Top Gaps */}
-              <div className="border-t border-gray-700 pt-4">
-                <h4 className="text-sm font-semibold text-gray-400 mb-3">Critical Coverage Gaps</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  {data.gaps.slice(0, 4).map((gap, idx) => (
-                    <div key={idx} className="bg-black/50 rounded-lg p-3 border border-gray-800">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-white">{gap.type}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded ${
-                          gap.impact === 'CRITICAL' ? 'bg-pink-500/20 text-pink-400' :
-                          gap.impact === 'HIGH' ? 'bg-purple-500/20 text-purple-400' :
-                          gap.impact === 'MEDIUM' ? 'bg-blue-500/20 text-blue-400' :
-                          'bg-gray-500/20 text-gray-400'
-                        }`}>
-                          {gap.impact}
-                        </span>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        <div className="text-lg font-bold" style={{ color: data.color }}>
+                          {data.coverage}%
+                        </div>
+                        <div className="text-[8px] text-gray-400">Coverage</div>
                       </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Coverage:</span>
-                        <span className={`font-mono ${gap.coverage < 50 ? 'text-pink-400' : 'text-blue-400'}`}>
-                          {gap.coverage}%
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Missing:</span>
-                        <span className="font-mono text-pink-400">
-                          {gap.missing.toLocaleString()}
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${statusColors.bg} ${statusColors.text}`}>
+                        {data.status.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Coverage Bar */}
+                  <div className="mb-2">
+                    <div className="relative h-4 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+                      <div 
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{
+                          width: `${animatedValues[control] || 0}%`,
+                          background: `linear-gradient(90deg, ${data.color}, ${data.color}dd)`
+                        }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[9px] font-mono text-white/80">
+                          {(data.assets/1000).toFixed(0)}K / {(data.totalAssets/1000).toFixed(0)}K
                         </span>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              {/* Compliance Status */}
-              <div className="mt-4 pt-4 border-t border-gray-700">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-400">Compliance Standards:</span>
-                  <div className="flex gap-3">
-                    {Object.entries(data.compliance).map(([standard, compliant]) => (
-                      <div key={standard} className="flex items-center gap-1">
-                        {compliant ? (
-                          <CheckCircle className="w-4 h-4 text-blue-400" />
-                        ) : (
-                          <XCircle className="w-4 h-4 text-pink-400" />
-                        )}
-                        <span className="text-xs text-gray-400">{standard.toUpperCase()}</span>
+                  {/* Metrics */}
+                  <div className="grid grid-cols-4 gap-1 mb-2">
+                    <div className="bg-black/50 rounded p-1 border border-gray-800">
+                      <div className="text-[8px] text-gray-400">Protected</div>
+                      <div className="text-xs font-bold text-blue-400">{(data.assets/1000).toFixed(0)}K</div>
+                    </div>
+                    <div className="bg-black/50 rounded p-1 border border-gray-800">
+                      <div className="text-[8px] text-gray-400">Missing</div>
+                      <div className="text-xs font-bold text-pink-400">{(data.missing/1000).toFixed(0)}K</div>
+                    </div>
+                    <div className="bg-black/50 rounded p-1 border border-gray-800">
+                      <div className="text-[8px] text-gray-400">Trend</div>
+                      <div className={`text-xs font-bold ${data.trend > 0 ? 'text-blue-400' : 'text-pink-400'}`}>
+                        {data.trend > 0 ? '+' : ''}{data.trend}%
+                      </div>
+                    </div>
+                    <div className="bg-black/50 rounded p-1 border border-gray-800">
+                      <div className="text-[8px] text-gray-400">Gaps</div>
+                      <div className="text-xs font-bold text-purple-400">{data.gaps.length}</div>
+                    </div>
+                  </div>
+
+                  {/* Top Gaps */}
+                  <div className="grid grid-cols-2 gap-1 mb-2">
+                    {data.gaps.slice(0, 2).map((gap, idx) => (
+                      <div key={idx} className="bg-black/50 rounded p-1 border border-gray-800">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-medium text-white truncate">{gap.type}</span>
+                          <span className={`text-[8px] px-1 rounded ${
+                            gap.impact === 'CRITICAL' ? 'bg-pink-500/20 text-pink-400' :
+                            gap.impact === 'HIGH' ? 'bg-purple-500/20 text-purple-400' :
+                            'bg-blue-500/20 text-blue-400'
+                          }`}>
+                            {gap.impact.substring(0, 4)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-[8px]">
+                          <span className="text-gray-400">Cov:</span>
+                          <span className={`font-mono ${gap.coverage < 50 ? 'text-pink-400' : 'text-blue-400'}`}>
+                            {gap.coverage}%
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              </div>
 
-              {/* Recommendation */}
-              <div className="mt-4 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-                <p className="text-sm text-purple-400">
-                  <span className="font-bold">Action Required:</span> {data.recommendation}
-                </p>
-              </div>
-            </div>
-          );
-        })}
+                  {/* Compliance */}
+                  <div className="flex items-center justify-between border-t border-gray-700 pt-1">
+                    <span className="text-[8px] text-gray-400">Compliance:</span>
+                    <div className="flex gap-1.5">
+                      {Object.entries(data.compliance).map(([standard, compliant]) => (
+                        <div key={standard} className="flex items-center gap-0.5">
+                          {compliant ? (
+                            <CheckCircle className="w-3 h-3 text-blue-400" />
+                          ) : (
+                            <XCircle className="w-3 h-3 text-pink-400" />
+                          )}
+                          <span className="text-[8px] text-gray-400">{standard.substring(0, 3).toUpperCase()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recommendation */}
+                  <div className="mt-1 p-1 bg-purple-500/10 border border-purple-500/30 rounded">
+                    <p className="text-[8px] text-purple-400 line-clamp-1">
+                      <span className="font-bold">Action:</span> {data.recommendation}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -319,7 +319,7 @@ const LoggingStandards: React.FC = () => {
         y: canvas.height / 2,
         role,
         data,
-        radius: 30,
+        radius: 20,
         pulsePhase: Math.random() * Math.PI * 2
       });
     });
@@ -425,14 +425,14 @@ const LoggingStandards: React.FC = () => {
         
         // Label
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 12px monospace';
+        ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(node.role, node.x, node.y - currentRadius - 10);
         
         // Percentage
-        ctx.font = '10px monospace';
+        ctx.font = '9px monospace';
         ctx.fillStyle = node.data.color;
-        ctx.fillText(`${node.data.coverage}%`, node.x, node.y + currentRadius + 20);
+        ctx.fillText(`${node.data.coverage}%`, node.x, node.y + currentRadius + 15);
       });
 
       requestAnimationFrame(animate);
@@ -449,193 +449,161 @@ const LoggingStandards: React.FC = () => {
 
   const getStatusIcon = (status: string) => {
     switch(status) {
-      case 'complete': return <CheckCircle className="w-5 h-5 text-blue-400" />;
-      case 'partial': return <AlertCircle className="w-5 h-5 text-purple-400" />;
-      case 'warning': return <AlertCircle className="w-5 h-5 text-purple-400" />;
-      case 'failed': return <XCircle className="w-5 h-5 text-pink-400" />;
-      default: return <Shield className="w-5 h-5 text-gray-400" />;
+      case 'complete': return <CheckCircle className="w-4 h-4 text-blue-400" />;
+      case 'partial': return <AlertCircle className="w-4 h-4 text-purple-400" />;
+      case 'warning': return <AlertCircle className="w-4 h-4 text-purple-400" />;
+      case 'failed': return <XCircle className="w-4 h-4 text-pink-400" />;
+      default: return <Shield className="w-4 h-4 text-gray-400" />;
     }
   };
 
   return (
-    <div className="p-8 min-h-screen bg-black">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-          LOGGING STANDARDS & COMPLIANCE
-        </h1>
-        <p className="text-gray-400 uppercase tracking-widest text-xs">
-          Fiserv Cybersecurity Logging Standard • Process Compliance
-        </p>
-      </div>
-
-      {/* Critical Alert */}
-      <div className="mb-6 bg-black border border-pink-500/30 rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
-          <div>
-            <span className="text-pink-400 font-bold">CRITICAL LOGGING FAILURE:</span>
-            <span className="text-white ml-2">Cloud at 19.17% - Network at 45.2% - Multiple standards violations</span>
+    <div className="p-4 h-screen bg-black overflow-hidden flex flex-col">
+      {/* Critical Alert and Stats Row */}
+      <div className="flex gap-3 mb-3">
+        <div className="flex-1 bg-black border border-pink-500/30 rounded-lg p-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-pink-400 animate-pulse" />
+            <span className="text-pink-400 font-bold text-xs">CRITICAL:</span>
+            <span className="text-white text-xs">Cloud at 19.17% - Network at 45.2%</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <div className="bg-gray-900/30 rounded-lg px-4 py-2 border border-gray-800">
+            <div className="text-lg font-bold text-purple-400">{complianceScore.toFixed(1)}%</div>
+            <div className="text-[10px] text-gray-400 uppercase">Compliance</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-4 py-2 border border-gray-800">
+            <div className="text-lg font-bold text-pink-400">2/3</div>
+            <div className="text-[10px] text-gray-400 uppercase">Failed</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-4 py-2 border border-gray-800">
+            <div className="text-lg font-bold text-blue-400">HIGH</div>
+            <div className="text-[10px] text-gray-400 uppercase">Risk</div>
           </div>
         </div>
       </div>
 
-      {/* Overall Compliance Score */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <FileText className="w-6 h-6 text-blue-400 mb-2" />
-          <div className="text-3xl font-bold text-purple-400">{complianceScore.toFixed(1)}%</div>
-          <div className="text-xs text-gray-400 uppercase">Overall Compliance</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <Network className="w-6 h-6 text-pink-400 mb-2" />
-          <div className="text-3xl font-bold text-pink-400">2/3</div>
-          <div className="text-xs text-gray-400 uppercase">Failed Roles</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <Activity className="w-6 h-6 text-purple-400 mb-2" />
-          <div className="text-3xl font-bold text-purple-400">2/5</div>
-          <div className="text-xs text-gray-400 uppercase">Process Failed</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <Shield className="w-6 h-6 text-blue-400 mb-2" />
-          <div className="text-3xl font-bold text-blue-400">HIGH</div>
-          <div className="text-xs text-gray-400 uppercase">Risk Level</div>
-        </div>
-      </div>
-
-      {/* Main Visualizations */}
-      <div className="grid grid-cols-12 gap-6 mb-8">
-        {/* 3D Pipeline */}
-        <div className="col-span-7">
-          <div className="bg-black border border-blue-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-blue-500/20">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                <GitBranch className="w-4 h-4" />
+      {/* Main Content Grid */}
+      <div className="flex-1 grid grid-cols-12 gap-3">
+        {/* Left Column - Visualizations */}
+        <div className="col-span-7 flex flex-col gap-3">
+          {/* 3D Pipeline */}
+          <div className="flex-1 bg-black border border-blue-500/30 rounded-xl overflow-hidden">
+            <div className="p-2 border-b border-blue-500/20">
+              <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider">
                 Logging Pipeline Process
               </h3>
             </div>
-            <div ref={pipelineRef} className="w-full h-[350px]" />
+            <div ref={pipelineRef} className="w-full h-[200px]" />
           </div>
-        </div>
 
-        {/* Data Flow Network */}
-        <div className="col-span-5">
-          <div className="bg-black border border-purple-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-purple-500/20">
-              <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                <Code className="w-4 h-4" />
+          {/* Data Flow Network */}
+          <div className="flex-1 bg-black border border-purple-500/30 rounded-xl overflow-hidden">
+            <div className="p-2 border-b border-purple-500/20">
+              <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider">
                 Data Flow Network
               </h3>
             </div>
-            <canvas ref={flowRef} className="w-full h-[350px]" />
+            <canvas ref={flowRef} className="w-full h-[150px]" />
+          </div>
+
+          {/* Process Pipeline Status */}
+          <div className="bg-gray-900/30 rounded-xl p-3 border border-gray-800">
+            <div className="flex items-center justify-between">
+              {Object.entries(loggingProcess).map(([step, data], index) => (
+                <React.Fragment key={step}>
+                  <div className="flex-1">
+                    <div className={`text-center ${data.status === 'failed' ? 'animate-pulse' : ''}`}>
+                      <div className={`w-10 h-10 mx-auto mb-1 rounded-full flex items-center justify-center border ${
+                        data.status === 'complete' ? 'bg-blue-500/20 border-blue-500' :
+                        data.status === 'partial' ? 'bg-purple-500/20 border-purple-500' :
+                        'bg-pink-500/20 border-pink-500'
+                      }`}>
+                        {getStatusIcon(data.status)}
+                      </div>
+                      <h4 className="font-semibold text-white text-[10px]">{step}</h4>
+                      <div className={`text-[9px] ${
+                        data.status === 'complete' ? 'text-blue-400' :
+                        data.status === 'partial' ? 'text-purple-400' :
+                        'text-pink-400'
+                      }`}>
+                        {data.completion}%
+                      </div>
+                    </div>
+                  </div>
+                  {index < Object.keys(loggingProcess).length - 1 && (
+                    <div className={`flex-shrink-0 w-6 h-0.5 ${
+                      data.status === 'complete' ? 'bg-blue-400' :
+                      data.status === 'partial' ? 'bg-purple-400' :
+                      'bg-pink-400'
+                    }`} />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Process Pipeline Status */}
-      <div className="mb-8 bg-gray-900/30 rounded-2xl p-6 border border-gray-800">
-        <h3 className="text-lg font-bold text-white mb-4">LOGGING PROCESS PIPELINE</h3>
-        <div className="flex items-center justify-between mb-6">
-          {Object.entries(loggingProcess).map(([step, data], index) => (
-            <React.Fragment key={step}>
-              <div className="flex-1">
-                <div className={`text-center ${data.status === 'failed' ? 'animate-pulse' : ''}`}>
-                  <div className={`w-16 h-16 mx-auto mb-2 rounded-full flex items-center justify-center border-2 ${
-                    data.status === 'complete' ? 'bg-blue-500/20 border-blue-500' :
-                    data.status === 'partial' ? 'bg-purple-500/20 border-purple-500' :
-                    'bg-pink-500/20 border-pink-500'
-                  }`}>
-                    {getStatusIcon(data.status)}
+        {/* Right Column - Role Details */}
+        <div className="col-span-5 overflow-y-auto pr-2 space-y-3">
+          {Object.entries(loggingRoles).map(([roleName, role]) => {
+            const Icon = role.icon;
+            return (
+              <div 
+                key={roleName}
+                className={`bg-gray-900/30 rounded-xl p-3 border ${
+                  role.status === 'critical' ? 'border-pink-500/30' :
+                  role.status === 'warning' ? 'border-purple-500/30' :
+                  'border-blue-500/30'
+                }`}
+              >
+                {/* Role Header */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Icon className="w-4 h-4" style={{ color: role.color }} />
+                    <h3 className="text-sm font-bold text-white">{roleName}</h3>
                   </div>
-                  <h4 className="font-semibold text-white text-sm">{step}</h4>
-                  <div className={`text-xs mt-1 ${
-                    data.status === 'complete' ? 'text-blue-400' :
-                    data.status === 'partial' ? 'text-purple-400' :
-                    'text-pink-400'
-                  }`}>
-                    {data.completion}%
-                  </div>
-                </div>
-              </div>
-              {index < Object.keys(loggingProcess).length - 1 && (
-                <div className={`flex-shrink-0 w-12 h-0.5 ${
-                  data.status === 'complete' ? 'bg-blue-400' :
-                  data.status === 'partial' ? 'bg-purple-400' :
-                  'bg-pink-400'
-                }`} />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-      </div>
-
-      {/* Log Role Mapping */}
-      <div className="grid grid-cols-1 gap-6">
-        {Object.entries(loggingRoles).map(([roleName, role]) => {
-          const Icon = role.icon;
-          return (
-            <div 
-              key={roleName}
-              className={`bg-gray-900/30 rounded-2xl p-6 border transition-all ${
-                role.status === 'critical' ? 'border-pink-500/30' :
-                role.status === 'warning' ? 'border-purple-500/30' :
-                'border-blue-500/30'
-              }`}
-            >
-              {/* Role Header */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <Icon className="w-6 h-6" style={{ color: role.color }} />
-                  <div>
-                    <h3 className="text-xl font-bold text-white">{roleName}</h3>
-                    <p className="text-sm text-gray-400">{role.logTypes.length} log types configured</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold" style={{ color: role.color }}>
+                  <div className="text-lg font-bold" style={{ color: role.color }}>
                     {role.coverage}%
                   </div>
-                  <div className="text-xs text-gray-400">Coverage</div>
                 </div>
-              </div>
 
-              {/* Coverage Bar */}
-              <div className="mb-4">
-                <div className="h-4 bg-black/50 rounded-full overflow-hidden border border-gray-800">
-                  <div 
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${role.coverage}%`,
-                      background: `linear-gradient(90deg, ${role.color}, ${role.color}dd)`
-                    }}
-                  />
+                {/* Coverage Bar */}
+                <div className="mb-2">
+                  <div className="h-2 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+                    <div 
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${role.coverage}%`,
+                        background: `linear-gradient(90deg, ${role.color}, ${role.color}dd)`
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Log Types */}
-              <div className="mb-4">
-                <h4 className="text-sm font-semibold text-gray-400 mb-2">Log Types</h4>
-                <div className="flex flex-wrap gap-2">
-                  {role.logTypes.map(type => (
-                    <span key={type} className="px-2 py-1 rounded bg-black/50 border border-gray-700 text-xs text-gray-300">
-                      {type}
-                    </span>
-                  ))}
+                {/* Log Types */}
+                <div className="mb-2">
+                  <div className="flex flex-wrap gap-1">
+                    {role.logTypes.slice(0, 3).map(type => (
+                      <span key={type} className="px-1.5 py-0.5 rounded bg-black/50 border border-gray-700 text-[9px] text-gray-300">
+                        {type}
+                      </span>
+                    ))}
+                    {role.logTypes.length > 3 && (
+                      <span className="px-1.5 py-0.5 rounded bg-black/50 border border-gray-700 text-[9px] text-gray-400">
+                        +{role.logTypes.length - 3}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Visibility Factors */}
-              <div className="mb-4">
-                <h4 className="text-sm font-semibold text-gray-400 mb-3">Visibility Factors</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {role.visibilityFactors.map(factor => (
-                    <div key={factor.factor} className="flex items-center justify-between p-2 bg-black/50 rounded border border-gray-800">
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(factor.status)}
-                        <span className="text-xs text-gray-300">{factor.factor}</span>
-                      </div>
-                      <span className={`text-xs font-mono font-bold ${
+                {/* Visibility Factors - Compact */}
+                <div className="grid grid-cols-2 gap-1 mb-2">
+                  {role.visibilityFactors.slice(0, 4).map(factor => (
+                    <div key={factor.factor} className="flex items-center justify-between p-1 bg-black/50 rounded border border-gray-800">
+                      <span className="text-[9px] text-gray-300 truncate">{factor.factor.split(' ')[0]}</span>
+                      <span className={`text-[9px] font-mono font-bold ${
                         factor.percentage < 30 ? 'text-pink-400' :
                         factor.percentage < 60 ? 'text-purple-400' :
                         'text-blue-400'
@@ -645,22 +613,22 @@ const LoggingStandards: React.FC = () => {
                     </div>
                   ))}
                 </div>
-              </div>
 
-              {/* Gaps and Recommendations */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-pink-500/10 border border-pink-500/30 rounded">
-                  <h4 className="text-sm font-semibold text-pink-400 mb-1">Gap</h4>
-                  <p className="text-xs text-gray-300">{role.gaps}</p>
-                </div>
-                <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded">
-                  <h4 className="text-sm font-semibold text-purple-400 mb-1">Action Required</h4>
-                  <p className="text-xs text-gray-300">{role.recommendation}</p>
+                {/* Gap and Recommendation - Compact */}
+                <div className="grid grid-cols-2 gap-1">
+                  <div className="p-1.5 bg-pink-500/10 border border-pink-500/30 rounded">
+                    <h4 className="text-[9px] font-semibold text-pink-400">Gap</h4>
+                    <p className="text-[8px] text-gray-300 line-clamp-2">{role.gaps}</p>
+                  </div>
+                  <div className="p-1.5 bg-purple-500/10 border border-purple-500/30 rounded">
+                    <h4 className="text-[9px] font-semibold text-purple-400">Action</h4>
+                    <p className="text-[8px] text-gray-300 line-clamp-2">{role.recommendation}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

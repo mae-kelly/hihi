@@ -75,7 +75,7 @@ const DomainVisibility: React.FC = () => {
       0.1,
       1000
     );
-    camera.position.set(0, 100, 200);
+    camera.position.set(0, 80, 150);
     camera.lookAt(0, 0, 0);
 
     // Renderer
@@ -92,7 +92,7 @@ const DomainVisibility: React.FC = () => {
     const connections: THREE.Line[] = [];
     
     // Central hub
-    const hubGeometry = new THREE.OctahedronGeometry(15, 2);
+    const hubGeometry = new THREE.OctahedronGeometry(10, 2);
     const hubMaterial = new THREE.MeshPhongMaterial({
       color: 0x00ffff,
       emissive: 0x00ffff,
@@ -107,16 +107,16 @@ const DomainVisibility: React.FC = () => {
     // Create domain clusters
     Object.entries(domainData).forEach(([domainType, data], typeIndex) => {
       const angleOffset = (typeIndex / 3) * Math.PI * 2;
-      const radius = 80;
+      const radius = 60;
       
       data.domains.forEach((domain, index) => {
         const angle = angleOffset + (index / data.domains.length) * (Math.PI * 2 / 3);
         const x = Math.cos(angle) * radius;
         const z = Math.sin(angle) * radius;
-        const y = (Math.random() - 0.5) * 40;
+        const y = (Math.random() - 0.5) * 30;
         
         // Domain node
-        const nodeSize = Math.sqrt(domain.assets) / 50;
+        const nodeSize = Math.sqrt(domain.assets) / 60;
         const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
         const nodeColor = domain.risk === 'critical' ? 0xff00ff : 
                          domain.risk === 'high' ? 0xc084fc :
@@ -153,8 +153,8 @@ const DomainVisibility: React.FC = () => {
         connections.push(line);
         
         // Add orbiting satellites for subdomains
-        for (let i = 0; i < 3; i++) {
-          const satelliteGeometry = new THREE.TetrahedronGeometry(2);
+        for (let i = 0; i < 2; i++) {
+          const satelliteGeometry = new THREE.TetrahedronGeometry(1.5);
           const satelliteMaterial = new THREE.MeshBasicMaterial({
             color: nodeColor,
             transparent: true,
@@ -168,15 +168,15 @@ const DomainVisibility: React.FC = () => {
     });
 
     // Particle field for data flow
-    const particleCount = 1000;
+    const particleCount = 500;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount * 3; i += 3) {
-      positions[i] = (Math.random() - 0.5) * 300;
-      positions[i + 1] = (Math.random() - 0.5) * 200;
-      positions[i + 2] = (Math.random() - 0.5) * 300;
+      positions[i] = (Math.random() - 0.5) * 200;
+      positions[i + 1] = (Math.random() - 0.5) * 150;
+      positions[i + 2] = (Math.random() - 0.5) * 200;
       
       const colorChoice = Math.random();
       if (colorChoice < 0.33) {
@@ -262,9 +262,9 @@ const DomainVisibility: React.FC = () => {
           const parent = child.userData.parent;
           const offset = child.userData.offset;
           const time = Date.now() * 0.002 + offset * Math.PI * 2 / 3;
-          child.position.x = parent.position.x + Math.cos(time) * 20;
+          child.position.x = parent.position.x + Math.cos(time) * 15;
           child.position.y = parent.position.y;
-          child.position.z = parent.position.z + Math.sin(time) * 20;
+          child.position.z = parent.position.z + Math.sin(time) * 15;
         }
       });
       
@@ -273,8 +273,8 @@ const DomainVisibility: React.FC = () => {
       
       // Camera orbit
       const time = Date.now() * 0.0003;
-      camera.position.x = Math.sin(time) * 250;
-      camera.position.z = Math.cos(time) * 250;
+      camera.position.x = Math.sin(time) * 180;
+      camera.position.z = Math.cos(time) * 180;
       camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
@@ -314,17 +314,17 @@ const DomainVisibility: React.FC = () => {
         const centerY = canvas.height / 2;
         
         // Draw central star
-        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 30);
+        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 20);
         gradient.addColorStop(0, data.color);
         gradient.addColorStop(0.5, data.color + '80');
         gradient.addColorStop(1, data.color + '00');
         ctx.fillStyle = gradient;
-        ctx.fillRect(centerX - 30, centerY - 30, 60, 60);
+        ctx.fillRect(centerX - 20, centerY - 20, 40, 40);
         
         // Draw domain points
         data.domains.forEach((domain, index) => {
           const angle = (index / data.domains.length) * Math.PI * 2;
-          const radius = 60 + domain.visibility * 0.5;
+          const radius = 35 + domain.visibility * 0.3;
           const x = centerX + Math.cos(angle) * radius;
           const y = centerY + Math.sin(angle) * radius;
           
@@ -341,20 +341,20 @@ const DomainVisibility: React.FC = () => {
                          domain.risk === 'high' ? '#c084fc' :
                          '#00ffff';
           ctx.beginPath();
-          ctx.arc(x, y, 4, 0, Math.PI * 2);
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
           ctx.fill();
         });
         
         // Label
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 12px monospace';
+        ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(domainType, centerX, centerY - 80);
+        ctx.fillText(domainType, centerX, centerY - 50);
         
         // Metrics
-        ctx.font = '10px monospace';
+        ctx.font = '9px monospace';
         ctx.fillStyle = data.color;
-        ctx.fillText(`${data.visibility}%`, centerX, centerY + 90);
+        ctx.fillText(`${data.visibility}%`, centerX, centerY + 55);
       });
 
       requestAnimationFrame(animate);
@@ -376,160 +376,177 @@ const DomainVisibility: React.FC = () => {
   }, []);
 
   return (
-    <div className="p-8 min-h-screen bg-black">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-          DOMAIN VISIBILITY MATRIX
-        </h1>
-        <p className="text-gray-400 uppercase tracking-widest text-xs">
-          Network Domain Analysis • URL/FQDN Coverage • Real-Time Monitoring
-        </p>
-      </div>
-
-      {/* Domain Selector */}
-      <div className="flex gap-2 mb-8">
-        {['all', 'External', 'Internal', 'Cloud'].map(domain => (
-          <button
-            key={domain}
-            onClick={() => setSelectedDomain(domain)}
-            className={`px-6 py-3 rounded-lg font-bold uppercase tracking-wider transition-all ${
-              selectedDomain === domain
-                ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20'
-                : 'bg-gray-900/50 hover:bg-gray-800/50'
-            }`}
-            style={{
-              border: selectedDomain === domain 
-                ? '2px solid #00ffff' 
-                : '2px solid transparent'
-            }}
-          >
-            <span className={selectedDomain === domain ? 'text-blue-400' : 'text-gray-400'}>
-              {domain}
-            </span>
-          </button>
-        ))}
+    <div className="p-4 h-screen bg-black overflow-hidden flex flex-col">
+      {/* Domain Selector and Stats */}
+      <div className="flex justify-between items-center mb-3">
+        <div className="flex gap-2">
+          {['all', 'External', 'Internal', 'Cloud'].map(domain => (
+            <button
+              key={domain}
+              onClick={() => setSelectedDomain(domain)}
+              className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                selectedDomain === domain
+                  ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20'
+                  : 'bg-gray-900/50 hover:bg-gray-800/50'
+              }`}
+              style={{
+                border: selectedDomain === domain 
+                  ? '1px solid #00ffff' 
+                  : '1px solid transparent'
+              }}
+            >
+              <span className={selectedDomain === domain ? 'text-blue-400' : 'text-gray-400'}>
+                {domain}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-3">
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-white">201K</div>
+            <div className="text-[9px] text-gray-400">Total Assets</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-pink-400">84K</div>
+            <div className="text-[9px] text-gray-400">Gaps</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-blue-400">62.1%</div>
+            <div className="text-[9px] text-gray-400">Avg Visibility</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-purple-400">1,213</div>
+            <div className="text-[9px] text-gray-400">Connections</div>
+          </div>
+        </div>
       </div>
 
       {/* Main Grid */}
-      <div className="grid grid-cols-12 gap-6 mb-8">
+      <div className="flex-1 grid grid-cols-12 gap-3">
         {/* 3D Network Visualization */}
         <div className="col-span-7">
-          <div className="bg-black border border-blue-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-blue-500/20">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                <Network className="w-4 h-4" />
+          <div className="h-full bg-black border border-blue-500/30 rounded-xl overflow-hidden flex flex-col">
+            <div className="p-2 border-b border-blue-500/20">
+              <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                <Network className="w-3 h-3" />
                 Domain Network Topology
               </h3>
             </div>
-            <div ref={networkRef} className="w-full h-[400px]" />
-            
-            {hoveredNode && (
-              <div className="absolute bottom-4 left-4 bg-black/90 rounded-lg border border-blue-500/30 p-3">
-                <div className="text-sm font-bold text-blue-400">{hoveredNode}</div>
-              </div>
-            )}
+            <div className="relative flex-1">
+              <div ref={networkRef} className="w-full h-full" />
+              {hoveredNode && (
+                <div className="absolute bottom-2 left-2 bg-black/90 rounded border border-blue-500/30 px-2 py-1">
+                  <div className="text-xs font-bold text-blue-400">{hoveredNode}</div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Metrics Panel */}
-        <div className="col-span-5 space-y-6">
-          {/* Overall Stats */}
-          <div className="bg-black border border-purple-500/30 rounded-2xl p-6">
-            <h3 className="text-sm font-bold text-purple-400 mb-4 uppercase tracking-wider">
-              Domain Statistics
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-3xl font-bold text-white">201K</div>
-                <div className="text-xs text-gray-400">Total Assets</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-pink-400">84K</div>
-                <div className="text-xs text-gray-400">Visibility Gaps</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-blue-400">62.1%</div>
-                <div className="text-xs text-gray-400">Avg Visibility</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-purple-400">1,213</div>
-                <div className="text-xs text-gray-400">Connections</div>
-              </div>
-            </div>
-          </div>
-
+        {/* Right Column */}
+        <div className="col-span-5 flex flex-col gap-3">
           {/* Constellation Map */}
-          <div className="bg-black border border-pink-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-pink-500/20">
-              <h3 className="text-sm font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
-                <Satellite className="w-4 h-4" />
+          <div className="bg-black border border-pink-500/30 rounded-xl overflow-hidden">
+            <div className="p-2 border-b border-pink-500/20">
+              <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
+                <Satellite className="w-3 h-3" />
                 Domain Constellation
               </h3>
             </div>
-            <canvas ref={constellationRef} className="w-full h-[200px]" />
+            <canvas ref={constellationRef} className="w-full h-[140px]" />
           </div>
-        </div>
-      </div>
 
-      {/* Domain Details Table */}
-      <div className="bg-black border border-blue-500/30 rounded-2xl p-6">
-        <h3 className="text-lg font-bold text-blue-400 mb-4">DOMAIN VISIBILITY DETAILS</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-700">
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Domain Type</th>
-                <th className="text-center py-3 px-4 text-sm font-semibold text-gray-400">Assets</th>
-                <th className="text-center py-3 px-4 text-sm font-semibold text-gray-400">Visibility</th>
-                <th className="text-center py-3 px-4 text-sm font-semibold text-gray-400">Gaps</th>
-                <th className="text-center py-3 px-4 text-sm font-semibold text-gray-400">Status</th>
-                <th className="text-center py-3 px-4 text-sm font-semibold text-gray-400">Data Flow</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(domainData).map(([domain, data]) => (
-                <tr key={domain} className="border-b border-gray-800 hover:bg-gray-900/30 transition-colors">
-                  <td className="py-3 px-4 text-white font-medium">{domain}</td>
-                  <td className="py-3 px-4 text-center font-mono text-gray-300">
-                    {data.totalAssets.toLocaleString()}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <span className={`font-mono font-bold ${
-                        data.visibility < 50 ? 'text-pink-400' : 
-                        data.visibility < 80 ? 'text-purple-400' : 
-                        'text-blue-400'
-                      }`}>
-                        {animatedMetrics[domain]?.toFixed(1) || 0}%
-                      </span>
-                      <div className="w-16 h-2 bg-gray-900 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full transition-all duration-500 bg-gradient-to-r from-blue-400 to-purple-400"
-                          style={{ width: `${animatedMetrics[domain] || 0}%` }}
-                        />
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-center font-mono text-pink-400">
-                    {data.gaps.toLocaleString()}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${
-                      data.status === 'critical' ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50' :
-                      data.status === 'warning' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50' :
-                      'bg-blue-500/20 text-blue-400 border border-blue-500/50'
-                    }`}>
-                      {data.status.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-center font-mono text-purple-400">
-                    {data.dataFlow}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* Domain Details Table */}
+          <div className="flex-1 bg-black border border-blue-500/30 rounded-xl p-3 overflow-hidden">
+            <h3 className="text-xs font-bold text-blue-400 mb-2 uppercase">Domain Visibility Details</h3>
+            <div className="overflow-x-auto overflow-y-auto h-[calc(100%-24px)]">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-black">
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left py-1.5 px-2 text-[10px] font-semibold text-gray-400">Domain</th>
+                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Assets</th>
+                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Visibility</th>
+                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Gaps</th>
+                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Status</th>
+                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Flow</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(domainData).map(([domain, data]) => (
+                    <React.Fragment key={domain}>
+                      <tr className="border-b border-gray-800 hover:bg-gray-900/30 transition-colors">
+                        <td className="py-1.5 px-2 text-white font-medium">{domain}</td>
+                        <td className="py-1.5 px-2 text-center font-mono text-gray-300 text-[10px]">
+                          {(data.totalAssets/1000).toFixed(1)}K
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className={`font-mono font-bold text-[10px] ${
+                              data.visibility < 50 ? 'text-pink-400' : 
+                              data.visibility < 80 ? 'text-purple-400' : 
+                              'text-blue-400'
+                            }`}>
+                              {animatedMetrics[domain]?.toFixed(1) || 0}%
+                            </span>
+                            <div className="w-12 h-1.5 bg-gray-900 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full transition-all duration-500 bg-gradient-to-r from-blue-400 to-purple-400"
+                                style={{ width: `${animatedMetrics[domain] || 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-1.5 px-2 text-center font-mono text-pink-400 text-[10px]">
+                          {(data.gaps/1000).toFixed(1)}K
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                            data.status === 'critical' ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50' :
+                            data.status === 'warning' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50' :
+                            'bg-blue-500/20 text-blue-400 border border-blue-500/50'
+                          }`}>
+                            {data.status.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-2 text-center font-mono text-purple-400 text-[10px]">
+                          {data.dataFlow}
+                        </td>
+                      </tr>
+                      {/* Subdomain rows */}
+                      {selectedDomain === domain && data.domains.slice(0, 2).map(subdomain => (
+                        <tr key={subdomain.name} className="border-b border-gray-900 bg-gray-900/20 text-[9px]">
+                          <td className="py-1 px-4 text-gray-400">↳ {subdomain.name}</td>
+                          <td className="py-1 px-2 text-center font-mono text-gray-500">
+                            {(subdomain.assets/1000).toFixed(1)}K
+                          </td>
+                          <td className="py-1 px-2 text-center">
+                            <span className={`font-mono ${
+                              subdomain.visibility < 50 ? 'text-pink-400' : 
+                              subdomain.visibility < 80 ? 'text-purple-400' : 
+                              'text-blue-400'
+                            }`}>
+                              {subdomain.visibility}%
+                            </span>
+                          </td>
+                          <td className="py-1 px-2 text-center text-gray-500">-</td>
+                          <td className="py-1 px-2 text-center">
+                            <span className={`text-[8px] ${
+                              subdomain.risk === 'critical' ? 'text-pink-400' :
+                              subdomain.risk === 'high' ? 'text-purple-400' :
+                              'text-blue-400'
+                            }`}>
+                              {subdomain.risk}
+                            </span>
+                          </td>
+                          <td className="py-1 px-2 text-center text-gray-500">-</td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>

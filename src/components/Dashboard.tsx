@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Activity, Database, Server, Cloud, AlertCircle, TrendingDown, Eye, BarChart3, Network, Layers, Zap, Cpu, HardDrive, Lock, Globe, Radar, Satellite, Binary, Code } from 'lucide-react';
+import { Shield, Activity, Database, Server, Cloud, AlertCircle, TrendingDown, Eye, BarChart3, Network, Layers, Zap, Cpu, HardDrive, Lock, Globe, Radar, Satellite, Binary, Code, Wifi, AlertTriangle, XCircle, CheckCircle } from 'lucide-react';
 import * as THREE from 'three';
 
 interface DashboardProps {
@@ -19,27 +19,26 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
   const hologramRef = useRef<HTMLDivElement>(null);
   const matrixRef = useRef<HTMLCanvasElement>(null);
   const pulseRef = useRef<HTMLCanvasElement>(null);
-  const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
+  const threatRef = useRef<HTMLCanvasElement>(null);
+  const barChartRef = useRef<HTMLCanvasElement>(null);
+  const [glitchActive, setGlitchActive] = useState(false);
 
-  // 3D Holographic Core Visualization
+  // 3D Holographic Core Visualization with proper colors
   useEffect(() => {
     if (!hologramRef.current) return;
 
-    // Scene setup
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x000000, 0.002);
 
-    // Camera
     const camera = new THREE.PerspectiveCamera(
       60,
       hologramRef.current.clientWidth / hologramRef.current.clientHeight,
       0.1,
       1000
     );
-    camera.position.set(0, 50, 150);
+    camera.position.set(0, 30, 80);
     camera.lookAt(0, 0, 0);
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ 
       antialias: true, 
       alpha: true 
@@ -48,49 +47,44 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     renderer.setPixelRatio(window.devicePixelRatio);
     hologramRef.current.appendChild(renderer.domElement);
 
-    // Central Core - Multi-layered sphere
+    // Central Core System with proper colors
     const coreGroup = new THREE.Group();
     
-    // Inner core
-    const innerGeometry = new THREE.IcosahedronGeometry(15, 2);
+    // Inner core - color based on coverage
+    const innerGeometry = new THREE.IcosahedronGeometry(8, 2);
     const innerMaterial = new THREE.MeshPhongMaterial({
-      color: 0xff00ff,
-      emissive: 0xff00ff,
+      color: metrics.csocCoverage < 20 ? 0xff00ff : metrics.csocCoverage < 50 ? 0xc084fc : 0x00ffff,
+      emissive: metrics.csocCoverage < 20 ? 0xff00ff : metrics.csocCoverage < 50 ? 0xc084fc : 0x00ffff,
       emissiveIntensity: 0.5,
       wireframe: false,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.9
     });
     const innerCore = new THREE.Mesh(innerGeometry, innerMaterial);
     coreGroup.add(innerCore);
 
-    // Middle layer - represents coverage
-    const middleGeometry = new THREE.IcosahedronGeometry(25, 1);
-    const middleMaterial = new THREE.MeshPhongMaterial({
-      color: 0xc084fc,
-      wireframe: true,
-      transparent: true,
-      opacity: metrics.csocCoverage / 100
-    });
-    const middleCore = new THREE.Mesh(middleGeometry, middleMaterial);
-    coreGroup.add(middleCore);
-
-    // Outer shield
-    const outerGeometry = new THREE.IcosahedronGeometry(35, 1);
-    const outerMaterial = new THREE.MeshPhongMaterial({
-      color: 0x00ffff,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.3
-    });
-    const outerCore = new THREE.Mesh(outerGeometry, outerMaterial);
-    coreGroup.add(outerCore);
+    // Data streams - wireframe layers
+    for (let i = 0; i < 3; i++) {
+      const streamGeometry = new THREE.IcosahedronGeometry(12 + i * 6, 1);
+      const streamMaterial = new THREE.MeshPhongMaterial({
+        color: i === 0 ? 0x00ffff : i === 1 ? 0xc084fc : 0xff00ff,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.3 + (metrics.csocCoverage / 200)
+      });
+      const stream = new THREE.Mesh(streamGeometry, streamMaterial);
+      stream.userData = { layer: i };
+      coreGroup.add(stream);
+    }
 
     scene.add(coreGroup);
 
-    // Orbital rings representing different platforms
-    const createRing = (radius: number, color: number, coverage: number) => {
-      const ringGeometry = new THREE.TorusGeometry(radius, 2, 8, 100);
+    // Platform rings with correct colors
+    const rings: THREE.Mesh[] = [];
+    const createDataRing = (radius: number, color: number, coverage: number, rotSpeed: number) => {
+      const ringGroup = new THREE.Group();
+      
+      const ringGeometry = new THREE.TorusGeometry(radius, 1.2, 6, 100);
       const ringMaterial = new THREE.MeshPhongMaterial({
         color: color,
         emissive: color,
@@ -99,85 +93,81 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
         opacity: coverage / 100
       });
       const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-      ring.rotation.x = Math.random() * Math.PI;
-      ring.rotation.y = Math.random() * Math.PI;
-      return ring;
+      ring.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+      ring.userData = { rotSpeed };
+      ringGroup.add(ring);
+      rings.push(ring);
+      
+      return ringGroup;
     };
 
-    const csocRing = createRing(50, 0x00ffff, metrics.csocCoverage);
-    const splunkRing = createRing(60, 0xc084fc, metrics.splunkCoverage);
-    const chronicleRing = createRing(70, 0xff00ff, metrics.chronicleCoverage);
+    const csocRing = createDataRing(32, 0x00ffff, metrics.csocCoverage, 0.002);
+    const splunkRing = createDataRing(38, 0xc084fc, metrics.splunkCoverage, -0.003);
+    const chronicleRing = createDataRing(44, 0xff00ff, metrics.chronicleCoverage, 0.004);
     
     scene.add(csocRing);
     scene.add(splunkRing);
     scene.add(chronicleRing);
 
-    // Threat particles
-    const particleCount = 1000;
-    const particlesGeometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
+    // Threat particles with proper colors
+    const threatCount = 500;
+    const threatsGeometry = new THREE.BufferGeometry();
+    const threatPositions = new Float32Array(threatCount * 3);
+    const threatColors = new Float32Array(threatCount * 3);
 
-    for (let i = 0; i < particleCount * 3; i += 3) {
-      const radius = 30 + Math.random() * 100;
+    for (let i = 0; i < threatCount; i++) {
+      const radius = 15 + Math.random() * 50;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.random() * Math.PI;
       
-      positions[i] = radius * Math.sin(phi) * Math.cos(theta);
-      positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
-      positions[i + 2] = radius * Math.cos(phi);
+      threatPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      threatPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+      threatPositions[i * 3 + 2] = radius * Math.cos(phi);
       
-      // Color based on threat level
-      if (metrics.csocCoverage < 20) {
-        colors[i] = 1; colors[i + 1] = 0; colors[i + 2] = 1; // Pink for critical
-      } else if (metrics.csocCoverage < 50) {
-        colors[i] = 0.75; colors[i + 1] = 0.52; colors[i + 2] = 0.99; // Purple for warning
+      // Use proper color scheme
+      const severity = Math.random();
+      if (severity > 0.7) {
+        // Pink for critical
+        threatColors[i * 3] = 1;
+        threatColors[i * 3 + 1] = 0;
+        threatColors[i * 3 + 2] = 1;
+      } else if (severity > 0.4) {
+        // Purple for warning
+        threatColors[i * 3] = 0.75;
+        threatColors[i * 3 + 1] = 0.52;
+        threatColors[i * 3 + 2] = 0.99;
       } else {
-        colors[i] = 0; colors[i + 1] = 1; colors[i + 2] = 1; // Blue for normal
+        // Cyan for normal
+        threatColors[i * 3] = 0;
+        threatColors[i * 3 + 1] = 1;
+        threatColors[i * 3 + 2] = 1;
       }
     }
 
-    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    threatsGeometry.setAttribute('position', new THREE.BufferAttribute(threatPositions, 3));
+    threatsGeometry.setAttribute('color', new THREE.BufferAttribute(threatColors, 3));
 
-    const particlesMaterial = new THREE.PointsMaterial({
-      size: 1,
+    const threatsMaterial = new THREE.PointsMaterial({
+      size: 1.5,
       vertexColors: true,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.7,
       blending: THREE.AdditiveBlending
     });
 
-    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
-    scene.add(particles);
+    const threats = new THREE.Points(threatsGeometry, threatsMaterial);
+    scene.add(threats);
 
-    // Data streams
-    const streamGroup = new THREE.Group();
-    for (let i = 0; i < 5; i++) {
-      const streamGeometry = new THREE.CylinderGeometry(0.5, 0.5, 100, 8);
-      const streamMaterial = new THREE.MeshBasicMaterial({
-        color: 0x00ffff,
-        transparent: true,
-        opacity: 0.3
-      });
-      const stream = new THREE.Mesh(streamGeometry, streamMaterial);
-      const angle = (i / 5) * Math.PI * 2;
-      stream.position.x = Math.cos(angle) * 80;
-      stream.position.z = Math.sin(angle) * 80;
-      streamGroup.add(stream);
-    }
-    scene.add(streamGroup);
-
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040);
+    // Lighting with proper colors
+    const ambientLight = new THREE.AmbientLight(0x0a0a0a);
     scene.add(ambientLight);
 
-    const pointLight1 = new THREE.PointLight(0x00ffff, 1, 200);
-    pointLight1.position.set(100, 50, 100);
+    const pointLight1 = new THREE.PointLight(0x00ffff, 2, 150);
+    pointLight1.position.set(50, 30, 50);
     scene.add(pointLight1);
 
-    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 200);
-    pointLight2.position.set(-100, 50, -100);
+    const pointLight2 = new THREE.PointLight(0xff00ff, 2, 150);
+    pointLight2.position.set(-50, 30, -50);
     scene.add(pointLight2);
 
     // Animation loop
@@ -185,35 +175,39 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       
-      // Rotate cores
+      // Rotate and pulse core
       innerCore.rotation.x += 0.01;
       innerCore.rotation.y += 0.01;
-      middleCore.rotation.x -= 0.005;
-      middleCore.rotation.z += 0.005;
-      outerCore.rotation.y += 0.003;
-      
-      // Rotate rings
-      csocRing.rotation.x += 0.002;
-      csocRing.rotation.y += 0.003;
-      splunkRing.rotation.x -= 0.003;
-      splunkRing.rotation.z += 0.002;
-      chronicleRing.rotation.y += 0.004;
-      chronicleRing.rotation.z -= 0.002;
-      
-      // Animate particles
-      particles.rotation.y += 0.001;
-      
-      // Pulse core based on coverage
-      const scale = 1 + Math.sin(Date.now() * 0.002) * 0.1;
-      innerCore.scale.setScalar(scale);
+      const pulse = 1 + Math.sin(Date.now() * 0.003) * 0.1;
+      innerCore.scale.setScalar(pulse);
       
       // Rotate data streams
-      streamGroup.rotation.y += 0.001;
+      coreGroup.children.forEach((child: any) => {
+        if (child.userData.layer !== undefined) {
+          child.rotation.x += 0.003 * (child.userData.layer + 1);
+          child.rotation.y -= 0.002 * (child.userData.layer + 1);
+          child.rotation.z += 0.001 * (child.userData.layer + 1);
+        }
+      });
       
-      // Camera movement
-      const time = Date.now() * 0.0005;
-      camera.position.x = Math.sin(time) * 150;
-      camera.position.z = Math.cos(time) * 150;
+      // Animate rings
+      rings.forEach(ring => {
+        ring.rotation.z += ring.userData.rotSpeed;
+      });
+      
+      // Animate threats
+      threats.rotation.y += 0.0005;
+      const positions = threats.geometry.attributes.position.array as Float32Array;
+      for (let i = 0; i < threatCount; i++) {
+        positions[i * 3 + 1] += Math.sin(Date.now() * 0.001 + i) * 0.05;
+      }
+      threats.geometry.attributes.position.needsUpdate = true;
+      
+      // Dynamic camera
+      const time = Date.now() * 0.0003;
+      camera.position.x = Math.sin(time) * 80;
+      camera.position.z = Math.cos(time) * 80;
+      camera.position.y = 30 + Math.sin(time * 2) * 10;
       camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
@@ -221,7 +215,6 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
 
     animate();
 
-    // Cleanup
     return () => {
       if (frameId) cancelAnimationFrame(frameId);
       if (hologramRef.current && renderer.domElement) {
@@ -231,7 +224,85 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     };
   }, [metrics]);
 
-  // Matrix Rain Effect
+  // Animated Bar Chart
+  useEffect(() => {
+    const canvas = barChartRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const bars = [
+      { label: 'CSOC', value: metrics.csocCoverage, color: '#00ffff', target: 100 },
+      { label: 'Splunk', value: metrics.splunkCoverage, color: '#c084fc', target: 100 },
+      { label: 'Chronicle', value: metrics.chronicleCoverage, color: '#ff00ff', target: 100 }
+    ];
+
+    let animatedBars = bars.map(b => ({ ...b, current: 0 }));
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const barWidth = canvas.width / bars.length - 20;
+      const maxHeight = canvas.height - 40;
+
+      animatedBars.forEach((bar, index) => {
+        if (bar.current < bar.value) {
+          bar.current += 0.5;
+        }
+
+        const x = 10 + index * (barWidth + 20);
+        const height = (bar.current / 100) * maxHeight;
+        const y = canvas.height - height - 20;
+
+        // Bar gradient
+        const gradient = ctx.createLinearGradient(x, y, x, y + height);
+        gradient.addColorStop(0, bar.color);
+        gradient.addColorStop(1, bar.color + '40');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x, y, barWidth, height);
+
+        // Glow effect
+        ctx.shadowColor = bar.color;
+        ctx.shadowBlur = 10;
+        ctx.fillRect(x, y, barWidth, 2);
+        ctx.shadowBlur = 0;
+
+        // Value text
+        ctx.fillStyle = bar.color;
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${Math.round(bar.current)}%`, x + barWidth / 2, y - 5);
+
+        // Label
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '8px monospace';
+        ctx.fillText(bar.label, x + barWidth / 2, canvas.height - 5);
+
+        // Critical line
+        if (bar.current < 20) {
+          ctx.strokeStyle = '#ff00ff';
+          ctx.setLineDash([2, 2]);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + barWidth, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      });
+
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  }, [metrics]);
+
+  // Matrix Rain with proper colors
   useEffect(() => {
     const canvas = matrixRef.current;
     if (!canvas) return;
@@ -242,25 +313,26 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
-    const columns = Math.floor(canvas.width / 20);
+    const columns = Math.floor(canvas.width / 10);
     const drops: number[] = [];
+    
     for (let i = 0; i < columns; i++) {
       drops[i] = Math.random() * -100;
     }
 
-    const matrix = '01';
+    const matrix = '01CSOC1917CRITICAL';
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      ctx.font = '15px monospace';
+      ctx.font = 'bold 10px monospace';
       
       for (let i = 0; i < drops.length; i++) {
         const text = matrix[Math.floor(Math.random() * matrix.length)];
-        const x = i * 20;
-        const y = drops[i] * 20;
+        const x = i * 10;
+        const y = drops[i] * 10;
         
-        // Color based on platform
+        // Use proper colors
         if (i % 3 === 0) ctx.fillStyle = '#00ffff';
         else if (i % 3 === 1) ctx.fillStyle = '#c084fc';
         else ctx.fillStyle = '#ff00ff';
@@ -279,7 +351,77 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     animate();
   }, []);
 
-  // Pulse Wave Visualization
+  // Threat Network Graph
+  useEffect(() => {
+    const canvas = threatRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const particles: any[] = [];
+    for (let i = 0; i < 30; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 1,
+        vy: (Math.random() - 0.5) * 1,
+        size: Math.random() * 3 + 1,
+        color: Math.random() > 0.5 ? '#ff00ff' : Math.random() > 0.5 ? '#c084fc' : '#00ffff'
+      });
+    }
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw connections
+      particles.forEach((p1, i) => {
+        particles.forEach((p2, j) => {
+          if (i !== j) {
+            const dx = p1.x - p2.x;
+            const dy = p1.y - p2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < 80) {
+              const opacity = (1 - distance / 80) * 0.5;
+              ctx.strokeStyle = `rgba(192, 132, 252, ${opacity})`;
+              ctx.lineWidth = 0.5;
+              ctx.beginPath();
+              ctx.moveTo(p1.x, p1.y);
+              ctx.lineTo(p2.x, p2.y);
+              ctx.stroke();
+            }
+          }
+        });
+        
+        // Update particle
+        p1.x += p1.vx;
+        p1.y += p1.vy;
+        
+        if (p1.x < 0 || p1.x > canvas.width) p1.vx *= -1;
+        if (p1.y < 0 || p1.y > canvas.height) p1.vy *= -1;
+        
+        // Draw particle with glow
+        ctx.shadowColor = p1.color;
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = p1.color;
+        ctx.beginPath();
+        ctx.arc(p1.x, p1.y, p1.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
+
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  }, []);
+
+  // Wave Visualization with proper colors
   useEffect(() => {
     const canvas = pulseRef.current;
     if (!canvas) return;
@@ -291,29 +433,30 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     canvas.height = canvas.offsetHeight;
 
     const animate = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const time = Date.now() * 0.001;
       
-      // Draw three waves for each platform
+      // Platform waves
       const platforms = [
-        { coverage: metrics.csocCoverage, color: '#00ffff', offset: 0 },
-        { coverage: metrics.splunkCoverage, color: '#c084fc', offset: 2 },
-        { coverage: metrics.chronicleCoverage, color: '#ff00ff', offset: 4 }
+        { coverage: metrics.csocCoverage, color: '#00ffff', offset: 0, freq: 1 },
+        { coverage: metrics.splunkCoverage, color: '#c084fc', offset: 2, freq: 1.5 },
+        { coverage: metrics.chronicleCoverage, color: '#ff00ff', offset: 4, freq: 2 }
       ];
 
-      platforms.forEach(platform => {
+      platforms.forEach((platform, idx) => {
         ctx.strokeStyle = platform.color;
         ctx.lineWidth = 2;
         ctx.globalAlpha = 0.8;
         ctx.beginPath();
         
-        for (let x = 0; x < canvas.width; x += 2) {
+        for (let x = 0; x < canvas.width; x++) {
           const y = canvas.height / 2 + 
-                   Math.sin((x / 50) + time + platform.offset) * 
-                   (platform.coverage / 2) * 
-                   Math.sin(time * 0.5);
+                   Math.sin((x / 30) * platform.freq + time + platform.offset) * 
+                   (platform.coverage / 3) * 
+                   Math.sin(time * 0.5 + idx) +
+                   Math.sin((x / 10) + time * 2) * 5;
           
           if (x === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
@@ -343,233 +486,148 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
   }, [metrics]);
 
   const criticalSystems = [
-    { name: 'EMEA Region', coverage: 12.3, gap: 78456, status: 'critical' },
-    { name: 'Linux Servers', coverage: 69.29, gap: 24001, status: 'warning' },
-    { name: 'Network Appliances', coverage: 45.2, gap: 7537, status: 'warning' },
-    { name: 'Cloud Infrastructure', coverage: 19.17, gap: 40626, status: 'critical' }
+    { name: 'EMEA', coverage: 12.3, gap: 78456, status: 'critical' },
+    { name: 'Linux', coverage: 69.29, gap: 24001, status: 'warning' },
+    { name: 'Network', coverage: 45.2, gap: 7537, status: 'warning' },
+    { name: 'Cloud', coverage: 19.17, gap: 40626, status: 'critical' }
   ];
 
   return (
-    <div className="p-8 bg-black min-h-screen">
-      {/* Header Section */}
-      <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-          QUANTUM SECURITY COMMAND CENTER
-        </h1>
-        <p className="text-gray-400 uppercase tracking-widest text-xs">
-          Real-Time Visibility Matrix • {metrics.totalAssets.toLocaleString()} Assets Under Surveillance
-        </p>
-      </div>
-
+    <div className="p-2 bg-black h-screen overflow-hidden flex flex-col">
       {/* Critical Alert */}
-      <div className="mb-8 bg-black border border-pink-500/30 rounded-xl p-6">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <AlertCircle className="w-8 h-8 text-pink-400 animate-pulse" />
-            <div className="absolute inset-0 w-8 h-8">
-              <AlertCircle className="w-8 h-8 text-pink-400 animate-ping" />
+      <div className="mb-2 bg-black border border-pink-500/50 rounded-lg p-1.5">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-pink-400 animate-pulse" />
+          <span className="text-pink-400 font-bold text-xs">CRITICAL:</span>
+          <span className="text-white text-xs">CSOC {metrics.csocCoverage}% • {(metrics.criticalGaps/1000).toFixed(0)}K GAPS</span>
+        </div>
+      </div>
+
+      {/* Metrics Bar */}
+      <div className="grid grid-cols-6 gap-1.5 mb-2">
+        {[
+          { icon: Database, value: (animatedValues.assets / 1000 || 0).toFixed(0) + 'K', label: 'Assets', color: '#00ffff' },
+          { icon: Eye, value: metrics.csocCoverage + '%', label: 'CSOC', color: '#ff00ff' },
+          { icon: Server, value: metrics.splunkCoverage + '%', label: 'Splunk', color: '#c084fc' },
+          { icon: Cloud, value: metrics.chronicleCoverage + '%', label: 'Chronicle', color: '#00ffff' },
+          { icon: AlertCircle, value: (animatedValues.gaps / 1000 || 0).toFixed(0) + 'K', label: 'Gaps', color: '#ff00ff' },
+          { icon: Shield, value: 'CRITICAL', label: 'Risk', color: '#ff00ff' }
+        ].map((metric, idx) => (
+          <div key={idx} className="bg-gray-900/30 rounded-lg p-1.5 border border-gray-800">
+            <metric.icon className="w-3 h-3 mb-0.5" style={{ color: metric.color }} />
+            <div className="text-sm font-bold" style={{ color: metric.color }}>
+              {metric.value}
+            </div>
+            <div className="text-[8px] text-gray-500">{metric.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Main Grid */}
+      <div className="flex-1 grid grid-cols-12 gap-2">
+        {/* 3D Core */}
+        <div className="col-span-5">
+          <div className="bg-black border border-blue-500/30 rounded-lg overflow-hidden h-full">
+            <div className="p-1.5 border-b border-blue-500/20">
+              <h3 className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">
+                SECURITY CORE
+              </h3>
+            </div>
+            <div ref={hologramRef} className="w-full" style={{ height: 'calc(100% - 32px)' }} />
+          </div>
+        </div>
+
+        {/* Visualizations */}
+        <div className="col-span-7 grid grid-rows-2 gap-2">
+          {/* Top Row */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Bar Chart */}
+            <div className="bg-black border border-purple-500/30 rounded-lg overflow-hidden">
+              <div className="p-1.5 border-b border-purple-500/20">
+                <h3 className="text-[9px] font-bold text-purple-400 uppercase">COVERAGE LEVELS</h3>
+              </div>
+              <canvas ref={barChartRef} className="w-full" style={{ height: 'calc(100% - 28px)' }} />
+            </div>
+
+            {/* Matrix Rain */}
+            <div className="bg-black border border-blue-500/30 rounded-lg overflow-hidden">
+              <div className="p-1.5 border-b border-blue-500/20">
+                <h3 className="text-[9px] font-bold text-blue-400 uppercase">DATA STREAM</h3>
+              </div>
+              <canvas ref={matrixRef} className="w-full" style={{ height: 'calc(100% - 28px)' }} />
             </div>
           </div>
-          <div>
-            <h3 className="text-xl font-bold text-pink-400">CRITICAL VISIBILITY BREACH</h3>
-            <p className="text-white mt-1">
-              CSOC coverage at {metrics.csocCoverage}% - {metrics.criticalGaps.toLocaleString()} assets compromised
-            </p>
-            <p className="text-gray-400 text-sm mt-2">
-              Immediate deployment required: 80% minimum coverage for compliance
-            </p>
+
+          {/* Bottom Row */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Threat Network */}
+            <div className="bg-black border border-pink-500/30 rounded-lg overflow-hidden">
+              <div className="p-1.5 border-b border-pink-500/20">
+                <h3 className="text-[9px] font-bold text-pink-400 uppercase">THREAT NETWORK</h3>
+              </div>
+              <canvas ref={threatRef} className="w-full" style={{ height: 'calc(100% - 28px)' }} />
+            </div>
+
+            {/* Pulse Wave */}
+            <div className="bg-black border border-purple-500/30 rounded-lg overflow-hidden">
+              <div className="p-1.5 border-b border-purple-500/20">
+                <h3 className="text-[9px] font-bold text-purple-400 uppercase">SYSTEM PULSE</h3>
+              </div>
+              <canvas ref={pulseRef} className="w-full" style={{ height: 'calc(100% - 28px)' }} />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Dashboard Grid */}
-      <div className="grid grid-cols-12 gap-6 mb-8">
-        {/* 3D Holographic Core */}
-        <div className="col-span-7">
-          <div className="bg-black border border-blue-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-blue-500/20">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                <Globe className="w-4 h-4" />
-                Security Core Matrix
-              </h3>
-            </div>
-            <div ref={hologramRef} className="w-full h-[400px]" />
-            <div className="p-4 grid grid-cols-3 gap-4 border-t border-blue-500/20">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-400">{animatedValues.csoc?.toFixed(1) || 0}%</div>
-                <div className="text-xs text-gray-400">CSOC Shield</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-400">{animatedValues.splunk?.toFixed(1) || 0}%</div>
-                <div className="text-xs text-gray-400">Splunk Grid</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-pink-400">{animatedValues.chronicle?.toFixed(1) || 0}%</div>
-                <div className="text-xs text-gray-400">Chronicle Net</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Side Metrics */}
-        <div className="col-span-5 space-y-6">
-          {/* Matrix Rain */}
-          <div className="bg-black border border-purple-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-purple-500/20">
-              <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                <Binary className="w-4 h-4" />
-                Data Stream Matrix
-              </h3>
-            </div>
-            <canvas ref={matrixRef} className="w-full h-[180px]" />
-          </div>
-
-          {/* Pulse Wave */}
-          <div className="bg-black border border-pink-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-pink-500/20">
-              <h3 className="text-sm font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                Coverage Pulse Analysis
-              </h3>
-            </div>
-            <canvas ref={pulseRef} className="w-full h-[180px]" />
-          </div>
-        </div>
-      </div>
-
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-5 gap-4 mb-8">
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800 hover:border-blue-500/50 transition-all">
-          <Database className="w-6 h-6 text-blue-400 mb-3" />
-          <div className="text-3xl font-bold text-white">{(animatedValues.assets / 1000 || 0).toFixed(1)}K</div>
-          <div className="text-sm text-gray-400">Total Assets</div>
-          <div className="mt-3 text-xs text-blue-400">100% CMDB</div>
-        </div>
-
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-pink-500/30 hover:border-pink-500/50 transition-all">
-          <Eye className="w-6 h-6 text-pink-400 mb-3" />
-          <div className="text-3xl font-bold text-pink-400">{metrics.csocCoverage}%</div>
-          <div className="text-sm text-gray-400">CSOC Visibility</div>
-          <div className="mt-3 text-xs text-pink-400">↓ 60.83% below</div>
-        </div>
-
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800 hover:border-purple-500/50 transition-all">
-          <Server className="w-6 h-6 text-purple-400 mb-3" />
-          <div className="text-3xl font-bold text-purple-400">{metrics.splunkCoverage}%</div>
-          <div className="text-sm text-gray-400">Splunk Coverage</div>
-          <div className="mt-3 text-xs text-purple-400">Partial deploy</div>
-        </div>
-
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800 hover:border-blue-500/50 transition-all">
-          <Cloud className="w-6 h-6 text-blue-400 mb-3" />
-          <div className="text-3xl font-bold text-blue-400">{metrics.chronicleCoverage}%</div>
-          <div className="text-sm text-gray-400">Chronicle</div>
-          <div className="mt-3 text-xs text-blue-400">Near complete</div>
-        </div>
-
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-pink-500/30 hover:border-pink-500/50 transition-all">
-          <AlertCircle className="w-6 h-6 text-pink-400 mb-3" />
-          <div className="text-3xl font-bold text-pink-400">{(animatedValues.gaps / 1000 || 0).toFixed(0)}K</div>
-          <div className="text-sm text-gray-400">Critical Gaps</div>
-          <div className="mt-3 text-xs text-pink-400">URGENT</div>
-        </div>
-      </div>
-
-      {/* Critical Systems Grid */}
-      <div className="grid grid-cols-2 gap-6 mb-8">
-        <div className="bg-gray-900/30 rounded-2xl p-6 border border-gray-800">
-          <h3 className="text-lg font-semibold text-blue-400 mb-4">CRITICAL SYSTEM GAPS</h3>
-          <div className="space-y-3">
-            {criticalSystems.map((system, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-black/50 rounded-lg border border-gray-800">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full animate-pulse ${
-                    system.status === 'critical' ? 'bg-pink-400' : 'bg-purple-400'
-                  }`} />
-                  <span className="text-white">{system.name}</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className={`text-sm font-mono ${
-                    system.status === 'critical' ? 'text-pink-400' : 'text-purple-400'
+      {/* Bottom Status */}
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        {/* Critical Systems */}
+        <div className="bg-gray-900/30 rounded-lg p-2 border border-gray-800">
+          <h3 className="text-xs font-bold text-pink-400 mb-1.5">CRITICAL SYSTEMS</h3>
+          <div className="space-y-1">
+            {criticalSystems.map((sys, idx) => (
+              <div key={idx} className="flex justify-between items-center p-1 bg-black/50 rounded border border-gray-800">
+                <span className="text-[9px] text-white">{sys.name}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[9px] font-mono ${
+                    sys.status === 'critical' ? 'text-pink-400' : 'text-purple-400'
                   }`}>
-                    {system.coverage}%
+                    {sys.coverage}%
                   </span>
-                  <span className="text-sm text-gray-400">
-                    {(system.gap / 1000).toFixed(1)}K gap
-                  </span>
+                  <span className="text-[8px] text-gray-500">{(sys.gap/1000).toFixed(0)}K</span>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-gray-900/30 rounded-2xl p-6 border border-gray-800">
-          <h3 className="text-lg font-semibold text-purple-400 mb-4">COMPLIANCE STATUS</h3>
-          <div className="space-y-3">
-            {['ISO 27001', 'NIST CSF', 'PCI DSS', 'SOX'].map((standard, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-black/50 rounded-lg border border-gray-800">
-                <span className="text-white">{standard}</span>
-                <span className={`text-sm font-bold ${
-                  idx === 2 ? 'text-purple-400' : 'text-pink-400'
-                }`}>
-                  {idx === 2 ? 'AT RISK' : 'FAILED'}
-                </span>
+        {/* Platform Progress */}
+        <div className="bg-gray-900/30 rounded-lg p-2 border border-gray-800">
+          <h3 className="text-xs font-bold text-purple-400 mb-1.5">PLATFORM STATUS</h3>
+          <div className="space-y-1.5">
+            {[
+              { name: 'CSOC', value: animatedValues.csoc, color: '#00ffff' },
+              { name: 'Splunk', value: animatedValues.splunk, color: '#c084fc' },
+              { name: 'Chronicle', value: animatedValues.chronicle, color: '#ff00ff' }
+            ].map((platform, idx) => (
+              <div key={idx}>
+                <div className="flex justify-between text-[9px] mb-0.5">
+                  <span style={{ color: platform.color }}>{platform.name}</span>
+                  <span className="font-mono" style={{ color: platform.color }}>
+                    {(platform.value || 0).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="h-1.5 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+                  <div 
+                    className="h-full rounded-full transition-all duration-1000"
+                    style={{ 
+                      width: `${platform.value || 0}%`,
+                      background: platform.color
+                    }}
+                  />
+                </div>
               </div>
             ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Platform Coverage Comparison */}
-      <div className="bg-gray-900/30 rounded-2xl p-6 border border-gray-800">
-        <h3 className="text-lg font-semibold text-white mb-6">PLATFORM COVERAGE ANALYSIS</h3>
-        <div className="space-y-4">
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-blue-400">CSOC (Google Chronicle)</span>
-              <span className="font-mono text-blue-400">{animatedValues.csoc?.toFixed(1) || 0}%</span>
-            </div>
-            <div className="relative h-8 bg-black/50 rounded-full overflow-hidden border border-gray-800">
-              <div 
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-400 to-blue-500 transition-all duration-1000 rounded-full"
-                style={{ width: `${animatedValues.csoc || 0}%` }}
-              />
-              <div className="absolute inset-0 flex items-center px-4">
-                <span className="text-xs text-gray-400">50,237 / 262,032 assets</span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-purple-400">Splunk</span>
-              <span className="font-mono text-purple-400">{animatedValues.splunk?.toFixed(1) || 0}%</span>
-            </div>
-            <div className="relative h-8 bg-black/50 rounded-full overflow-hidden border border-gray-800">
-              <div 
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-purple-400 to-purple-500 transition-all duration-1000 rounded-full"
-                style={{ width: `${animatedValues.splunk || 0}%` }}
-              />
-              <div className="absolute inset-0 flex items-center px-4">
-                <span className="text-xs text-gray-400">167,517 / 262,032 assets</span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-pink-400">Chronicle (Direct)</span>
-              <span className="font-mono text-pink-400">{animatedValues.chronicle?.toFixed(1) || 0}%</span>
-            </div>
-            <div className="relative h-8 bg-black/50 rounded-full overflow-hidden border border-gray-800">
-              <div 
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-pink-400 to-pink-500 transition-all duration-1000 rounded-full"
-                style={{ width: `${animatedValues.chronicle || 0}%` }}
-              />
-              <div className="absolute inset-0 flex items-center px-4">
-                <span className="text-xs text-gray-400">241,691 / 262,032 assets</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>

@@ -262,7 +262,7 @@ const ComplianceMatrix: React.FC = () => {
       0.1,
       1000
     );
-    camera.position.set(200, 200, 200);
+    camera.position.set(150, 150, 150);
     camera.lookAt(0, 0, 0);
 
     // Renderer
@@ -278,8 +278,8 @@ const ComplianceMatrix: React.FC = () => {
     // Create Rubik's Cube structure
     const cubeGroup = new THREE.Group();
     const cubeSize = 3;
-    const segmentSize = 20;
-    const gap = 2;
+    const segmentSize = 15;
+    const gap = 1.5;
 
     // Create individual cube segments
     Object.entries(complianceData).forEach(([framework, data], frameworkIndex) => {
@@ -318,7 +318,7 @@ const ComplianceMatrix: React.FC = () => {
             cubeGroup.add(cube);
             
             // Add wireframe
-            const wireframeGeometry = new THREE.BoxGeometry(segmentSize + 1, segmentSize + 1, segmentSize + 1);
+            const wireframeGeometry = new THREE.BoxGeometry(segmentSize + 0.5, segmentSize + 0.5, segmentSize + 0.5);
             const wireframeMaterial = new THREE.MeshBasicMaterial({
               color: color,
               wireframe: true,
@@ -337,10 +337,10 @@ const ComplianceMatrix: React.FC = () => {
 
     // Add glitch effects for violations
     const glitchGroup = new THREE.Group();
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 10; i++) {
       const glitchGeometry = new THREE.PlaneGeometry(
-        Math.random() * 10 + 5,
-        Math.random() * 10 + 5
+        Math.random() * 8 + 4,
+        Math.random() * 8 + 4
       );
       const glitchMaterial = new THREE.MeshBasicMaterial({
         color: 0xff00ff,
@@ -351,9 +351,9 @@ const ComplianceMatrix: React.FC = () => {
       
       const glitch = new THREE.Mesh(glitchGeometry, glitchMaterial);
       glitch.position.set(
-        (Math.random() - 0.5) * 100,
-        (Math.random() - 0.5) * 100,
-        (Math.random() - 0.5) * 100
+        (Math.random() - 0.5) * 80,
+        (Math.random() - 0.5) * 80,
+        (Math.random() - 0.5) * 80
       );
       glitch.rotation.set(
         Math.random() * Math.PI,
@@ -366,15 +366,15 @@ const ComplianceMatrix: React.FC = () => {
     scene.add(glitchGroup);
 
     // Particle system for audit events
-    const particleCount = 1000;
+    const particleCount = 500;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount * 3; i += 3) {
-      positions[i] = (Math.random() - 0.5) * 200;
-      positions[i + 1] = (Math.random() - 0.5) * 200;
-      positions[i + 2] = (Math.random() - 0.5) * 200;
+      positions[i] = (Math.random() - 0.5) * 150;
+      positions[i + 1] = (Math.random() - 0.5) * 150;
+      positions[i + 2] = (Math.random() - 0.5) * 150;
       
       // Color based on compliance level
       const complianceLevel = Math.random();
@@ -391,7 +391,7 @@ const ComplianceMatrix: React.FC = () => {
     particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const particlesMaterial = new THREE.PointsMaterial({
-      size: 2,
+      size: 1.5,
       vertexColors: true,
       transparent: true,
       opacity: 0.6,
@@ -405,12 +405,12 @@ const ComplianceMatrix: React.FC = () => {
     const ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
 
-    const pointLight1 = new THREE.PointLight(0x00ffff, 1, 300);
-    pointLight1.position.set(100, 100, 100);
+    const pointLight1 = new THREE.PointLight(0x00ffff, 1, 200);
+    pointLight1.position.set(80, 80, 80);
     scene.add(pointLight1);
 
-    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 300);
-    pointLight2.position.set(-100, -100, -100);
+    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 200);
+    pointLight2.position.set(-80, -80, -80);
     scene.add(pointLight2);
 
     // Mouse interaction for rotation
@@ -477,9 +477,9 @@ const ComplianceMatrix: React.FC = () => {
       // Time-based camera orbit
       if (!isDragging) {
         const time = Date.now() * 0.0002;
-        camera.position.x = Math.sin(time) * 300;
-        camera.position.z = Math.cos(time) * 300;
-        camera.position.y = 150 + Math.sin(time * 2) * 50;
+        camera.position.x = Math.sin(time) * 200;
+        camera.position.z = Math.cos(time) * 200;
+        camera.position.y = 100 + Math.sin(time * 2) * 30;
         camera.lookAt(0, 0, 0);
       }
       
@@ -530,15 +530,15 @@ const ComplianceMatrix: React.FC = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Draw compliance matrix grid
-      const cellSize = 40;
+      const cellSize = 25;
       const frameworks = Object.keys(complianceData);
       const platforms = ['GSO', 'Splunk'];
       
       // Draw grid
       frameworks.forEach((framework, fIndex) => {
         platforms.forEach((platform, pIndex) => {
-          const x = (pIndex + 1) * cellSize * 3;
-          const y = (fIndex + 1) * cellSize * 2;
+          const x = (pIndex + 1) * cellSize * 2.5;
+          const y = (fIndex + 1) * cellSize * 1.5;
           
           const data = complianceData[framework as keyof typeof complianceData];
           const score = platform === 'GSO' ? data.gsoScore : data.splunkScore;
@@ -546,25 +546,25 @@ const ComplianceMatrix: React.FC = () => {
           // Cell background
           const color = score < 30 ? '#ff00ff' : score < 60 ? '#c084fc' : '#00ffff';
           ctx.fillStyle = color + '40';
-          ctx.fillRect(x, y, cellSize * 2, cellSize);
+          ctx.fillRect(x, y, cellSize * 1.5, cellSize);
           
           // Cell border
           ctx.strokeStyle = color;
           ctx.lineWidth = 1;
-          ctx.strokeRect(x, y, cellSize * 2, cellSize);
+          ctx.strokeRect(x, y, cellSize * 1.5, cellSize);
           
           // Score text
           ctx.fillStyle = color;
-          ctx.font = 'bold 14px monospace';
+          ctx.font = 'bold 10px monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(`${score.toFixed(1)}%`, x + cellSize, y + cellSize / 2);
+          ctx.fillText(`${score.toFixed(0)}%`, x + cellSize * 0.75, y + cellSize / 2);
         });
       });
 
       // Draw flowing data streams
       const time = Date.now() * 0.001;
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 3; i++) {
         const x = (Math.sin(time + i) + 1) * canvas.width / 2;
         const gradient = ctx.createLinearGradient(x, 0, x, canvas.height);
         gradient.addColorStop(0, 'rgba(0, 255, 255, 0)');
@@ -578,9 +578,9 @@ const ComplianceMatrix: React.FC = () => {
       // Digital rain characters
       const chars = '01';
       ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
-      ctx.font = '10px monospace';
+      ctx.font = '8px monospace';
       
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 5; i++) {
         const char = chars[Math.floor(Math.random() * chars.length)];
         const x = Math.random() * canvas.width;
         const y = (Date.now() * 0.1 + i * 100) % canvas.height;
@@ -613,75 +613,50 @@ const ComplianceMatrix: React.FC = () => {
 
   const getStatusIcon = (status: string) => {
     switch(status) {
-      case 'complete': return <CheckCircle className="w-5 h-5 text-blue-400" />;
-      case 'partial': return <AlertCircle className="w-5 h-5 text-purple-400" />;
-      case 'failed': return <XCircle className="w-5 h-5 text-pink-400" />;
-      case 'assumed': return <AlertTriangle className="w-5 h-5 text-purple-400" />;
-      case 'notapplicable': return <div className="w-5 h-5 text-gray-500 text-center">N/A</div>;
+      case 'complete': return <CheckCircle className="w-3 h-3 text-blue-400" />;
+      case 'partial': return <AlertCircle className="w-3 h-3 text-purple-400" />;
+      case 'failed': return <XCircle className="w-3 h-3 text-pink-400" />;
+      case 'assumed': return <AlertTriangle className="w-3 h-3 text-purple-400" />;
+      case 'notapplicable': return <div className="w-3 h-3 text-gray-500 text-[8px]">N/A</div>;
       default: return null;
     }
   };
 
   return (
-    <div className="p-8 min-h-screen bg-black">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-          QUANTUM COMPLIANCE MATRIX
-        </h1>
-        <p className="text-gray-400 uppercase tracking-widest text-xs">
-          Multi-Dimensional Compliance Analysis • Regulatory Quantum State
-        </p>
-      </div>
-
-      {/* Critical Alert */}
-      <div className="mb-6 bg-black border border-pink-500/30 rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
-          <div>
-            <span className="text-pink-400 font-bold">COMPLIANCE COLLAPSE:</span>
-            <span className="text-white ml-2">GSO at 19.17% - ALL regulatory frameworks in CRITICAL FAILURE state</span>
+    <div className="p-4 h-screen bg-black overflow-hidden flex flex-col">
+      {/* Top Bar - Alert and Stats */}
+      <div className="flex gap-3 mb-3">
+        <div className="flex-1 bg-black border border-pink-500/30 rounded-lg p-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-pink-400 animate-pulse" />
+            <span className="text-pink-400 font-bold text-xs">COMPLIANCE COLLAPSE:</span>
+            <span className="text-white text-xs">GSO at 19.17% - ALL regulatory frameworks CRITICAL</span>
           </div>
         </div>
-      </div>
-
-      {/* Overall Scores */}
-      <div className="grid grid-cols-5 gap-4 mb-8">
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <Shield className="w-6 h-6 text-pink-400 mb-2" />
-          <div className="text-3xl font-bold text-pink-400">19.17%</div>
-          <div className="text-xs text-gray-400 uppercase">GSO Score</div>
+        <div className="flex gap-2">
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-pink-400">19.17%</div>
+            <div className="text-[9px] text-gray-400 uppercase">GSO</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-purple-400">63.93%</div>
+            <div className="text-[9px] text-gray-400 uppercase">Splunk</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-pink-400">27</div>
+            <div className="text-[9px] text-gray-400 uppercase">Violations</div>
+          </div>
+          <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
+            <div className="text-lg font-bold text-blue-400">0/4</div>
+            <div className="text-[9px] text-gray-400 uppercase">Compliant</div>
+          </div>
         </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <Database className="w-6 h-6 text-purple-400 mb-2" />
-          <div className="text-3xl font-bold text-purple-400">63.93%</div>
-          <div className="text-xs text-gray-400 uppercase">Splunk Score</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <XCircle className="w-6 h-6 text-pink-400 mb-2" />
-          <div className="text-3xl font-bold text-pink-400">FAILED</div>
-          <div className="text-xs text-gray-400 uppercase">Status</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <AlertTriangle className="w-6 h-6 text-purple-400 mb-2" />
-          <div className="text-3xl font-bold text-purple-400">27</div>
-          <div className="text-xs text-gray-400 uppercase">Violations</div>
-        </div>
-        <div className="bg-gray-900/30 rounded-xl p-6 border border-gray-800">
-          <Gavel className="w-6 h-6 text-blue-400 mb-2" />
-          <div className="text-3xl font-bold text-blue-400">0/4</div>
-          <div className="text-xs text-gray-400 uppercase">Compliant</div>
-        </div>
-      </div>
-
-      {/* Control Panel */}
-      <div className="mb-6 flex gap-4">
         <button
           onClick={() => setIsScrambled(!isScrambled)}
-          className={`px-6 py-3 rounded-xl font-bold uppercase tracking-wider transition-all ${
+          className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
             isScrambled
-              ? 'bg-pink-500/20 border-2 border-pink-500'
-              : 'bg-blue-500/20 border-2 border-blue-500'
+              ? 'bg-pink-500/20 border border-pink-500'
+              : 'bg-blue-500/20 border border-blue-500'
           }`}
         >
           <span className={isScrambled ? 'text-pink-400' : 'text-blue-400'}>
@@ -690,147 +665,131 @@ const ComplianceMatrix: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-12 gap-6 mb-8">
-        {/* Compliance Rubik's Cube */}
+      {/* Main Content */}
+      <div className="flex-1 grid grid-cols-12 gap-3">
+        {/* Left - Compliance Rubik's Cube */}
         <div className="col-span-7">
-          <div className="bg-black border border-blue-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-blue-500/20">
-              <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                <Layers className="w-4 h-4" />
+          <div className="h-full bg-black border border-blue-500/30 rounded-xl overflow-hidden flex flex-col">
+            <div className="p-2 border-b border-blue-500/20">
+              <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                <Layers className="w-3 h-3" />
                 Compliance Quantum Cube
               </h3>
             </div>
-            <div ref={cubeRef} className="w-full h-[500px] cursor-grab active:cursor-grabbing" />
-            
-            {/* Cube Status */}
-            <div className="absolute top-16 left-4 text-xs font-mono text-blue-400/60 space-y-1">
-              <div>STATE: {isScrambled ? 'CHAOTIC' : 'STABILIZING'}</div>
-              <div>ROTATION: X:{rotation.x.toFixed(2)} Y:{rotation.y.toFixed(2)}</div>
-              <div>VIOLATIONS: 27 CRITICAL</div>
-              <div>DRAG TO ROTATE</div>
+            <div className="relative flex-1">
+              <div ref={cubeRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+              <div className="absolute top-2 left-2 text-[9px] font-mono text-blue-400/60 space-y-0.5">
+                <div>STATE: {isScrambled ? 'CHAOTIC' : 'STABILIZING'}</div>
+                <div>ROTATION: X:{rotation.x.toFixed(1)} Y:{rotation.y.toFixed(1)}</div>
+                <div>VIOLATIONS: 27 CRITICAL</div>
+                <div>DRAG TO ROTATE</div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Compliance Matrix */}
-        <div className="col-span-5">
-          <div className="bg-black border border-purple-500/30 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-purple-500/20">
-              <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                <Binary className="w-4 h-4" />
+        {/* Right Column */}
+        <div className="col-span-5 flex flex-col gap-3">
+          {/* Compliance Matrix */}
+          <div className="bg-black border border-purple-500/30 rounded-xl overflow-hidden">
+            <div className="p-2 border-b border-purple-500/20">
+              <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                <Binary className="w-3 h-3" />
                 Digital Compliance Matrix
               </h3>
             </div>
-            <canvas ref={matrixRef} className="w-full h-[500px]" />
+            <canvas ref={matrixRef} className="w-full h-[150px]" />
           </div>
-        </div>
-      </div>
 
-      {/* Compliance Frameworks */}
-      <div className="space-y-6">
-        {Object.entries(complianceData).map(([framework, data]) => (
-          <div key={framework} className="bg-gray-900/30 rounded-2xl p-6 border"
-               style={{
-                 borderColor: data.actualState === 'CRITICAL' || data.actualState === 'CRITICAL FAILURE' 
-                   ? 'rgba(255, 0, 255, 0.3)'
-                   : 'rgba(192, 132, 252, 0.3)'
-               }}>
-            {/* Framework Header */}
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-white">{framework}</h2>
-                <p className="text-sm text-gray-400 mt-1">
-                  Status: <span className={
-                    data.actualState === 'CRITICAL' || data.actualState === 'CRITICAL FAILURE' 
-                      ? 'text-pink-400' 
-                      : 'text-purple-400'
-                  }>
-                    {data.currentState} → {data.actualState}
-                  </span>
-                </p>
+          {/* Frameworks Table */}
+          <div className="flex-1 overflow-y-auto pr-2 space-y-2">
+            {Object.entries(complianceData).map(([framework, data]) => (
+              <div key={framework} className="bg-gray-900/30 rounded-xl p-3 border"
+                   style={{
+                     borderColor: data.actualState === 'CRITICAL' || data.actualState === 'CRITICAL FAILURE' 
+                       ? 'rgba(255, 0, 255, 0.3)'
+                       : 'rgba(192, 132, 252, 0.3)'
+                   }}>
+                {/* Framework Header */}
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h2 className="text-sm font-bold text-white">{framework}</h2>
+                    <p className="text-[9px] text-gray-400">
+                      <span className={
+                        data.actualState === 'CRITICAL' || data.actualState === 'CRITICAL FAILURE' 
+                          ? 'text-pink-400' 
+                          : 'text-purple-400'
+                      }>
+                        {data.actualState}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex gap-3 text-[10px]">
+                    <div className="text-center">
+                      <div className="text-[8px] text-blue-400/60">GSO</div>
+                      <div className={`font-bold ${
+                        data.gsoScore < 50 ? 'text-pink-400' : 'text-purple-400'
+                      }`}>
+                        {data.gsoScore}%
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-[8px] text-purple-400/60">SPL</div>
+                      <div className={`font-bold ${
+                        data.splunkScore < 50 ? 'text-pink-400' : 'text-purple-400'
+                      }`}>
+                        {data.splunkScore}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Requirements Mini Grid */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {data.requirements.slice(0, 2).map((req, idx) => (
+                    <div key={idx} className="bg-black/50 rounded p-1.5 border border-gray-800">
+                      <div className="text-[9px] text-white mb-1 truncate">{req.item}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-0.5">
+                          {getStatusIcon(req.gso)}
+                          <span className="text-[8px] text-gray-400">G</span>
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          {getStatusIcon(req.splunk)}
+                          <span className="text-[8px] text-gray-400">S</span>
+                        </div>
+                        <span className={`ml-auto px-1 py-0.5 rounded text-[8px] font-bold ${
+                          req.risk === 'CRITICAL' ? 'bg-pink-500/20 text-pink-400' :
+                          req.risk === 'HIGH' ? 'bg-purple-500/20 text-purple-400' :
+                          'bg-blue-500/20 text-blue-400'
+                        }`}>
+                          {req.risk.substring(0, 4)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="flex gap-6">
-                <div className="text-center">
-                  <div className="text-xs text-blue-400/60 mb-1">GSO</div>
-                  <div className={`text-2xl font-bold ${
-                    data.gsoScore < 50 ? 'text-pink-400' : 
-                    data.gsoScore < 80 ? 'text-purple-400' : 
-                    'text-blue-400'
-                  }`}>
-                    {animatedScores[`${framework}-gso`]?.toFixed(1) || 0}%
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs text-purple-400/60 mb-1">SPLUNK</div>
-                  <div className={`text-2xl font-bold ${
-                    data.splunkScore < 50 ? 'text-pink-400' : 
-                    data.splunkScore < 80 ? 'text-purple-400' : 
-                    'text-blue-400'
-                  }`}>
-                    {animatedScores[`${framework}-splunk`]?.toFixed(1) || 0}%
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs text-pink-400/60 mb-1">OVERALL</div>
-                  <div className={`text-2xl font-bold ${
-                    animatedScores[`${framework}-overall`] < 50 ? 'text-pink-400' : 
-                    animatedScores[`${framework}-overall`] < 80 ? 'text-purple-400' : 
-                    'text-blue-400'
-                  }`}>
-                    {animatedScores[`${framework}-overall`]?.toFixed(1) || 0}%
-                  </div>
-                </div>
+            ))}
+          </div>
+
+          {/* Action Plan */}
+          <div className="bg-gray-900/30 rounded-xl p-2 border border-pink-500/30">
+            <h3 className="text-xs font-bold text-pink-400 mb-1.5">CRITICAL ACTIONS</h3>
+            <div className="grid grid-cols-3 gap-1.5">
+              <div className="p-1.5 bg-black/50 rounded border border-gray-800">
+                <div className="text-[9px] font-bold text-purple-400">P1: EMEA</div>
+                <p className="text-[8px] text-gray-400">Deploy 5 collectors</p>
+              </div>
+              <div className="p-1.5 bg-black/50 rounded border border-gray-800">
+                <div className="text-[9px] font-bold text-purple-400">P2: LINUX</div>
+                <p className="text-[8px] text-gray-400">Configure 24K servers</p>
+              </div>
+              <div className="p-1.5 bg-black/50 rounded border border-gray-800">
+                <div className="text-[9px] font-bold text-purple-400">P3: DLP</div>
+                <p className="text-[8px] text-gray-400">Deploy to 97K assets</p>
               </div>
             </div>
-
-            {/* Requirements Grid */}
-            <div className="grid grid-cols-2 gap-3">
-              {data.requirements.slice(0, 4).map((req, idx) => (
-                <div key={idx} className="bg-black/50 rounded-lg p-3 border border-gray-800">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-white font-medium">{req.item}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1">
-                      {getStatusIcon(req.gso)}
-                      <span className="text-xs text-gray-400">GSO</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {getStatusIcon(req.splunk)}
-                      <span className="text-xs text-gray-400">SPL</span>
-                    </div>
-                    <span className={`ml-auto px-2 py-0.5 rounded text-xs font-bold ${
-                      req.risk === 'CRITICAL' ? 'bg-pink-500/20 text-pink-400' :
-                      req.risk === 'HIGH' ? 'bg-purple-500/20 text-purple-400' :
-                      req.risk === 'MEDIUM' ? 'bg-blue-500/20 text-blue-400' :
-                      'bg-gray-500/20 text-gray-400'
-                    }`}>
-                      {req.risk}
-                    </span>
-                  </div>
-                  <p className="text-xs text-pink-400 mt-2">{req.gap}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Action Plan */}
-      <div className="mt-8 bg-gray-900/30 rounded-2xl p-6 border border-pink-500/30">
-        <h3 className="text-xl font-bold text-pink-400 mb-4">CRITICAL ACTIONS FOR COMPLIANCE</h3>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="p-4 bg-black/50 rounded-lg border border-gray-800">
-            <div className="text-sm font-bold text-purple-400 mb-2">PRIORITY 1: EMEA DEPLOYMENT</div>
-            <p className="text-xs text-gray-400">Deploy 5 regional collectors. Current 12.3% coverage is critical risk.</p>
-          </div>
-          <div className="p-4 bg-black/50 rounded-lg border border-gray-800">
-            <div className="text-sm font-bold text-purple-400 mb-2">PRIORITY 2: LINUX SYSTEMS</div>
-            <p className="text-xs text-gray-400">Configure rsyslog on 24,001 Linux servers (30.71% gap).</p>
-          </div>
-          <div className="p-4 bg-black/50 rounded-lg border border-gray-800">
-            <div className="text-sm font-bold text-purple-400 mb-2">PRIORITY 3: DLP EXPANSION</div>
-            <p className="text-xs text-gray-400">Deploy DLP to 97,465 unprotected assets immediately.</p>
           </div>
         </div>
       </div>

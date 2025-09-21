@@ -1,5 +1,7 @@
+'use client';
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Building, Layers, Database, Network, Shield, AlertTriangle, Activity, TrendingDown, Server, Cloud, Dna, Star, Orbit, Atom, Binary, Cpu } from 'lucide-react';
+import { Building, Layers, Database, Network, Shield, AlertTriangle, Activity, TrendingDown, Server, Cloud, Dna, Star, Orbit, Atom, Binary, Cpu, XCircle } from 'lucide-react';
 import * as THREE from 'three';
 
 const BUandApplicationView: React.FC = () => {
@@ -8,6 +10,7 @@ const BUandApplicationView: React.FC = () => {
   const [animatedValues, setAnimatedValues] = useState<Record<string, number>>({});
   const dnaRef = useRef<HTMLDivElement>(null);
   const constellationRef = useRef<HTMLCanvasElement>(null);
+  const pulseRef = useRef<HTMLCanvasElement>(null);
 
   // ACTUAL DATA FROM AO1 REQUIREMENTS
   const businessUnits = {
@@ -22,7 +25,7 @@ const BUandApplicationView: React.FC = () => {
       apm: 'APM-QUANTUM',
       applications: ['Payment Gateway', 'Merchant Portal', 'Settlement Engine', 'Risk Analytics'],
       priority: 1,
-      color: '#ff0044',
+      color: '#ff00ff',
       dnaStrand: 0
     },
     'Card Services': {
@@ -78,7 +81,7 @@ const BUandApplicationView: React.FC = () => {
       apm: 'APM-SHIELD',
       applications: ['Risk Management', 'Compliance Portal', 'Audit System', 'Regulatory Reporting'],
       priority: 1,
-      color: '#00ff88',
+      color: '#ff00ff',
       dnaStrand: 0
     }
   };
@@ -92,7 +95,7 @@ const BUandApplicationView: React.FC = () => {
       businessImpact: 'QUANTUM',
       regulatoryRequirement: true,
       platforms: ['On-Prem', 'Cloud', 'Hybrid'],
-      color: '#ff0044',
+      color: '#ff00ff',
       constellation: { x: 50, y: 30, connections: [1, 2] }
     },
     'Customer Facing': {
@@ -130,24 +133,21 @@ const BUandApplicationView: React.FC = () => {
     }
   };
 
-  // DNA Helix Visualization
+  // Compact DNA Helix Visualization
   useEffect(() => {
     if (!dnaRef.current || selectedView !== 'bu') return;
 
-    // Scene setup
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x000000, 0.001);
+    scene.fog = new THREE.FogExp2(0x000000, 0.002);
 
-    // Camera
     const camera = new THREE.PerspectiveCamera(
       45,
       dnaRef.current.clientWidth / dnaRef.current.clientHeight,
       0.1,
       1000
     );
-    camera.position.set(0, 0, 200);
+    camera.position.set(0, 0, 120);
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ 
       antialias: true, 
       alpha: true 
@@ -158,10 +158,10 @@ const BUandApplicationView: React.FC = () => {
 
     // Create DNA double helix
     const helixGroup = new THREE.Group();
-    const helixHeight = 200;
-    const helixRadius = 30;
-    const helixTurns = 3;
-    const pointsPerTurn = 20;
+    const helixHeight = 100;
+    const helixRadius = 20;
+    const helixTurns = 2;
+    const pointsPerTurn = 15;
     const totalPoints = helixTurns * pointsPerTurn;
 
     // Create strands
@@ -181,20 +181,20 @@ const BUandApplicationView: React.FC = () => {
       
       // Create strand curve
       const curve = new THREE.CatmullRomCurve3(points);
-      const tubeGeometry = new THREE.TubeGeometry(curve, 100, 2, 8, false);
+      const tubeGeometry = new THREE.TubeGeometry(curve, 50, 1.5, 6, false);
       const tubeMaterial = new THREE.MeshPhongMaterial({
-        color: data.color,
-        emissive: data.color,
-        emissiveIntensity: 0.3,
+        color: data.status === 'critical' ? 0xff00ff : 0x00ffff,
+        emissive: data.status === 'critical' ? 0xff00ff : 0x00ffff,
+        emissiveIntensity: 0.2,
         transparent: true,
         opacity: 0.8
       });
       const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
       helixGroup.add(tube);
       
-      // Add connecting bars between strands
-      if (strand === 0 && index % 3 === 0) {
-        for (let i = 0; i < totalPoints; i += 5) {
+      // Add connecting bars
+      if (strand === 0 && index % 2 === 0) {
+        for (let i = 0; i < totalPoints; i += 4) {
           const t = i / totalPoints;
           const angle1 = t * Math.PI * 2 * helixTurns;
           const angle2 = angle1 + Math.PI;
@@ -205,13 +205,13 @@ const BUandApplicationView: React.FC = () => {
           const x2 = Math.cos(angle2) * helixRadius;
           const z2 = Math.sin(angle2) * helixRadius;
           
-          const barGeometry = new THREE.CylinderGeometry(1, 1, helixRadius * 2);
+          const barGeometry = new THREE.CylinderGeometry(0.5, 0.5, helixRadius * 2);
           const barMaterial = new THREE.MeshPhongMaterial({
-            color: data.status === 'critical' ? 0xff0044 : 0x00ffff,
-            emissive: data.status === 'critical' ? 0xff0044 : 0x00ffff,
-            emissiveIntensity: 0.2,
+            color: data.csocCoverage < 20 ? 0xff00ff : 0x00ffff,
+            emissive: data.csocCoverage < 20 ? 0xff00ff : 0x00ffff,
+            emissiveIntensity: 0.1,
             transparent: true,
-            opacity: 0.5
+            opacity: 0.3
           });
           const bar = new THREE.Mesh(barGeometry, barMaterial);
           bar.position.set((x1 + x2) / 2, y, (z1 + z2) / 2);
@@ -220,44 +220,28 @@ const BUandApplicationView: React.FC = () => {
           helixGroup.add(bar);
         }
       }
-      
-      // Add data nodes
-      data.applications.forEach((app, appIndex) => {
-        const t = (index * data.applications.length + appIndex) / (Object.keys(businessUnits).length * 4);
-        const angle = t * Math.PI * 2 * helixTurns + (strand * Math.PI);
-        const y = (t - 0.5) * helixHeight;
-        const x = Math.cos(angle) * helixRadius * 1.5;
-        const z = Math.sin(angle) * helixRadius * 1.5;
-        
-        const nodeGeometry = new THREE.SphereGeometry(3, 16, 16);
-        const nodeMaterial = new THREE.MeshPhongMaterial({
-          color: data.color,
-          emissive: data.color,
-          emissiveIntensity: 0.5
-        });
-        const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
-        node.position.set(x, y, z);
-        helixGroup.add(node);
-      });
     });
 
     scene.add(helixGroup);
 
-    // Add particle field for mutations/gaps
-    const particleCount = 1000;
+    // Add particle field
+    const particleCount = 200;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount * 3; i += 3) {
-      positions[i] = (Math.random() - 0.5) * 200;
-      positions[i + 1] = (Math.random() - 0.5) * 200;
-      positions[i + 2] = (Math.random() - 0.5) * 200;
+      positions[i] = (Math.random() - 0.5) * 150;
+      positions[i + 1] = (Math.random() - 0.5) * 150;
+      positions[i + 2] = (Math.random() - 0.5) * 150;
       
-      // Red particles for critical gaps
-      colors[i] = 1;
-      colors[i + 1] = 0;
-      colors[i + 2] = Math.random();
+      if (Math.random() > 0.7) {
+        colors[i] = 1; colors[i + 1] = 0; colors[i + 2] = 1;
+      } else if (Math.random() > 0.4) {
+        colors[i] = 0.75; colors[i + 1] = 0.52; colors[i + 2] = 0.99;
+      } else {
+        colors[i] = 0; colors[i + 1] = 1; colors[i + 2] = 1;
+      }
     }
 
     particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -275,14 +259,14 @@ const BUandApplicationView: React.FC = () => {
     scene.add(particles);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040);
+    const ambientLight = new THREE.AmbientLight(0x0a0a0a);
     scene.add(ambientLight);
 
-    const pointLight1 = new THREE.PointLight(0x00ffff, 1, 200);
+    const pointLight1 = new THREE.PointLight(0x00ffff, 1, 150);
     pointLight1.position.set(50, 50, 50);
     scene.add(pointLight1);
 
-    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 200);
+    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 150);
     pointLight2.position.set(-50, -50, -50);
     scene.add(pointLight2);
 
@@ -291,17 +275,13 @@ const BUandApplicationView: React.FC = () => {
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       
-      // Rotate DNA helix
       helixGroup.rotation.y += 0.005;
-      
-      // Float particles
       particles.rotation.x += 0.001;
       particles.rotation.y += 0.001;
       
-      // Camera orbit
       const time = Date.now() * 0.0005;
-      camera.position.x = Math.sin(time) * 200;
-      camera.position.z = Math.cos(time) * 200;
+      camera.position.x = Math.sin(time) * 100;
+      camera.position.z = Math.cos(time) * 100;
       camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
@@ -309,17 +289,7 @@ const BUandApplicationView: React.FC = () => {
 
     animate();
 
-    // Handle resize
-    const handleResize = () => {
-      if (!dnaRef.current) return;
-      camera.aspect = dnaRef.current.clientWidth / dnaRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(dnaRef.current.clientWidth, dnaRef.current.clientHeight);
-    };
-    window.addEventListener('resize', handleResize);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
       if (frameId) cancelAnimationFrame(frameId);
       if (dnaRef.current && renderer.domElement) {
         dnaRef.current.removeChild(renderer.domElement);
@@ -344,22 +314,20 @@ const BUandApplicationView: React.FC = () => {
       data,
       x: (data.constellation.x / 100) * canvas.width,
       y: (data.constellation.y / 100) * canvas.height,
-      radius: Math.sqrt(data.assets) / 10,
+      radius: Math.sqrt(data.assets) / 15,
       pulsePhase: Math.random() * Math.PI * 2
     }));
 
     const animate = () => {
-      // Dark space background
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw connections (data streams)
-      stars.forEach((star, index) => {
+      // Draw connections
+      stars.forEach((star) => {
         star.data.constellation.connections.forEach(targetIndex => {
           if (targetIndex < stars.length) {
             const target = stars[targetIndex];
             
-            // Draw curved connection
             const gradient = ctx.createLinearGradient(star.x, star.y, target.x, target.y);
             gradient.addColorStop(0, star.data.color + '40');
             gradient.addColorStop(0.5, '#ffffff20');
@@ -370,40 +338,26 @@ const BUandApplicationView: React.FC = () => {
             ctx.setLineDash([5, 10]);
             ctx.beginPath();
             ctx.moveTo(star.x, star.y);
-            
-            const cp1x = (star.x + target.x) / 2 + (Math.random() - 0.5) * 50;
-            const cp1y = (star.y + target.y) / 2 + (Math.random() - 0.5) * 50;
-            ctx.quadraticCurveTo(cp1x, cp1y, target.x, target.y);
+            ctx.lineTo(target.x, target.y);
             ctx.stroke();
             ctx.setLineDash([]);
-            
-            // Data packets animation
-            const progress = (Date.now() * 0.001) % 1;
-            const px = star.x + (target.x - star.x) * progress;
-            const py = star.y + (target.y - star.y) * progress;
-            
-            ctx.fillStyle = '#00ffff';
-            ctx.beginPath();
-            ctx.arc(px, py, 2, 0, Math.PI * 2);
-            ctx.fill();
           }
         });
       });
 
-      // Draw star systems
+      // Draw stars
       stars.forEach(star => {
-        // Pulsing effect
         star.pulsePhase += 0.05;
         const pulseScale = 1 + Math.sin(star.pulsePhase) * 0.2;
         const currentRadius = star.radius * pulseScale;
         
         // Star glow
-        const glow = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, currentRadius * 3);
+        const glow = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, currentRadius * 2);
         glow.addColorStop(0, star.data.color + '80');
         glow.addColorStop(0.5, star.data.color + '40');
         glow.addColorStop(1, star.data.color + '00');
         ctx.fillStyle = glow;
-        ctx.fillRect(star.x - currentRadius * 3, star.y - currentRadius * 3, currentRadius * 6, currentRadius * 6);
+        ctx.fillRect(star.x - currentRadius * 2, star.y - currentRadius * 2, currentRadius * 4, currentRadius * 4);
         
         // Star core
         ctx.fillStyle = star.data.color;
@@ -411,71 +365,19 @@ const BUandApplicationView: React.FC = () => {
         ctx.arc(star.x, star.y, currentRadius, 0, Math.PI * 2);
         ctx.fill();
         
-        // Inner core
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, currentRadius * 0.3, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Planets (applications)
-        star.data.platforms.forEach((platform, i) => {
-          const orbitRadius = currentRadius * (2 + i);
-          const angle = (Date.now() * 0.001 + i * Math.PI * 2 / star.data.platforms.length) % (Math.PI * 2);
-          const px = star.x + Math.cos(angle) * orbitRadius;
-          const py = star.y + Math.sin(angle) * orbitRadius;
-          
-          // Orbit path
-          ctx.strokeStyle = star.data.color + '20';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(star.x, star.y, orbitRadius, 0, Math.PI * 2);
-          ctx.stroke();
-          
-          // Planet
-          ctx.fillStyle = star.data.color;
-          ctx.beginPath();
-          ctx.arc(px, py, 3, 0, Math.PI * 2);
-          ctx.fill();
-        });
-        
         // Label
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 12px monospace';
+        ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(star.name, star.x, star.y - currentRadius - 20);
+        ctx.fillText(star.name, star.x, star.y - currentRadius - 10);
         
-        // Coverage percentage
-        ctx.font = '10px monospace';
-        ctx.fillStyle = star.data.coverage < 30 ? '#ff0044' : 
-                       star.data.coverage < 60 ? '#ffaa00' : 
-                       '#00ff88';
-        ctx.fillText(`${star.data.coverage}%`, star.x, star.y + currentRadius + 20);
-        
-        // Critical gaps (black holes)
-        if (star.data.criticality === 'CRITICAL') {
-          const blackHoleX = star.x + currentRadius * 2;
-          const blackHoleY = star.y;
-          
-          // Event horizon
-          const horizon = ctx.createRadialGradient(blackHoleX, blackHoleY, 5, blackHoleX, blackHoleY, 15);
-          horizon.addColorStop(0, '#000000');
-          horizon.addColorStop(0.5, '#ff004480');
-          horizon.addColorStop(1, '#ff004400');
-          ctx.fillStyle = horizon;
-          ctx.beginPath();
-          ctx.arc(blackHoleX, blackHoleY, 15, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        // Coverage
+        ctx.font = '9px monospace';
+        ctx.fillStyle = star.data.coverage < 30 ? '#ff00ff' : 
+                       star.data.coverage < 60 ? '#c084fc' : 
+                       '#00ffff';
+        ctx.fillText(`${star.data.coverage}%`, star.x, star.y + currentRadius + 10);
       });
-
-      // Nebula effect for undefined assets
-      const time = Date.now() * 0.0001;
-      const nebula = ctx.createRadialGradient(canvas.width * 0.7, canvas.height * 0.3, 0, canvas.width * 0.7, canvas.height * 0.3, 100);
-      nebula.addColorStop(0, `rgba(192, 132, 252, ${0.1 + Math.sin(time) * 0.05})`);
-      nebula.addColorStop(0.5, `rgba(255, 0, 255, ${0.05 + Math.sin(time) * 0.02})`);
-      nebula.addColorStop(1, 'rgba(0, 255, 255, 0)');
-      ctx.fillStyle = nebula;
-      ctx.fillRect(canvas.width * 0.6, canvas.height * 0.2, 200, 200);
 
       requestAnimationFrame(animate);
     };
@@ -483,195 +385,279 @@ const BUandApplicationView: React.FC = () => {
     animate();
   }, [selectedView]);
 
+  // Pulse Wave Visualization
+  useEffect(() => {
+    const canvas = pulseRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const time = Date.now() * 0.001;
+      
+      // Draw BU waves
+      Object.entries(businessUnits).forEach((bu, index) => {
+        const data = bu[1];
+        ctx.strokeStyle = data.color;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        
+        for (let x = 0; x < canvas.width; x++) {
+          const y = (index + 1) * (canvas.height / 6) + 
+                   Math.sin((x / 30) + time + index * 2) * 
+                   (data.csocCoverage / 5);
+          
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        
+        ctx.stroke();
+      });
+      
+      ctx.globalAlpha = 1;
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  }, []);
+
   // Animate values
   useEffect(() => {
-    if (selectedView === 'bu') {
-      Object.entries(businessUnits).forEach(([bu, data], index) => {
-        setTimeout(() => {
-          setAnimatedValues(prev => ({
-            ...prev,
-            [`${bu}-csoc`]: data.csocCoverage,
-            [`${bu}-splunk`]: data.splunkCoverage,
-            [`${bu}-chronicle`]: data.chronicleCoverage
-          }));
-        }, index * 100);
-      });
-    } else {
-      Object.entries(applicationClasses).forEach(([app, data], index) => {
-        setTimeout(() => {
-          setAnimatedValues(prev => ({
-            ...prev,
-            [app]: data.coverage
-          }));
-        }, index * 100);
-      });
-    }
+    Object.entries(businessUnits).forEach(([bu, data], index) => {
+      setTimeout(() => {
+        setAnimatedValues(prev => ({
+          ...prev,
+          [`${bu}-csoc`]: data.csocCoverage,
+          [`${bu}-splunk`]: data.splunkCoverage,
+          [`${bu}-chronicle`]: data.chronicleCoverage
+        }));
+      }, index * 100);
+    });
   }, [selectedView]);
 
   return (
-    <div className="p-8 min-h-screen bg-black">
-      {/* Animated Background */}
-      <div className="fixed inset-0 opacity-20">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `
-            radial-gradient(ellipse at 20% 30%, rgba(255, 0, 68, 0.1) 0%, transparent 40%),
-            radial-gradient(ellipse at 80% 70%, rgba(192, 132, 252, 0.1) 0%, transparent 40%),
-            radial-gradient(ellipse at 50% 50%, rgba(0, 255, 255, 0.1) 0%, transparent 50%)
-          `,
-          animation: 'pulse 8s ease-in-out infinite'
-        }} />
-      </div>
-
-      {/* Header */}
-      <div className="relative z-20 mb-8">
-        <h1 className="text-6xl font-black mb-3 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400">
-          ORGANIZATIONAL QUANTUM DNA
-        </h1>
-        <p className="text-gray-400 uppercase tracking-[0.3em] text-sm">
-          Business Unit Genome • Application Constellation Mapping
-        </p>
-      </div>
-
+    <div className="p-2 h-screen bg-black overflow-hidden flex flex-col">
       {/* Critical Alert */}
-      <div className="relative z-20 mb-6 border border-red-500/50 bg-red-500/10 rounded-lg p-4 backdrop-blur-lg">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="w-6 h-6 text-red-400 animate-pulse" />
-          <div>
-            <span className="text-red-400 font-bold">DNA CORRUPTION DETECTED:</span>
-            <span className="text-white ml-2">Risk & Compliance strand at 8.9% integrity - Regulatory genome failing</span>
-          </div>
-        </div>
+      <div className="mb-2 border border-pink-500/50 bg-black rounded-lg p-1.5 flex items-center gap-2">
+        <AlertTriangle className="w-4 h-4 text-pink-400 animate-pulse" />
+        <span className="text-pink-400 font-bold text-xs">DNA CORRUPTION:</span>
+        <span className="text-white text-xs">Risk & Compliance at 8.9% • Regulatory genome failing</span>
       </div>
 
       {/* View Selector */}
-      <div className="relative z-20 flex gap-2 mb-8">
+      <div className="flex gap-2 mb-2">
         <button
           onClick={() => setSelectedView('bu')}
-          className={`px-8 py-4 rounded-lg font-bold uppercase tracking-wider transition-all duration-300 backdrop-blur-lg ${
+          className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
             selectedView === 'bu'
-              ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 scale-105 shadow-2xl'
+              ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20'
               : 'bg-gray-900/50 hover:bg-gray-800/50'
           }`}
           style={{
-            border: selectedView === 'bu' ? '2px solid #00ffff' : '2px solid transparent',
-            boxShadow: selectedView === 'bu' ? '0 0 40px rgba(0, 255, 255, 0.4)' : 'none'
+            border: selectedView === 'bu' ? '1px solid #00ffff' : '1px solid transparent'
           }}
         >
-          <Dna className="inline w-5 h-5 mr-2" />
-          <span style={{ 
-            color: selectedView === 'bu' ? '#00ffff' : '#666',
-            textShadow: selectedView === 'bu' ? '0 0 20px #00ffff' : 'none'
-          }}>
+          <Dna className="inline w-3 h-3 mr-1" />
+          <span className={selectedView === 'bu' ? 'text-blue-400' : 'text-gray-400'}>
             BUSINESS UNITS
           </span>
         </button>
         
         <button
           onClick={() => setSelectedView('application')}
-          className={`px-8 py-4 rounded-lg font-bold uppercase tracking-wider transition-all duration-300 backdrop-blur-lg ${
+          className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
             selectedView === 'application'
-              ? 'bg-gradient-to-r from-purple-500/20 to-pink-500/20 scale-105 shadow-2xl'
+              ? 'bg-gradient-to-r from-purple-500/20 to-pink-500/20'
               : 'bg-gray-900/50 hover:bg-gray-800/50'
           }`}
           style={{
-            border: selectedView === 'application' ? '2px solid #c084fc' : '2px solid transparent',
-            boxShadow: selectedView === 'application' ? '0 0 40px rgba(192, 132, 252, 0.4)' : 'none'
+            border: selectedView === 'application' ? '1px solid #c084fc' : '1px solid transparent'
           }}
         >
-          <Star className="inline w-5 h-5 mr-2" />
-          <span style={{ 
-            color: selectedView === 'application' ? '#c084fc' : '#666',
-            textShadow: selectedView === 'application' ? '0 0 20px #c084fc' : 'none'
-          }}>
-            APPLICATION CLASS
+          <Star className="inline w-3 h-3 mr-1" />
+          <span className={selectedView === 'application' ? 'text-purple-400' : 'text-gray-400'}>
+            APPLICATIONS
           </span>
         </button>
       </div>
 
-      {/* Main Visualization Area */}
+      {/* Main Content */}
       {selectedView === 'bu' ? (
-        <div className="relative z-10 grid grid-cols-2 gap-6 mb-8">
+        <div className="flex-1 grid grid-cols-12 gap-2">
           {/* DNA Helix */}
-          <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-cyan-500/30 overflow-hidden"
-               style={{
-                 boxShadow: '0 0 80px rgba(0, 255, 255, 0.3), inset 0 0 40px rgba(0,0,0,0.8)'
-               }}>
-            <div className="p-4 border-b border-cyan-500/20">
-              <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
-                <Dna className="w-4 h-4" />
-                Corporate DNA Helix
-              </h3>
+          <div className="col-span-5 grid grid-rows-2 gap-2">
+            <div className="bg-black border border-blue-500/30 rounded-lg overflow-hidden">
+              <div className="p-1.5 border-b border-blue-500/20">
+                <h3 className="text-[10px] font-bold text-blue-400 uppercase flex items-center gap-1">
+                  <Dna className="w-3 h-3" />
+                  Corporate DNA
+                </h3>
+              </div>
+              <div ref={dnaRef} className="w-full" style={{ height: 'calc(100% - 28px)' }} />
             </div>
-            <div ref={dnaRef} className="w-full h-[500px]" />
-            <div className="absolute top-16 left-4 text-xs font-mono text-cyan-400/60 space-y-1">
-              <div>MUTATIONS: DETECTED</div>
-              <div>STRAND INTEGRITY: CRITICAL</div>
-              <div>REPLICATION: FAILING</div>
+
+            <div className="bg-black border border-purple-500/30 rounded-lg overflow-hidden">
+              <div className="p-1.5 border-b border-purple-500/20">
+                <h3 className="text-[10px] font-bold text-purple-400 uppercase flex items-center gap-1">
+                  <Activity className="w-3 h-3" />
+                  BU Pulse
+                </h3>
+              </div>
+              <canvas ref={pulseRef} className="w-full" style={{ height: 'calc(100% - 28px)' }} />
             </div>
           </div>
 
           {/* BU Details */}
-          <div className="space-y-4">
+          <div className="col-span-7 overflow-y-auto pr-2 space-y-2">
             {Object.entries(businessUnits).map(([bu, data]) => (
-              <div key={bu} className="bg-black/80 backdrop-blur-xl rounded-xl border p-4 hover:scale-[1.02] transition-all"
-                   style={{
-                     borderColor: data.status === 'critical' ? 'rgba(255, 0, 68, 0.5)' : 'rgba(255, 170, 0, 0.5)',
-                     boxShadow: `0 0 30px ${data.color}20`
-                   }}>
-                <div className="flex items-center justify-between mb-3">
+              <div key={bu} className="bg-gray-900/30 rounded-lg p-2 border border-gray-800">
+                <div className="flex items-center justify-between mb-1.5">
                   <div>
-                    <h4 className="text-lg font-bold text-white">{bu}</h4>
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <h4 className="text-sm font-bold text-white">{bu}</h4>
+                    <div className="flex items-center gap-2 text-[9px] text-gray-400">
                       <span>{data.cio}</span>
                       <span>•</span>
                       <span>{data.apm}</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-red-400">{data.missing.toLocaleString()}</div>
-                    <div className="text-xs text-gray-400">CORRUPTED</div>
+                    <div className="text-lg font-bold text-pink-400">{(data.missing/1000).toFixed(0)}K</div>
+                    <div className="text-[8px] text-gray-400">MISSING</div>
                   </div>
                 </div>
 
-                {/* Coverage DNA Bars */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-cyan-400 w-16">CSOC</span>
-                    <div className="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden">
+                {/* Coverage Bars */}
+                <div className="grid grid-cols-3 gap-1">
+                  <div>
+                    <div className="flex justify-between text-[8px] mb-0.5">
+                      <span className="text-blue-400">CSOC</span>
+                      <span className="font-mono text-blue-400">{data.csocCoverage}%</span>
+                    </div>
+                    <div className="h-2 bg-black/50 rounded-full overflow-hidden">
                       <div 
                         className="h-full rounded-full transition-all duration-1000"
                         style={{
                           width: `${animatedValues[`${bu}-csoc`] || 0}%`,
-                          background: data.csocCoverage < 20 ? '#ff0044' : '#00ffff'
+                          background: data.csocCoverage < 20 ? '#ff00ff' : '#00ffff'
                         }}
                       />
                     </div>
-                    <span className="text-xs font-mono text-cyan-400 w-12 text-right">{data.csocCoverage}%</span>
                   </div>
+                  <div>
+                    <div className="flex justify-between text-[8px] mb-0.5">
+                      <span className="text-purple-400">SPL</span>
+                      <span className="font-mono text-purple-400">{data.splunkCoverage}%</span>
+                    </div>
+                    <div className="h-2 bg-black/50 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{
+                          width: `${animatedValues[`${bu}-splunk`] || 0}%`,
+                          background: '#c084fc'
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[8px] mb-0.5">
+                      <span className="text-pink-400">CHR</span>
+                      <span className="font-mono text-pink-400">{data.chronicleCoverage}%</span>
+                    </div>
+                    <div className="h-2 bg-black/50 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{
+                          width: `${animatedValues[`${bu}-chronicle`] || 0}%`,
+                          background: '#ff00ff'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Applications */}
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {data.applications.slice(0, 3).map((app, i) => (
+                    <span key={i} className="text-[8px] px-1.5 py-0.5 bg-black/50 rounded border border-gray-700 text-gray-400">
+                      {app}
+                    </span>
+                  ))}
+                  {data.applications.length > 3 && (
+                    <span className="text-[8px] px-1.5 py-0.5 bg-black/50 rounded border border-gray-700 text-gray-500">
+                      +{data.applications.length - 3}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <div className="relative z-10">
+        <div className="flex-1 grid grid-cols-2 gap-2">
           {/* Application Constellation */}
-          <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-purple-500/30 overflow-hidden"
-               style={{
-                 boxShadow: '0 0 80px rgba(192, 132, 252, 0.3), inset 0 0 40px rgba(0,0,0,0.8)'
-               }}>
-            <div className="p-4 border-b border-purple-500/20">
-              <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                <Star className="w-4 h-4" />
-                Application Star Map
+          <div className="bg-black border border-purple-500/30 rounded-lg overflow-hidden">
+            <div className="p-1.5 border-b border-purple-500/20">
+              <h3 className="text-[10px] font-bold text-purple-400 uppercase flex items-center gap-1">
+                <Star className="w-3 h-3" />
+                Application Map
               </h3>
             </div>
-            <canvas ref={constellationRef} className="w-full h-[600px]" />
-            <div className="absolute top-16 right-4 text-xs font-mono text-purple-400/60 space-y-1">
-              <div>STAR SYSTEMS: 4</div>
-              <div>BLACK HOLES: 2</div>
-              <div>CONNECTIONS: ACTIVE</div>
-            </div>
+            <canvas ref={constellationRef} className="w-full" style={{ height: 'calc(100% - 28px)' }} />
+          </div>
+
+          {/* Application Details */}
+          <div className="overflow-y-auto pr-2 space-y-2">
+            {Object.entries(applicationClasses).map(([app, data]) => (
+              <div key={app} className="bg-gray-900/30 rounded-lg p-2 border border-gray-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h4 className="text-sm font-bold text-white">{app}</h4>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                    data.criticality === 'CRITICAL' ? 'bg-pink-500/20 text-pink-400' :
+                    data.criticality === 'HIGH' ? 'bg-purple-500/20 text-purple-400' :
+                    'bg-blue-500/20 text-blue-400'
+                  }`}>
+                    {data.criticality}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-[9px]">
+                  <div>
+                    <div className="text-gray-400">Coverage</div>
+                    <div className="font-mono" style={{ color: data.coverage < 30 ? '#ff00ff' : data.coverage < 60 ? '#c084fc' : '#00ffff' }}>
+                      {data.coverage}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Assets</div>
+                    <div className="font-mono text-blue-400">{(data.assets/1000).toFixed(0)}K</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-400">Missing</div>
+                    <div className="font-mono text-pink-400">{(data.missing/1000).toFixed(0)}K</div>
+                  </div>
+                </div>
+
+                <div className="mt-1.5">
+                  <div className="h-3 bg-black/50 rounded-full overflow-hidden border border-gray-800">
+                    <div 
+                      className="h-full rounded-full transition-all duration-1000"
+                      style={{
+                        width: `${data.coverage}%`,
+                        background: `linear-gradient(90deg, ${data.color}, ${data.color}dd)`
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
