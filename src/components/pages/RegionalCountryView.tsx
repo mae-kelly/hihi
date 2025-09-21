@@ -2,84 +2,111 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Globe, MapPin, AlertTriangle, TrendingDown, Shield, Activity, Network, Database, Server, Cloud, Radar, Satellite, Radio, Zap, Navigation, Target } from 'lucide-react';
 import * as THREE from 'three';
 
+interface RegionalData {
+  global_surveillance: Record<string, number>;
+  regional_analytics: Record<string, {
+    count: number;
+    percentage: number;
+    cmdb_coverage: number;
+    tanium_coverage: number;
+    infrastructure_diversity: number;
+    security_score: number;
+  }>;
+  threat_assessment: {
+    highest_risk_region: string;
+    most_secure_region: string;
+    geographic_balance: number;
+  };
+  total_coverage: number;
+}
+
+interface CountryData {
+  total_countries: number;
+  country_analysis: Record<string, {
+    count: number;
+    percentage: number;
+    region: string;
+    security_score: number;
+    threat_level: string;
+  }>;
+  geographic_concentration: number;
+  compliant_regions: string[];
+  urgent_infrastructure: string[];
+  total_gap_assets: number;
+}
+
 const RegionalCountryView: React.FC = () => {
   const [selectedRegion, setSelectedRegion] = useState<string>('ALL');
+  const [regionalData, setRegionalData] = useState<RegionalData | null>(null);
+  const [countryData, setCountryData] = useState<CountryData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [timelinePosition, setTimelinePosition] = useState(50);
   const globeRef = useRef<HTMLDivElement>(null);
   const radarRef = useRef<HTMLCanvasElement>(null);
   const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, number>>({});
-  const frameRef = useRef<number>(0);
 
-  // ACTUAL DATA FROM AO1 REQUIREMENTS
-  const regionalData = {
-    'ALL': {
-      totalAssets: 262032,
-      csocCoverage: 19.17,
-      splunkCoverage: 63.93,
-      chronicleCoverage: 92.24,
-      criticalGaps: 211795,
-      countries: 47,
-      datacenters: 23,
-      cloudRegions: 12
-    },
-    'AMERICAS': {
-      totalAssets: 105234,
-      csocCoverage: 32.5,
-      splunkCoverage: 78.9,
-      chronicleCoverage: 94.2,
-      criticalGaps: 71034,
-      countries: 12,
-      datacenters: 8,
-      cloudRegions: 4,
-      color: '#00ffff',
-      breakdown: {
-        'United States': { assets: 67890, coverage: 45.2, gap: 37244, status: 'warning', lat: 39.0, lon: -98.0 },
-        'Canada': { assets: 18234, coverage: 28.7, gap: 12999, status: 'critical', lat: 56.0, lon: -106.0 },
-        'Brazil': { assets: 12110, coverage: 22.3, gap: 9409, status: 'critical', lat: -14.0, lon: -51.0 },
-        'Mexico': { assets: 7000, coverage: 18.9, gap: 5677, status: 'critical', lat: 23.0, lon: -102.0 }
-      }
-    },
-    'EMEA': {
-      totalAssets: 89456,
-      csocCoverage: 12.3,
-      splunkCoverage: 52.1,
-      chronicleCoverage: 89.7,
-      criticalGaps: 78456,
-      countries: 22,
-      datacenters: 9,
-      cloudRegions: 5,
-      color: '#c084fc',
-      breakdown: {
-        'United Kingdom': { assets: 23456, coverage: 18.9, gap: 19012, status: 'critical', lat: 54.0, lon: -2.0 },
-        'Germany': { assets: 19878, coverage: 15.2, gap: 16855, status: 'critical', lat: 51.0, lon: 10.0 },
-        'France': { assets: 15234, coverage: 12.1, gap: 13390, status: 'critical', lat: 46.0, lon: 2.0 },
-        'UAE': { assets: 7654, coverage: 8.2, gap: 7027, status: 'critical', lat: 24.0, lon: 54.0 }
-      }
-    },
-    'APAC': {
-      totalAssets: 67342,
-      csocCoverage: 15.8,
-      splunkCoverage: 61.2,
-      chronicleCoverage: 93.1,
-      criticalGaps: 56632,
-      countries: 13,
-      datacenters: 6,
-      cloudRegions: 3,
-      color: '#ff00ff',
-      breakdown: {
-        'Japan': { assets: 18901, coverage: 22.3, gap: 14685, status: 'critical', lat: 36.0, lon: 138.0 },
-        'Singapore': { assets: 14567, coverage: 19.8, gap: 11682, status: 'critical', lat: 1.3, lon: 103.8 },
-        'Australia': { assets: 12345, coverage: 17.2, gap: 10222, status: 'critical', lat: -27.0, lon: 133.0 },
-        'India': { assets: 10234, coverage: 12.1, gap: 8995, status: 'critical', lat: 20.0, lon: 77.0 }
-      }
-    }
-  };
-
-  const currentRegion = regionalData[selectedRegion] || regionalData['ALL'];
-
-  // 3D Globe Visualization
+  // Fetch real data from Python backend
   useEffect(() => {
-    if (!globeRef.current) return;
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [regionalResponse, countryResponse] = await Promise.all([
+          fetch('http://localhost:5000/api/region_metrics'),
+          fetch('http://localhost:5000/api/country_metrics')
+        ]);
+
+        if (!regionalResponse.ok || !countryResponse.ok) {
+          throw new Error('Failed to fetch data');
+        }
+
+        const regionalResult = await regionalResponse.json();
+        const countryResult = await countryResponse.json();
+        
+        setRegionalData(regionalResult);
+        setCountryData(countryResult);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Get current region data
+  const currentRegionData = React.useMemo(() => {
+    if (!regionalData) return null;
+    
+    if (selectedRegion === 'ALL') {
+      return {
+        totalAssets: regionalData.total_coverage,
+        coverage: Object.values(regionalData.regional_analytics).reduce((sum, r) => sum + r.security_score, 0) / 
+                 Object.keys(regionalData.regional_analytics).length,
+        regions: Object.keys(regionalData.regional_analytics).length,
+        highestRisk: regionalData.threat_assessment.highest_risk_region,
+        mostSecure: regionalData.threat_assessment.most_secure_region
+      };
+    }
+    
+    const region = regionalData.regional_analytics[selectedRegion];
+    if (!region) return null;
+    
+    return {
+      totalAssets: region.count,
+      coverage: region.security_score,
+      cmdbCoverage: region.cmdb_coverage,
+      taniumCoverage: region.tanium_coverage,
+      infrastructureDiversity: region.infrastructure_diversity
+    };
+  }, [regionalData, selectedRegion]);
+
+  // 3D Globe Visualization with real data
+  useEffect(() => {
+    if (!globeRef.current || !regionalData || !countryData) return;
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x000000, 0.0003);
@@ -115,72 +142,25 @@ const RegionalCountryView: React.FC = () => {
     const globe = new THREE.Mesh(globeGeometry, globeMaterial);
     scene.add(globe);
 
-    // Wireframe overlay
-    const wireframeGeometry = new THREE.IcosahedronGeometry(81, 4);
-    const wireframeMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.2
-    });
-    const wireframe = new THREE.Mesh(wireframeGeometry, wireframeMaterial);
-    scene.add(wireframe);
-
-    // Regional platforms
+    // Add regional nodes based on real data
     const platforms: THREE.Mesh[] = [];
     
-    if (selectedRegion !== 'ALL') {
-      const regionData = regionalData[selectedRegion];
-      if (regionData && regionData.breakdown) {
-        Object.entries(regionData.breakdown).forEach(([country, data]) => {
-          const phi = (90 - data.lat) * (Math.PI / 180);
-          const theta = (data.lon + 180) * (Math.PI / 180);
-          
-          const timeFactor = (timelinePosition - 50) / 50;
-          const radius = 82 + data.coverage * 0.3 + timeFactor * 10;
-          
-          const x = radius * Math.sin(phi) * Math.cos(theta);
-          const y = radius * Math.cos(phi);
-          const z = radius * Math.sin(phi) * Math.sin(theta);
-
-          // Country platform
-          const platformGeometry = new THREE.BoxGeometry(12, data.assets / 2500, 12);
-          const platformMaterial = new THREE.MeshPhongMaterial({
-            color: data.status === 'critical' ? 0xff00ff : 0xffaa00,
-            emissive: data.status === 'critical' ? 0xff00ff : 0xffaa00,
-            emissiveIntensity: 0.3,
-            transparent: true,
-            opacity: 0.8
-          });
-          const platform = new THREE.Mesh(platformGeometry, platformMaterial);
-          platform.position.set(x, y, z);
-          platform.lookAt(0, 0, 0);
-          scene.add(platform);
-          platforms.push(platform);
-        });
-      }
-    } else {
+    if (selectedRegion === 'ALL') {
       // Show all regions
-      ['AMERICAS', 'EMEA', 'APAC'].forEach((regionName, index) => {
-        const region = regionalData[regionName as keyof typeof regionalData];
-        if (!region || !('breakdown' in region)) return;
+      Object.entries(regionalData.regional_analytics).forEach(([regionName, data], index) => {
+        const phi = (90 - (index * 30 - 30)) * (Math.PI / 180);
+        const theta = (index * 60) * (Math.PI / 180);
         
-        const regionLat = index === 0 ? 30 : index === 1 ? 50 : 10;
-        const regionLon = index === 0 ? -90 : index === 1 ? 20 : 110;
-        
-        const phi = (90 - regionLat) * (Math.PI / 180);
-        const theta = (regionLon + 180) * (Math.PI / 180);
-        
-        const radius = 85 + (region.csocCoverage / 100) * 20;
+        const radius = 85 + (data.security_score / 100) * 20;
         
         const x = radius * Math.sin(phi) * Math.cos(theta);
         const y = radius * Math.cos(phi);
         const z = radius * Math.sin(phi) * Math.sin(theta);
         
-        const sphereGeometry = new THREE.SphereGeometry(15, 16, 16);
+        const sphereGeometry = new THREE.SphereGeometry(10 + data.percentage / 5, 16, 16);
         const sphereMaterial = new THREE.MeshPhongMaterial({
-          color: region.color || 0x00ffff,
-          emissive: region.color || 0x00ffff,
+          color: data.security_score < 50 ? 0xff00ff : data.security_score < 75 ? 0xc084fc : 0x00ffff,
+          emissive: data.security_score < 50 ? 0xff00ff : 0x00ffff,
           emissiveIntensity: 0.3,
           transparent: true,
           opacity: 0.6,
@@ -191,10 +171,40 @@ const RegionalCountryView: React.FC = () => {
         scene.add(sphere);
         platforms.push(sphere);
       });
+    } else {
+      // Show countries in selected region
+      Object.entries(countryData.country_analysis)
+        .filter(([_, country]) => country.region === selectedRegion)
+        .forEach(([countryName, data], index) => {
+          const phi = (90 - (index * 15)) * (Math.PI / 180);
+          const theta = (index * 45) * (Math.PI / 180);
+          
+          const radius = 82 + data.security_score * 0.3;
+          
+          const x = radius * Math.sin(phi) * Math.cos(theta);
+          const y = radius * Math.cos(phi);
+          const z = radius * Math.sin(phi) * Math.sin(theta);
+
+          const platformGeometry = new THREE.BoxGeometry(8, data.count / 100, 8);
+          const platformMaterial = new THREE.MeshPhongMaterial({
+            color: data.threat_level === 'CRITICAL' ? 0xff00ff : 
+                   data.threat_level === 'HIGH' ? 0xffaa00 : 
+                   0x00ff88,
+            emissive: data.threat_level === 'CRITICAL' ? 0xff00ff : 0x00ff88,
+            emissiveIntensity: 0.3,
+            transparent: true,
+            opacity: 0.8
+          });
+          const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+          platform.position.set(x, y, z);
+          platform.lookAt(0, 0, 0);
+          scene.add(platform);
+          platforms.push(platform);
+        });
     }
 
     // Particle field
-    const particleCount = 3000;
+    const particleCount = 2000;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
@@ -210,11 +220,11 @@ const RegionalCountryView: React.FC = () => {
       
       const colorChoice = Math.random();
       if (colorChoice < 0.33) {
-        colors[i] = 0; colors[i + 1] = 1; colors[i + 2] = 1; // Cyan
+        colors[i] = 0; colors[i + 1] = 1; colors[i + 2] = 1;
       } else if (colorChoice < 0.66) {
-        colors[i] = 0.75; colors[i + 1] = 0.52; colors[i + 2] = 0.99; // Purple
+        colors[i] = 0.75; colors[i + 1] = 0.52; colors[i + 2] = 0.99;
       } else {
-        colors[i] = 1; colors[i + 1] = 0; colors[i + 2] = 1; // Pink
+        colors[i] = 1; colors[i + 1] = 0; colors[i + 2] = 1;
       }
     }
 
@@ -240,17 +250,13 @@ const RegionalCountryView: React.FC = () => {
     pointLight1.position.set(0, 0, 0);
     scene.add(pointLight1);
 
-    const pointLight2 = new THREE.PointLight(0xff00ff, 0.5, 200);
-    pointLight2.position.set(-100, 50, 100);
-    scene.add(pointLight2);
-
     // Animation loop
+    let frameId: number;
     const animate = () => {
-      frameRef.current = requestAnimationFrame(animate);
+      frameId = requestAnimationFrame(animate);
       
       const timeSpeed = 0.002 + (timelinePosition / 100) * 0.003;
       globe.rotation.y += timeSpeed;
-      wireframe.rotation.y += timeSpeed;
       particles.rotation.y -= timeSpeed * 0.5;
       
       platforms.forEach((platform, index) => {
@@ -273,18 +279,18 @@ const RegionalCountryView: React.FC = () => {
     animate();
 
     return () => {
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (frameId) cancelAnimationFrame(frameId);
       if (globeRef.current && renderer.domElement) {
         globeRef.current.removeChild(renderer.domElement);
       }
       renderer.dispose();
     };
-  }, [selectedRegion, timelinePosition]);
+  }, [regionalData, countryData, selectedRegion, timelinePosition]);
 
-  // Radar Canvas
+  // Radar Canvas with real threat data
   useEffect(() => {
     const canvas = radarRef.current;
-    if (!canvas) return;
+    if (!canvas || !countryData) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -331,79 +337,111 @@ const RegionalCountryView: React.FC = () => {
       );
       ctx.stroke();
 
-      // Plot threats
-      if (selectedRegion !== 'ALL' && regionalData[selectedRegion]?.breakdown) {
-        Object.entries(regionalData[selectedRegion].breakdown).forEach(([country, data], index) => {
-          const angle = (index / 4) * Math.PI * 2;
-          const distance = (100 - data.coverage) / 100 * maxRadius;
+      // Plot threats from urgent infrastructure countries
+      countryData.urgent_infrastructure.slice(0, 8).forEach((country, index) => {
+        const angle = (index / 8) * Math.PI * 2;
+        const countryData = countryData.country_analysis[country];
+        if (countryData) {
+          const distance = (100 - countryData.security_score) / 100 * maxRadius;
           const x = centerX + Math.cos(angle) * distance;
           const y = centerY + Math.sin(angle) * distance;
 
-          // Threat blip
-          ctx.fillStyle = data.status === 'critical' ? '#ff00ff' : '#ffaa00';
+          ctx.fillStyle = countryData.threat_level === 'CRITICAL' ? '#ff00ff' : '#ffaa00';
           ctx.beginPath();
           ctx.arc(x, y, 3, 0, Math.PI * 2);
           ctx.fill();
 
-          // Pulse effect
           const pulseRadius = 8 + Math.sin(Date.now() * 0.003 + index) * 4;
-          ctx.strokeStyle = data.status === 'critical' ? 'rgba(255, 0, 255, 0.3)' : 'rgba(255, 170, 0, 0.3)';
+          ctx.strokeStyle = countryData.threat_level === 'CRITICAL' ? 
+            'rgba(255, 0, 255, 0.3)' : 'rgba(255, 170, 0, 0.3)';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
           ctx.stroke();
-        });
-      }
+        }
+      });
 
       requestAnimationFrame(animate);
     };
 
     animate();
-  }, [selectedRegion]);
+  }, [countryData]);
 
   // Animate metrics
   useEffect(() => {
-    setTimeout(() => {
-      setAnimatedMetrics({
-        csoc: currentRegion.csocCoverage,
-        splunk: currentRegion.splunkCoverage,
-        chronicle: currentRegion.chronicleCoverage
-      });
-    }, 100);
-  }, [selectedRegion]);
+    if (currentRegionData) {
+      setTimeout(() => {
+        setAnimatedMetrics({
+          coverage: currentRegionData.coverage,
+          cmdb: currentRegionData.cmdbCoverage || 0,
+          tanium: currentRegionData.taniumCoverage || 0
+        });
+      }, 100);
+    }
+  }, [currentRegionData]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-32 w-32 border-b-2 border-cyan-400"></div>
+          <div className="mt-4 text-xl font-bold text-cyan-400">LOADING REGIONAL DATA</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !regionalData || !countryData) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center glass-panel rounded-xl p-8">
+          <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <div className="text-xl font-bold text-red-400 mb-2">DATA LOAD ERROR</div>
+          <div className="text-sm text-gray-400">{error || 'No data available'}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 h-full bg-black flex flex-col">
       {/* Critical Alert */}
-      <div className="mb-3 border border-red-500/50 bg-red-500/10 rounded-lg p-2 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse" />
-          <div>
-            <span className="text-red-400 font-bold text-sm">TERRITORIAL BREACH:</span>
-            <span className="text-white ml-2 text-sm">EMEA at 12.3% - 78,456 nodes compromised</span>
+      {regionalData.threat_assessment.highest_risk_region && (
+        <div className="mb-3 border border-red-500/50 bg-red-500/10 rounded-lg p-2 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse" />
+            <div>
+              <span className="text-red-400 font-bold text-sm">HIGHEST RISK REGION:</span>
+              <span className="text-white ml-2 text-sm">
+                {regionalData.threat_assessment.highest_risk_region} - {countryData.total_gap_assets.toLocaleString()} assets at risk
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Region Selector */}
       <div className="flex gap-2 mb-3 flex-shrink-0">
-        {['ALL', 'AMERICAS', 'EMEA', 'APAC'].map(region => (
+        <button
+          onClick={() => setSelectedRegion('ALL')}
+          className={`px-4 py-2 rounded-lg font-bold uppercase tracking-wider transition-all text-sm ${
+            selectedRegion === 'ALL' ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20' : 'bg-gray-900/50'
+          }`}
+          style={{ border: selectedRegion === 'ALL' ? '2px solid #00ffff' : '2px solid transparent' }}
+        >
+          <span style={{ color: selectedRegion === 'ALL' ? '#00ffff' : '#666' }}>ALL</span>
+        </button>
+        {Object.keys(regionalData.regional_analytics).slice(0, 3).map(region => (
           <button
             key={region}
             onClick={() => setSelectedRegion(region)}
             className={`px-4 py-2 rounded-lg font-bold uppercase tracking-wider transition-all text-sm ${
-              selectedRegion === region
-                ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20'
-                : 'bg-gray-900/50 hover:bg-gray-800/50'
+              selectedRegion === region ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20' : 'bg-gray-900/50'
             }`}
-            style={{
-              border: selectedRegion === region ? '2px solid #00ffff' : '2px solid transparent'
-            }}
+            style={{ border: selectedRegion === region ? '2px solid #00ffff' : '2px solid transparent' }}
           >
-            <span style={{ 
-              color: selectedRegion === region ? '#00ffff' : '#666'
-            }}>
-              {region}
+            <span style={{ color: selectedRegion === region ? '#00ffff' : '#666' }}>
+              {region.substring(0, 10)}
             </span>
           </button>
         ))}
@@ -422,11 +460,7 @@ const RegionalCountryView: React.FC = () => {
               onChange={(e) => setTimelinePosition(Number(e.target.value))}
               className="w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer"
               style={{
-                background: `linear-gradient(to right, 
-                  #ff00ff 0%, 
-                  #ff00ff ${timelinePosition}%, 
-                  #333 ${timelinePosition}%, 
-                  #333 100%)`
+                background: `linear-gradient(to right, #ff00ff 0%, #ff00ff ${timelinePosition}%, #333 ${timelinePosition}%, #333 100%)`
               }}
             />
           </div>
@@ -443,7 +477,7 @@ const RegionalCountryView: React.FC = () => {
             <div className="p-2 border-b border-cyan-500/20">
               <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
                 <Globe className="w-3 h-3" />
-                Territorial Matrix
+                Regional Security Matrix (Real Data)
               </h3>
             </div>
             <div ref={globeRef} className="w-full h-full" style={{ height: 'calc(100% - 32px)' }} />
@@ -456,49 +490,41 @@ const RegionalCountryView: React.FC = () => {
           <div className="bg-black/80 rounded-xl border border-purple-500/30 p-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="text-center">
-                <div className="text-2xl font-bold text-cyan-400">{currentRegion.totalAssets.toLocaleString()}</div>
-                <div className="text-xs text-gray-400">NODES</div>
+                <div className="text-2xl font-bold text-cyan-400">
+                  {countryData.total_countries}
+                </div>
+                <div className="text-xs text-gray-400">COUNTRIES</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-red-400">{currentRegion.criticalGaps.toLocaleString()}</div>
-                <div className="text-xs text-gray-400">BREACHED</div>
+                <div className="text-2xl font-bold text-red-400">
+                  {countryData.urgent_infrastructure.length}
+                </div>
+                <div className="text-xs text-gray-400">CRITICAL</div>
               </div>
             </div>
 
             {/* Coverage Bars */}
-            <div className="space-y-2 mt-3">
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-cyan-400">CSOC</span>
-                  <span className="font-mono text-cyan-400">{animatedMetrics.csoc?.toFixed(1) || 0}%</span>
-                </div>
-                <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${animatedMetrics.csoc || 0}%`,
-                      background: animatedMetrics.csoc < 20 ? '#ff00ff' : '#00ffff'
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-purple-400">Splunk</span>
-                  <span className="font-mono text-purple-400">{animatedMetrics.splunk?.toFixed(1) || 0}%</span>
-                </div>
-                <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${animatedMetrics.splunk || 0}%`,
-                      background: 'linear-gradient(90deg, #c084fc, #ff00ff)'
-                    }}
-                  />
+            {currentRegionData && (
+              <div className="space-y-2 mt-3">
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-cyan-400">Security Score</span>
+                    <span className="font-mono text-cyan-400">
+                      {animatedMetrics.coverage?.toFixed(1) || 0}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${animatedMetrics.coverage || 0}%`,
+                        background: animatedMetrics.coverage < 50 ? '#ff00ff' : '#00ffff'
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Radar Map */}
@@ -506,7 +532,7 @@ const RegionalCountryView: React.FC = () => {
             <div className="p-2 border-b border-pink-500/20">
               <h3 className="text-xs font-bold text-pink-400 uppercase tracking-wider flex items-center gap-1">
                 <Radar className="w-3 h-3" />
-                Threat Radar
+                Threat Radar (Critical Countries)
               </h3>
             </div>
             <canvas ref={radarRef} className="w-full h-full" style={{ height: 'calc(100% - 32px)' }} />
