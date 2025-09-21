@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Globe, Database, Server, Cloud, Shield, Activity, Zap, Wifi, Eye, AlertTriangle, TrendingDown } from 'lucide-react';
+import { Globe, Database, Server, Cloud, Shield, Activity, Zap, Wifi, Eye, AlertTriangle, TrendingDown, Satellite, Radio, Radar } from 'lucide-react';
+import * as THREE from 'three';
 
 const GlobalView: React.FC = () => {
   const [selectedPlatform, setSelectedPlatform] = useState<'csoc' | 'splunk' | 'chronicle'>('csoc');
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [animatedPercentage, setAnimatedPercentage] = useState(0);
+  const globeRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const frameRef = useRef<number>(0);
+  const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
   
-  // ACTUAL DATA FROM AO1 REQUIREMENTS - Global View
+  // ACTUAL DATA FROM AO1 REQUIREMENTS
   const globalData = {
     csoc: {
       totalAssets: 262032,
@@ -14,13 +19,9 @@ const GlobalView: React.FC = () => {
       percentage: 19.17,
       missing: 211795,
       color: '#00ffff',
+      glowColor: '#00ccff',
       status: 'CRITICAL',
-      trend: -2.3, // Monthly decline
-      details: {
-        'URL/FQDN Coverage': 'Listed for every URL/FQDN covered in SIEM',
-        'Public IP Space': 'Full list of CIDR coverage',
-        'Compliance': 'FAILING - Below 80% threshold'
-      }
+      trend: -2.3,
     },
     splunk: {
       totalAssets: 262032,
@@ -28,344 +29,513 @@ const GlobalView: React.FC = () => {
       percentage: 63.93,
       missing: 94515,
       color: '#c084fc',
+      glowColor: '#a855f7',
       status: 'WARNING',
       trend: 0.8,
-      details: {
-        'Coverage Type': 'Partial deployment',
-        'Integration': 'Active',
-        'Data Volume': '2.4TB daily'
-      }
     },
     chronicle: {
       totalAssets: 262032,
       covered: 241691,
       percentage: 92.24,
       missing: 20341,
-      color: '#00ff88',
+      color: '#ff00ff',
+      glowColor: '#ff00aa',
       status: 'GOOD',
       trend: 3.2,
-      details: {
-        'Coverage Type': 'Near complete',
-        'Integration': 'Full deployment',
-        'Data Volume': '3.8TB daily'
-      }
     }
   };
 
   const currentData = globalData[selectedPlatform];
 
-  // Animate percentage on platform change
+  // Regional data with coordinates
+  const regions = [
+    { name: 'AMERICAS', lat: 40, lon: -100, coverage: 32.5, assets: 105234, status: 'warning' },
+    { name: 'EMEA', lat: 50, lon: 10, coverage: 12.3, assets: 89456, status: 'critical' },
+    { name: 'APAC', lat: 20, lon: 120, coverage: 15.8, assets: 67342, status: 'critical' },
+    { name: 'NORTH POLE', lat: 90, lon: 0, coverage: 95.2, assets: 12, status: 'secure' },
+    { name: 'ANTARCTICA', lat: -82, lon: 0, coverage: 88.9, assets: 8, status: 'secure' }
+  ];
+
+  // 3D Globe Setup
   useEffect(() => {
-    let start = 0;
-    const target = currentData.percentage;
-    const duration = 1000;
-    const startTime = Date.now();
+    if (!globeRef.current) return;
 
-    const animate = () => {
-      const now = Date.now();
-      const progress = Math.min((now - startTime) / duration, 1);
-      const value = start + (target - start) * progress;
-      setAnimatedPercentage(value);
-      
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      }
-    };
-    
-    animate();
-  }, [selectedPlatform]);
+    // Scene setup
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.00025);
+    sceneRef.current = scene;
 
-  // Global coverage visualization
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    // Camera
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      globeRef.current.clientWidth / globeRef.current.clientHeight,
+      0.1,
+      1000
+    );
+    camera.position.set(0, 0, 300);
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true, 
+      alpha: true,
+      powerPreference: "high-performance"
+    });
+    renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    globeRef.current.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+    // Globe
+    const globeGeometry = new THREE.SphereGeometry(100, 64, 64);
+    const globeMaterial = new THREE.MeshPhongMaterial({
+      color: 0x001122,
+      emissive: currentData.color,
+      emissiveIntensity: 0.1,
+      wireframe: false,
+      transparent: true,
+      opacity: 0.8,
+    });
+    const globe = new THREE.Mesh(globeGeometry, globeMaterial);
+    scene.add(globe);
 
-    let rotation = 0;
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const radius = Math.min(centerX, centerY) * 0.8;
+    // Wireframe overlay
+    const wireframeGeometry = new THREE.SphereGeometry(101, 32, 32);
+    const wireframeMaterial = new THREE.MeshBasicMaterial({
+      color: currentData.color,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.3,
+    });
+    const wireframe = new THREE.Mesh(wireframeGeometry, wireframeMaterial);
+    scene.add(wireframe);
 
-    const animate = () => {
-      rotation += 0.003;
-      
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Draw globe
-      ctx.strokeStyle = currentData.color + '30';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Draw latitude lines
-      for (let lat = -60; lat <= 60; lat += 30) {
-        ctx.strokeStyle = currentData.color + '20';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        
-        const y = centerY + (lat / 90) * radius;
-        const lineRadius = Math.cos((lat * Math.PI) / 180) * radius;
-        
-        ctx.ellipse(centerX, y, lineRadius, lineRadius * 0.3, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // Draw coverage points based on percentage
-      const numPoints = Math.floor(currentData.percentage * 2);
-      for (let i = 0; i < numPoints; i++) {
-        const lat = (Math.random() - 0.5) * Math.PI;
-        const lon = (Math.random() * Math.PI * 2) + rotation;
-        
-        const x = centerX + radius * Math.cos(lat) * Math.sin(lon);
-        const y = centerY + radius * Math.sin(lat);
-        const z = Math.cos(lat) * Math.cos(lon);
-        
-        if (z > 0) {
-          ctx.beginPath();
-          ctx.arc(x, y, 2 * (1 + z), 0, Math.PI * 2);
-          ctx.fillStyle = currentData.color + Math.floor(255 * (0.5 + z * 0.5)).toString(16);
-          ctx.fill();
+    // Add atmosphere glow
+    const atmosphereGeometry = new THREE.SphereGeometry(105, 32, 32);
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
-      }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.7 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+          gl_FragColor = vec4(${currentData.color === '#00ffff' ? '0.0, 1.0, 1.0' : 
+                              currentData.color === '#c084fc' ? '0.75, 0.52, 0.99' : 
+                              '1.0, 0.0, 1.0'}, 1.0) * intensity;
+        }
+      `,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      transparent: true,
+    });
+    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    scene.add(atmosphere);
 
-      // Draw warning zones for gaps
-      if (currentData.percentage < 50) {
-        ctx.strokeStyle = 'rgba(255, 0, 68, 0.5)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius * 1.1, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+    // Data points for regions
+    regions.forEach(region => {
+      const phi = (90 - region.lat) * (Math.PI / 180);
+      const theta = (region.lon + 180) * (Math.PI / 180);
+      
+      const x = 100 * Math.sin(phi) * Math.cos(theta);
+      const y = 100 * Math.cos(phi);
+      const z = 100 * Math.sin(phi) * Math.sin(theta);
 
-      requestAnimationFrame(animate);
+      // Create beacon
+      const beaconGeometry = new THREE.ConeGeometry(3, 10, 4);
+      const beaconMaterial = new THREE.MeshPhongMaterial({
+        color: region.status === 'critical' ? 0xff0044 : 
+               region.status === 'warning' ? 0xffaa00 : 
+               0x00ff88,
+        emissive: region.status === 'critical' ? 0xff0044 : 
+                  region.status === 'warning' ? 0xffaa00 : 
+                  0x00ff88,
+        emissiveIntensity: 0.5,
+      });
+      const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
+      beacon.position.set(x, y, z);
+      beacon.lookAt(0, 0, 0);
+      scene.add(beacon);
+
+      // Pulse ring
+      const ringGeometry = new THREE.RingGeometry(5, 7, 32);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: beaconMaterial.color,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+      });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.position.set(x * 1.1, y * 1.1, z * 1.1);
+      ring.lookAt(0, 0, 0);
+      scene.add(ring);
+    });
+
+    // Particle system for data flow
+    const particlesGeometry = new THREE.BufferGeometry();
+    const particlesCount = 2000;
+    const positions = new Float32Array(particlesCount * 3);
+    const colors = new Float32Array(particlesCount * 3);
+
+    for (let i = 0; i < particlesCount * 3; i += 3) {
+      const radius = 110 + Math.random() * 50;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+      
+      positions[i] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i + 1] = radius * Math.cos(phi);
+      positions[i + 2] = radius * Math.sin(phi) * Math.sin(theta);
+      
+      const color = new THREE.Color(currentData.color);
+      colors[i] = color.r;
+      colors[i + 1] = color.g;
+      colors[i + 2] = color.b;
+    }
+
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const particlesMaterial = new THREE.PointsMaterial({
+      size: 1,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending,
+    });
+
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+
+    const pointLight = new THREE.PointLight(0xffffff, 1, 1000);
+    pointLight.position.set(100, 100, 100);
+    scene.add(pointLight);
+
+    // Animation loop
+    const animate = () => {
+      frameRef.current = requestAnimationFrame(animate);
+      
+      // Rotate globe
+      globe.rotation.y += 0.002;
+      wireframe.rotation.y += 0.002;
+      atmosphere.rotation.y += 0.001;
+      
+      // Animate particles
+      particles.rotation.y -= 0.001;
+      
+      // Pulse beacons
+      scene.children.forEach(child => {
+        if (child instanceof THREE.Mesh && child.geometry instanceof THREE.RingGeometry) {
+          child.scale.x = 1 + Math.sin(Date.now() * 0.002) * 0.2;
+          child.scale.y = 1 + Math.sin(Date.now() * 0.002) * 0.2;
+          child.material.opacity = 0.5 - Math.sin(Date.now() * 0.002) * 0.3;
+        }
+      });
+      
+      // Camera orbit
+      const time = Date.now() * 0.0005;
+      camera.position.x = Math.sin(time) * 300 * zoomLevel;
+      camera.position.z = Math.cos(time) * 300 * zoomLevel;
+      camera.position.y = Math.sin(time * 0.5) * 50;
+      camera.lookAt(0, 0, 0);
+      
+      renderer.render(scene, camera);
     };
+
     animate();
-  }, [selectedPlatform]);
+
+    // Handle resize
+    const handleResize = () => {
+      if (!globeRef.current) return;
+      camera.aspect = globeRef.current.clientWidth / globeRef.current.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (globeRef.current && renderer.domElement) {
+        globeRef.current.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+    };
+  }, [selectedPlatform, zoomLevel]);
 
   return (
-    <div className="p-8 min-h-screen">
+    <div className="p-8 min-h-screen bg-black">
+      {/* Animated Background */}
+      <div className="fixed inset-0 opacity-20">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-purple-900/20 to-pink-900/20" />
+        <div className="absolute inset-0" style={{
+          backgroundImage: `radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.1) 0%, transparent 50%),
+                           radial-gradient(circle at 80% 80%, rgba(192, 132, 252, 0.1) 0%, transparent 50%),
+                           radial-gradient(circle at 40% 20%, rgba(255, 0, 255, 0.1) 0%, transparent 50%)`,
+          animation: 'pulse 10s ease-in-out infinite'
+        }} />
+      </div>
+
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 holo-text">
-          GLOBAL VIEW - CSOC VISIBILITY
+      <div className="relative z-20 mb-8">
+        <h1 className="text-6xl font-black mb-3 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 animate-pulse">
+          GLOBAL QUANTUM SURVEILLANCE MATRIX
         </h1>
-        <p className="text-purple-300/60 uppercase tracking-widest text-sm">
-          Total Assets: {currentData.totalAssets.toLocaleString()} • Global Coverage Analysis
+        <p className="text-gray-400 uppercase tracking-[0.3em] text-sm">
+          CLASSIFICATION: COSMIC TOP SECRET • {currentData.totalAssets.toLocaleString()} ASSETS • YEAR 5000
         </p>
       </div>
 
-      {/* Critical Alert for CSOC */}
+      {/* Critical Alert */}
       {selectedPlatform === 'csoc' && (
-        <div className="mb-6 glass-panel rounded-xl p-4 border-red-500/50 bg-red-500/10">
+        <div className="relative z-20 mb-6 border border-red-500/50 bg-red-500/10 rounded-lg p-4 backdrop-blur-lg">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-6 h-6 text-red-400 animate-pulse" />
             <div>
-              <span className="text-red-400 font-bold">CRITICAL VISIBILITY GAP:</span>
-              <span className="text-white ml-2">CSOC coverage at 19.17% - {currentData.missing.toLocaleString()} assets unmonitored</span>
+              <span className="text-red-400 font-bold">QUANTUM BREACH DETECTED:</span>
+              <span className="text-white ml-2">Timeline corruption at 19.17% - {currentData.missing.toLocaleString()} nodes compromised</span>
             </div>
           </div>
         </div>
       )}
 
       {/* Platform Selector */}
-      <div className="flex gap-2 mb-8">
+      <div className="relative z-20 flex gap-2 mb-8">
         {(['csoc', 'splunk', 'chronicle'] as const).map(platform => (
           <button
             key={platform}
             onClick={() => setSelectedPlatform(platform)}
-            className={`px-6 py-3 rounded-xl font-semibold uppercase tracking-wider transition-all ${
+            className={`px-8 py-4 rounded-lg font-bold uppercase tracking-wider transition-all duration-300 backdrop-blur-lg ${
               selectedPlatform === platform
-                ? 'glass-panel scale-105'
-                : 'bg-black/30 hover:bg-black/50'
+                ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 scale-105 shadow-2xl'
+                : 'bg-gray-900/50 hover:bg-gray-800/50'
             }`}
             style={{
-              borderColor: selectedPlatform === platform 
-                ? globalData[platform].color + '80'
-                : 'transparent',
+              border: selectedPlatform === platform 
+                ? `2px solid ${globalData[platform].color}` 
+                : '2px solid transparent',
               boxShadow: selectedPlatform === platform 
-                ? `0 0 30px ${globalData[platform].color}40` 
+                ? `0 0 40px ${globalData[platform].glowColor}40, inset 0 0 20px ${globalData[platform].glowColor}20` 
                 : 'none'
             }}
           >
-            <span style={{ color: selectedPlatform === platform ? globalData[platform].color : '#666' }}>
+            <span style={{ 
+              color: selectedPlatform === platform ? globalData[platform].color : '#666',
+              textShadow: selectedPlatform === platform ? `0 0 20px ${globalData[platform].glowColor}` : 'none'
+            }}>
               {platform.toUpperCase()}
             </span>
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
-        {/* Global Visualization */}
-        <div className="col-span-7">
-          <div className="glass-panel rounded-2xl p-6">
-            <canvas 
-              ref={canvasRef}
-              className="w-full h-[500px]"
-              style={{
-                filter: `drop-shadow(0 0 30px ${currentData.color}80)`
-              }}
-            />
-            
-            {/* Legend */}
-            <div className="mt-4 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: currentData.color }}></div>
-                  <span className="text-xs text-gray-400">Covered Assets</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-400 rounded-full"></div>
-                  <span className="text-xs text-gray-400">Gap Areas</span>
-                </div>
+      <div className="relative z-10 grid grid-cols-12 gap-6">
+        {/* 3D Globe Container */}
+        <div className="col-span-8">
+          <div className="relative bg-black/80 backdrop-blur-xl rounded-2xl border border-cyan-500/30 overflow-hidden" 
+               style={{
+                 boxShadow: `0 0 80px ${currentData.glowColor}30, inset 0 0 40px rgba(0,0,0,0.8)`
+               }}>
+            {/* HUD Overlay */}
+            <div className="absolute top-4 left-4 z-10">
+              <div className="text-cyan-400 text-xs font-mono space-y-1">
+                <div>ORBITAL VIEW: ACTIVE</div>
+                <div>QUANTUM ENCRYPTION: AES-5000</div>
+                <div>TIMELINE: {new Date().toISOString()}</div>
               </div>
-              <span className="text-xs text-gray-500">Real-time global coverage map</span>
+            </div>
+            
+            <div className="absolute top-4 right-4 z-10 space-y-2">
+              <button 
+                onClick={() => setZoomLevel(Math.max(0.5, zoomLevel - 0.2))}
+                className="block p-2 bg-cyan-500/20 border border-cyan-500/50 rounded hover:bg-cyan-500/30 transition-colors"
+              >
+                <Zap className="w-4 h-4 text-cyan-400" />
+              </button>
+              <button 
+                onClick={() => setZoomLevel(Math.min(2, zoomLevel + 0.2))}
+                className="block p-2 bg-cyan-500/20 border border-cyan-500/50 rounded hover:bg-cyan-500/30 transition-colors"
+              >
+                <Satellite className="w-4 h-4 text-cyan-400" />
+              </button>
+            </div>
+
+            {/* Globe Viewport */}
+            <div ref={globeRef} className="w-full h-[600px]" />
+            
+            {/* Scanner Line Effect */}
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-scan" />
             </div>
           </div>
         </div>
 
         {/* Metrics Panel */}
-        <div className="col-span-5 space-y-6">
-          {/* Main Coverage Metric */}
-          <div className="glass-panel rounded-2xl p-8">
+        <div className="col-span-4 space-y-6">
+          {/* Coverage Meter */}
+          <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-6"
+               style={{
+                 boxShadow: `0 0 60px ${currentData.glowColor}20, inset 0 0 30px rgba(0,0,0,0.8)`
+               }}>
             <div className="text-center">
-              {/* Large percentage display */}
-              <div className="relative">
-                <div 
-                  className="text-7xl font-black mb-4" 
-                  style={{ 
-                    color: currentData.status === 'CRITICAL' ? '#ff0044' :
-                           currentData.status === 'WARNING' ? '#ffaa00' :
-                           '#00ff88'
-                  }}
-                >
-                  {animatedPercentage.toFixed(2)}%
-                </div>
-                <div className={`absolute -top-2 -right-2 px-2 py-1 rounded text-xs font-bold ${
-                  currentData.status === 'CRITICAL' ? 'bg-red-500/20 text-red-400' :
-                  currentData.status === 'WARNING' ? 'bg-yellow-500/20 text-yellow-400' :
-                  'bg-green-500/20 text-green-400'
-                }`}>
-                  {currentData.status}
+              <div className="relative inline-block">
+                <svg className="w-48 h-48 transform -rotate-90">
+                  <circle
+                    cx="96"
+                    cy="96"
+                    r="88"
+                    stroke="rgba(255,255,255,0.1)"
+                    strokeWidth="8"
+                    fill="none"
+                  />
+                  <circle
+                    cx="96"
+                    cy="96"
+                    r="88"
+                    stroke={currentData.color}
+                    strokeWidth="8"
+                    fill="none"
+                    strokeDasharray={`${2 * Math.PI * 88}`}
+                    strokeDashoffset={`${2 * Math.PI * 88 * (1 - currentData.percentage / 100)}`}
+                    className="transition-all duration-1000"
+                    style={{
+                      filter: `drop-shadow(0 0 10px ${currentData.glowColor})`
+                    }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div>
+                    <div className="text-6xl font-black text-white">
+                      {currentData.percentage}%
+                    </div>
+                    <div className="text-sm text-gray-400 uppercase tracking-wider">
+                      Quantum Coverage
+                    </div>
+                  </div>
                 </div>
               </div>
               
-              <div className="text-lg text-gray-400 uppercase tracking-wider mb-6">
-                Global Coverage Rate
-              </div>
-              
-              {/* Key metrics */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="glass-panel rounded-lg p-4">
-                  <Eye className="w-6 h-6 mx-auto mb-2" style={{ color: currentData.color }} />
-                  <div className="text-2xl font-bold" style={{ color: currentData.color }}>
-                    {(currentData.covered / 1000).toFixed(1)}K
-                  </div>
-                  <div className="text-xs text-gray-500 uppercase">Monitored</div>
-                </div>
-                
-                <div className="glass-panel rounded-lg p-4">
-                  <Shield className="w-6 h-6 mx-auto mb-2 text-red-400" />
-                  <div className="text-2xl font-bold text-red-400">
-                    {(currentData.missing / 1000).toFixed(1)}K
-                  </div>
-                  <div className="text-xs text-gray-500 uppercase">Unprotected</div>
-                </div>
+              <div className={`mt-4 px-3 py-1 inline-block rounded-full text-sm font-bold ${
+                currentData.status === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/50' :
+                currentData.status === 'WARNING' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' :
+                'bg-green-500/20 text-green-400 border border-green-500/50'
+              }`}>
+                {currentData.status} PROTOCOL
               </div>
             </div>
           </div>
 
-          {/* Trend Analysis */}
-          <div className="glass-panel rounded-2xl p-6">
-            <h3 className="text-sm font-semibold text-purple-300 mb-4 uppercase tracking-wider">
-              Coverage Trend
-            </h3>
-            
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-gray-400">Monthly Change</span>
-              <div className="flex items-center gap-2">
-                {currentData.trend < 0 ? (
-                  <TrendingDown className="w-5 h-5 text-red-400" />
-                ) : (
-                  <Activity className="w-5 h-5 text-green-400" />
-                )}
-                <span className={`text-xl font-bold ${currentData.trend < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                  {currentData.trend > 0 ? '+' : ''}{currentData.trend}%
-                </span>
-              </div>
-            </div>
-            
-            {/* Progress bar */}
-            <div className="h-3 bg-black/50 rounded-full overflow-hidden">
-              <div 
-                className="h-full transition-all duration-500"
-                style={{
-                  width: `${currentData.percentage}%`,
-                  background: `linear-gradient(90deg, ${currentData.color}80, ${currentData.color})`
-                }}
-              />
-            </div>
-            
-            {/* Target line */}
-            <div className="relative mt-2">
-              <div className="absolute left-[80%] -translate-x-1/2">
-                <div className="w-0.5 h-4 bg-yellow-400"></div>
-                <span className="text-xs text-yellow-400">Target: 80%</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Platform Details */}
-          <div className="glass-panel rounded-2xl p-6">
-            <h3 className="text-sm font-semibold text-cyan-300 mb-4 uppercase tracking-wider">
-              Platform Details
+          {/* Regional Threats */}
+          <div className="bg-black/80 backdrop-blur-xl rounded-2xl border border-pink-500/30 p-6"
+               style={{
+                 boxShadow: `0 0 60px rgba(255, 0, 255, 0.2), inset 0 0 30px rgba(0,0,0,0.8)`
+               }}>
+            <h3 className="text-sm font-bold text-pink-400 mb-4 uppercase tracking-wider flex items-center gap-2">
+              <Radar className="w-4 h-4" />
+              Regional Quantum States
             </h3>
             
             <div className="space-y-3">
-              {Object.entries(currentData.details).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-400">{key}</span>
-                  <span className={`text-sm font-mono ${
-                    value.includes('FAILING') ? 'text-red-400' : 'text-cyan-400'
-                  }`}>
-                    {value}
-                  </span>
+              {regions.map(region => (
+                <div 
+                  key={region.name}
+                  className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-800 hover:border-cyan-500/50 transition-all cursor-pointer"
+                  onMouseEnter={() => setHoveredCountry(region.name)}
+                  onMouseLeave={() => setHoveredCountry(null)}
+                  style={{
+                    boxShadow: hoveredCountry === region.name ? '0 0 20px rgba(0, 255, 255, 0.3)' : 'none'
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${
+                      region.status === 'critical' ? 'bg-red-400' :
+                      region.status === 'warning' ? 'bg-yellow-400' :
+                      'bg-green-400'
+                    }`} />
+                    <span className="text-white font-medium">{region.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-xl font-bold ${
+                      region.coverage < 20 ? 'text-red-400' :
+                      region.coverage < 50 ? 'text-yellow-400' :
+                      'text-green-400'
+                    }`}>
+                      {region.coverage}%
+                    </div>
+                    <div className="text-xs text-gray-400">{region.assets.toLocaleString()} nodes</div>
+                  </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Quantum Metrics */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-cyan-500/30 p-4">
+              <Eye className="w-6 h-6 text-cyan-400 mb-2" />
+              <div className="text-2xl font-bold text-cyan-400">{(currentData.covered / 1000).toFixed(1)}K</div>
+              <div className="text-xs text-gray-400">Monitored</div>
+            </div>
+            <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-red-500/30 p-4">
+              <Shield className="w-6 h-6 text-red-400 mb-2" />
+              <div className="text-2xl font-bold text-red-400">{(currentData.missing / 1000).toFixed(1)}K</div>
+              <div className="text-xs text-gray-400">Vulnerable</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Bottom Action Bar */}
-      <div className="mt-8 glass-panel rounded-2xl p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <div>
-              <span className="text-xs text-cyan-400/60 uppercase">Assets Requiring Action</span>
-              <div className="text-2xl font-bold text-red-400">{currentData.missing.toLocaleString()}</div>
-            </div>
-            <div>
-              <span className="text-xs text-purple-400/60 uppercase">Compliance Status</span>
-              <div className="text-2xl font-bold text-red-400">FAILED</div>
-            </div>
-            <div>
-              <span className="text-xs text-pink-400/60 uppercase">Risk Level</span>
-              <div className="text-2xl font-bold text-orange-400">CRITICAL</div>
-            </div>
-          </div>
-          
-          <button className="neon-btn px-8 py-3 rounded-xl font-semibold uppercase tracking-wider">
-            Generate Gap Report
-          </button>
+      {/* Quantum Wave Interference Pattern */}
+      <div className="relative z-10 mt-8 bg-black/80 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-6">
+        <h3 className="text-sm font-bold text-purple-400 mb-4 uppercase tracking-wider">
+          Quantum Wave Interference Analysis
+        </h3>
+        <div className="h-32 relative overflow-hidden rounded-lg bg-gray-950">
+          <svg className="w-full h-full">
+            {/* Wave patterns for each platform */}
+            <path
+              d={`M 0 66 ${Array.from({length: 50}, (_, i) => {
+                const x = (i / 49) * 100;
+                const y = 50 + Math.sin(i * 0.3) * 20 * (globalData.csoc.percentage / 100);
+                return `L ${x}% ${y}%`;
+              }).join(' ')}`}
+              stroke="#00ffff"
+              strokeWidth="2"
+              fill="none"
+              opacity="0.8"
+            />
+            <path
+              d={`M 0 66 ${Array.from({length: 50}, (_, i) => {
+                const x = (i / 49) * 100;
+                const y = 50 + Math.sin(i * 0.3 + 2) * 20 * (globalData.splunk.percentage / 100);
+                return `L ${x}% ${y}%`;
+              }).join(' ')}`}
+              stroke="#c084fc"
+              strokeWidth="2"
+              fill="none"
+              opacity="0.8"
+            />
+            <path
+              d={`M 0 66 ${Array.from({length: 50}, (_, i) => {
+                const x = (i / 49) * 100;
+                const y = 50 + Math.sin(i * 0.3 + 4) * 20 * (globalData.chronicle.percentage / 100);
+                return `L ${x}% ${y}%`;
+              }).join(' ')}`}
+              stroke="#ff00ff"
+              strokeWidth="2"
+              fill="none"
+              opacity="0.8"
+            />
+          </svg>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
         </div>
       </div>
     </div>
