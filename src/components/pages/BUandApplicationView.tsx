@@ -1,129 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Building, Layers, Eye, AlertTriangle, Activity, Users, Briefcase, Target } from 'lucide-react';
+import { Building, Layers, Eye, AlertTriangle, Activity, Users, Briefcase, Target, Database } from 'lucide-react';
 import * as THREE from 'three';
 
 const BUandApplicationView: React.FC = () => {
   const [businessData, setBusinessData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedView, setSelectedView] = useState<'bu' | 'cio' | 'apm' | 'application'>('bu');
+  const [selectedView, setSelectedView] = useState<'bu' | 'cio' | 'apm' | 'class'>('bu');
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const hierarchyRef = useRef<HTMLDivElement>(null);
-  const flowRef = useRef<HTMLCanvasElement>(null);
+  const sankeyRef = useRef<HTMLCanvasElement>(null);
+  const bubbleRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
-        // Fetch domain metrics as proxy for BU data
-        const response = await fetch('http://localhost:5000/api/domain_metrics');
+        const response = await fetch('http://localhost:5000/api/business_unit_visibility');
         if (!response.ok) throw new Error('Failed to fetch business data');
         const data = await response.json();
-        
-        // Transform domain data into business unit visibility structure
-        const businessUnits = [
-          {
-            name: 'Merchant Solutions',
-            cio: 'Jennifer Martinez',
-            apm: 'APM-MERCH',
-            totalHosts: 78234,
-            visibleHosts: 17524,
-            visibilityPercentage: 22.4,
-            applications: ['Payment Gateway', 'Transaction Processor', 'Fraud Detection', 'Reporting Portal'],
-            status: 'critical'
-          },
-          {
-            name: 'Card Services',
-            cio: 'Michael Chen',
-            apm: 'APM-CARD',
-            totalHosts: 67890,
-            visibleHosts: 12831,
-            visibilityPercentage: 18.9,
-            applications: ['Card Authorization', 'Rewards Platform', 'Statement Generator'],
-            status: 'critical'
-          },
-          {
-            name: 'Digital Banking',
-            cio: 'Sarah Johnson',
-            apm: 'APM-DIGITAL',
-            totalHosts: 45678,
-            visibleHosts: 14252,
-            visibilityPercentage: 31.2,
-            applications: ['Mobile App Backend', 'Web Banking', 'API Gateway'],
-            status: 'warning'
-          },
-          {
-            name: 'Enterprise Services',
-            cio: 'David Rodriguez',
-            apm: 'APM-ENT',
-            totalHosts: 34567,
-            visibleHosts: 5427,
-            visibilityPercentage: 15.7,
-            applications: ['B2B Portal', 'Enterprise API', 'Partner Integration'],
-            status: 'critical'
-          },
-          {
-            name: 'Risk & Compliance',
-            cio: 'Lisa Thompson',
-            apm: 'APM-RISK',
-            totalHosts: 35663,
-            visibleHosts: 3174,
-            visibilityPercentage: 8.9,
-            applications: ['Risk Engine', 'Compliance Dashboard', 'Audit System'],
-            status: 'critical'
-          }
-        ];
-
-        // Group by CIO
-        const cioCoverage = businessUnits.reduce((acc: any, bu) => {
-          if (!acc[bu.cio]) {
-            acc[bu.cio] = {
-              name: bu.cio,
-              businessUnits: [],
-              totalHosts: 0,
-              visibleHosts: 0
-            };
-          }
-          acc[bu.cio].businessUnits.push(bu.name);
-          acc[bu.cio].totalHosts += bu.totalHosts;
-          acc[bu.cio].visibleHosts += bu.visibleHosts;
-          return acc;
-        }, {});
-
-        // Calculate CIO visibility percentages
-        Object.values(cioCoverage).forEach((cio: any) => {
-          cio.visibilityPercentage = (cio.visibleHosts / cio.totalHosts) * 100;
-          cio.status = cio.visibilityPercentage < 30 ? 'critical' : 
-                      cio.visibilityPercentage < 60 ? 'warning' : 'good';
-        });
-
-        // Application classes
-        const applicationClasses = [
-          { name: 'Customer-Facing', totalHosts: 85234, visibleHosts: 25123, visibilityPercentage: 29.5, status: 'critical' },
-          { name: 'Internal Systems', totalHosts: 67890, visibleHosts: 13578, visibilityPercentage: 20.0, status: 'critical' },
-          { name: 'Partner APIs', totalHosts: 45678, visibleHosts: 9135, visibilityPercentage: 20.0, status: 'critical' },
-          { name: 'Data Processing', totalHosts: 34567, visibleHosts: 5375, visibilityPercentage: 15.6, status: 'critical' },
-          { name: 'Infrastructure', totalHosts: 28654, visibleHosts: 2000, visibilityPercentage: 7.0, status: 'critical' }
-        ];
-
-        setBusinessData({
-          businessUnits,
-          cioCoverage: Object.values(cioCoverage),
-          applicationClasses,
-          overallVisibility: 19.17
-        });
+        setBusinessData(data);
       } catch (error) {
         console.error('Error:', error);
-        // Fallback data
-        setBusinessData({
-          businessUnits: [
-            { name: 'Merchant Solutions', cio: 'Jennifer Martinez', apm: 'APM-MERCH', totalHosts: 78234, visibleHosts: 17524, visibilityPercentage: 22.4, applications: ['Payment Gateway'], status: 'critical' },
-            { name: 'Card Services', cio: 'Michael Chen', apm: 'APM-CARD', totalHosts: 67890, visibleHosts: 12831, visibilityPercentage: 18.9, applications: ['Card Auth'], status: 'critical' }
-          ],
-          cioCoverage: [],
-          applicationClasses: [],
-          overallVisibility: 19.17
-        });
       } finally {
         setLoading(false);
       }
@@ -139,143 +36,201 @@ const BUandApplicationView: React.FC = () => {
     if (!hierarchyRef.current || !businessData) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, hierarchyRef.current.clientWidth / hierarchyRef.current.clientHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    scene.fog = new THREE.FogExp2(0x000000, 0.001);
+    
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      hierarchyRef.current.clientWidth / hierarchyRef.current.clientHeight,
+      0.1,
+      1000
+    );
+    
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true, 
+      alpha: true 
+    });
     
     renderer.setSize(hierarchyRef.current.clientWidth, hierarchyRef.current.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
     hierarchyRef.current.appendChild(renderer.domElement);
 
-    const nodes: THREE.Mesh[] = [];
+    const nodes: THREE.Group[] = [];
+    const connections: THREE.Line[] = [];
     
-    // Create hierarchy based on selected view
-    if (selectedView === 'bu') {
-      // Business Unit nodes
-      businessData.businessUnits.forEach((bu: any, index: number) => {
-        const angle = (index / businessData.businessUnits.length) * Math.PI * 2;
-        const radius = 60;
-        
-        const geometry = new THREE.BoxGeometry(20, 20, 20);
-        const material = new THREE.MeshPhongMaterial({
-          color: bu.status === 'critical' ? 0xff00ff : 
-                 bu.status === 'warning' ? 0xa855f7 : 0x00ffff,
-          transparent: true,
-          opacity: 0.8,
-          emissive: bu.status === 'critical' ? 0xff00ff : 0x00ffff,
-          emissiveIntensity: bu.visibilityPercentage / 200
-        });
-        
-        const node = new THREE.Mesh(geometry, material);
-        node.position.x = Math.cos(angle) * radius;
-        node.position.z = Math.sin(angle) * radius;
-        node.position.y = 0;
-        node.userData = bu;
-        nodes.push(node);
-        scene.add(node);
-        
-        // Add visibility sphere inside
-        const sphereSize = 8 * (bu.visibilityPercentage / 100);
-        const sphereGeometry = new THREE.SphereGeometry(sphereSize, 16, 16);
-        const sphereMaterial = new THREE.MeshPhongMaterial({
-          color: 0x00ffff,
-          emissive: 0x00ffff,
-          emissiveIntensity: 0.5
-        });
-        
-        const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-        sphere.position.copy(node.position);
-        scene.add(sphere);
-        
-        // Connection to center
-        const points = [new THREE.Vector3(0, 0, 0), node.position];
-        const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-        const lineMaterial = new THREE.LineBasicMaterial({
-          color: bu.status === 'critical' ? 0xff00ff : 0x00ffff,
-          transparent: true,
-          opacity: 0.3
-        });
-        const line = new THREE.Line(lineGeometry, lineMaterial);
-        scene.add(line);
-      });
-    } else if (selectedView === 'cio') {
-      // CIO hierarchy
-      businessData.cioCoverage.forEach((cio: any, index: number) => {
-        const angle = (index / businessData.cioCoverage.length) * Math.PI * 2;
-        const radius = 70;
-        
-        const size = Math.log(cio.totalHosts / 10000) * 15;
-        const geometry = new THREE.OctahedronGeometry(size, 0);
-        const material = new THREE.MeshPhongMaterial({
-          color: cio.status === 'critical' ? 0xff00ff : 
-                 cio.status === 'warning' ? 0xa855f7 : 0x00ffff,
-          transparent: true,
-          opacity: 0.8,
-          emissive: cio.status === 'critical' ? 0xff00ff : 0x00ffff,
-          emissiveIntensity: cio.visibilityPercentage / 200
-        });
-        
-        const node = new THREE.Mesh(geometry, material);
-        node.position.x = Math.cos(angle) * radius;
-        node.position.z = Math.sin(angle) * radius;
-        node.userData = cio;
-        nodes.push(node);
-        scene.add(node);
-      });
-    }
-
-    // Central core
+    // Get data based on selected view
+    const getData = () => {
+      switch (selectedView) {
+        case 'bu':
+          return businessData.business_unit_breakdown || [];
+        case 'cio':
+          return businessData.cio_breakdown || [];
+        case 'apm':
+          return businessData.apm_breakdown || [];
+        case 'class':
+          return businessData.application_class_breakdown || [];
+        default:
+          return [];
+      }
+    };
+    
+    const viewData = getData();
+    const maxHosts = Math.max(...viewData.map((d: any) => d.total_hosts));
+    
+    // Central core representing overall visibility
     const coreGeometry = new THREE.IcosahedronGeometry(10, 2);
     const coreMaterial = new THREE.MeshPhongMaterial({
-      color: 0x00ffff,
-      emissive: 0x00ffff,
-      emissiveIntensity: 0.3,
-      wireframe: true
+      color: 0x00d4ff,
+      emissive: 0x00d4ff,
+      emissiveIntensity: 0.2,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.8
     });
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
     scene.add(core);
-
-    // Particles
-    const particleCount = 300;
-    const particles = new THREE.BufferGeometry();
+    
+    // Create nodes for each business unit/CIO/APM/class
+    viewData.forEach((item: any, index: number) => {
+      const angle = (index / viewData.length) * Math.PI * 2;
+      const radius = 60;
+      
+      const nodeGroup = new THREE.Group();
+      
+      // Node size based on total hosts
+      const nodeSize = 5 + (item.total_hosts / maxHosts) * 15;
+      
+      // Node geometry - different shapes for different views
+      let nodeGeometry;
+      switch (selectedView) {
+        case 'bu':
+          nodeGeometry = new THREE.BoxGeometry(nodeSize, nodeSize, nodeSize);
+          break;
+        case 'cio':
+          nodeGeometry = new THREE.OctahedronGeometry(nodeSize);
+          break;
+        case 'apm':
+          nodeGeometry = new THREE.TetrahedronGeometry(nodeSize);
+          break;
+        default:
+          nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
+      }
+      
+      const nodeMaterial = new THREE.MeshPhongMaterial({
+        color: item.status === 'CRITICAL' ? 0xa855f7 :
+               item.status === 'WARNING' ? 0xffaa00 : 0x00d4ff,
+        emissive: item.status === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
+        emissiveIntensity: 0.2,
+        transparent: true,
+        opacity: 0.8
+      });
+      
+      const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+      nodeGroup.add(node);
+      
+      // Visibility indicator sphere inside
+      const visRadius = nodeSize * (item.visibility_percentage / 100);
+      const visGeometry = new THREE.SphereGeometry(visRadius, 12, 12);
+      const visMaterial = new THREE.MeshPhongMaterial({
+        color: 0x00d4ff,
+        emissive: 0x00d4ff,
+        emissiveIntensity: 0.5,
+        transparent: true,
+        opacity: 0.9
+      });
+      
+      const visSphere = new THREE.Mesh(visGeometry, visMaterial);
+      nodeGroup.add(visSphere);
+      
+      // Position node
+      nodeGroup.position.x = Math.cos(angle) * radius;
+      nodeGroup.position.z = Math.sin(angle) * radius;
+      nodeGroup.position.y = (Math.random() - 0.5) * 20;
+      
+      nodeGroup.userData = item;
+      nodes.push(nodeGroup);
+      scene.add(nodeGroup);
+      
+      // Connection to center
+      const points = [
+        new THREE.Vector3(0, 0, 0),
+        nodeGroup.position
+      ];
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: item.status === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
+        transparent: true,
+        opacity: 0.3
+      });
+      const line = new THREE.Line(lineGeometry, lineMaterial);
+      connections.push(line);
+      scene.add(line);
+    });
+    
+    // Add particles for data flow
+    const particleCount = 500;
+    const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
     
     for (let i = 0; i < particleCount * 3; i += 3) {
       positions[i] = (Math.random() - 0.5) * 200;
       positions[i + 1] = (Math.random() - 0.5) * 100;
       positions[i + 2] = (Math.random() - 0.5) * 200;
+      
+      colors[i] = 0;
+      colors[i + 1] = 0.83;
+      colors[i + 2] = 1;
     }
     
-    particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
-    const particleMaterial = new THREE.PointsMaterial({
-      color: 0xa855f7,
+    const particlesMaterial = new THREE.PointsMaterial({
       size: 1,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.6
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
     });
     
-    const particleSystem = new THREE.Points(particles, particleMaterial);
-    scene.add(particleSystem);
-
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
+    
     // Lighting
-    const light = new THREE.PointLight(0xffffff, 1, 200);
-    light.position.set(100, 100, 100);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0x404040));
-
-    camera.position.set(0, 100, 150);
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+    
+    const pointLight1 = new THREE.PointLight(0x00d4ff, 1, 200);
+    pointLight1.position.set(100, 100, 100);
+    scene.add(pointLight1);
+    
+    const pointLight2 = new THREE.PointLight(0xa855f7, 0.5, 200);
+    pointLight2.position.set(-100, -50, -100);
+    scene.add(pointLight2);
+    
+    camera.position.set(100, 80, 150);
     camera.lookAt(0, 0, 0);
-
+    
     // Animation
     const animate = () => {
-      core.rotation.y += 0.01;
-      particleSystem.rotation.y += 0.001;
+      // Rotate core
+      core.rotation.x += 0.005;
+      core.rotation.y += 0.005;
       
-      nodes.forEach((node, i) => {
-        node.rotation.y += 0.01;
-        node.position.y = Math.sin(Date.now() * 0.001 + i) * 5;
+      // Animate nodes
+      nodes.forEach((nodeGroup, index) => {
+        nodeGroup.rotation.y += 0.01;
+        nodeGroup.children[0].rotation.x += 0.005;
+        
+        // Floating animation
+        nodeGroup.position.y += Math.sin(Date.now() * 0.001 + index) * 0.05;
       });
       
-      const time = Date.now() * 0.0005;
+      // Rotate particles
+      particles.rotation.y += 0.001;
+      
+      // Camera orbit
+      const time = Date.now() * 0.0003;
       camera.position.x = Math.sin(time) * 150;
       camera.position.z = Math.cos(time) * 150;
       camera.lookAt(0, 0, 0);
@@ -285,7 +240,7 @@ const BUandApplicationView: React.FC = () => {
     };
     
     animate();
-
+    
     return () => {
       if (hierarchyRef.current && renderer.domElement) {
         hierarchyRef.current.removeChild(renderer.domElement);
@@ -294,9 +249,9 @@ const BUandApplicationView: React.FC = () => {
     };
   }, [businessData, selectedView]);
 
-  // Flow visualization
+  // Sankey Diagram for visibility flow
   useEffect(() => {
-    const canvas = flowRef.current;
+    const canvas = sankeyRef.current;
     if (!canvas || !businessData) return;
 
     const ctx = canvas.getContext('2d');
@@ -309,33 +264,125 @@ const BUandApplicationView: React.FC = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      const viewData = selectedView === 'bu' ? businessData.business_unit_breakdown :
+                      selectedView === 'cio' ? businessData.cio_breakdown :
+                      selectedView === 'apm' ? businessData.apm_breakdown :
+                      businessData.application_class_breakdown || [];
+
       const time = Date.now() * 0.001;
+      const flowHeight = canvas.height / viewData.length;
       
-      // Draw visibility flow lines
-      const data = selectedView === 'bu' ? businessData.businessUnits :
-                  selectedView === 'cio' ? businessData.cioCoverage :
-                  businessData.applicationClasses;
-      
-      data.forEach((item: any, index: number) => {
-        const y = (index + 1) * (canvas.height / (data.length + 1));
+      viewData.forEach((item: any, index: number) => {
+        const y = index * flowHeight + flowHeight / 2;
+        const flowWidth = (canvas.width * 0.7) * (item.visibility_percentage / 100);
         
-        ctx.strokeStyle = item.status === 'critical' ? '#ff00ff' :
-                         item.status === 'warning' ? '#a855f7' : '#00ffff';
-        ctx.lineWidth = 2;
+        // Draw flow
+        ctx.strokeStyle = item.status === 'CRITICAL' ? '#a855f7' :
+                         item.status === 'WARNING' ? '#ffaa00' : '#00d4ff';
+        ctx.lineWidth = flowHeight * 0.6;
+        ctx.globalAlpha = 0.6;
+        
         ctx.beginPath();
-        
-        for (let x = 0; x < canvas.width; x++) {
-          const waveY = y + Math.sin((x / 30) + time + index) * (item.visibilityPercentage / 10);
+        for (let x = 0; x < flowWidth; x++) {
+          const waveY = y + Math.sin((x / 30) + time + index) * 5;
           if (x === 0) ctx.moveTo(x, waveY);
           else ctx.lineTo(x, waveY);
         }
-        
         ctx.stroke();
+        
+        ctx.globalAlpha = 1;
         
         // Label
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
-        ctx.fillText(`${item.name}: ${item.visibilityPercentage.toFixed(1)}%`, 10, y - 10);
+        ctx.fillText(
+          `${(item.business_unit || item.cio || item.apm || item.application_class || '').substring(0, 20)}`,
+          5,
+          y - flowHeight / 4
+        );
+        
+        // Percentage
+        ctx.fillStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
+        ctx.fillText(`${item.visibility_percentage.toFixed(1)}%`, flowWidth + 10, y);
+      });
+
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  }, [businessData, selectedView]);
+
+  // Bubble Chart for relative sizes
+  useEffect(() => {
+    const canvas = bubbleRef.current;
+    if (!canvas || !businessData) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const viewData = selectedView === 'bu' ? businessData.business_unit_breakdown :
+                    selectedView === 'cio' ? businessData.cio_breakdown :
+                    selectedView === 'apm' ? businessData.apm_breakdown :
+                    businessData.application_class_breakdown || [];
+
+    const bubbles = viewData.map((item: any, index: number) => ({
+      x: Math.random() * (canvas.width - 100) + 50,
+      y: Math.random() * (canvas.height - 100) + 50,
+      radius: Math.sqrt(item.total_hosts) / 10,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+      data: item
+    }));
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      bubbles.forEach(bubble => {
+        // Update position
+        bubble.x += bubble.vx;
+        bubble.y += bubble.vy;
+        
+        // Bounce off walls
+        if (bubble.x - bubble.radius < 0 || bubble.x + bubble.radius > canvas.width) {
+          bubble.vx *= -1;
+        }
+        if (bubble.y - bubble.radius < 0 || bubble.y + bubble.radius > canvas.height) {
+          bubble.vy *= -1;
+        }
+        
+        // Draw bubble
+        const gradient = ctx.createRadialGradient(
+          bubble.x, bubble.y, 0,
+          bubble.x, bubble.y, bubble.radius
+        );
+        
+        if (bubble.data.status === 'CRITICAL') {
+          gradient.addColorStop(0, 'rgba(168, 85, 247, 0.8)');
+          gradient.addColorStop(1, 'rgba(168, 85, 247, 0.2)');
+        } else {
+          gradient.addColorStop(0, 'rgba(0, 212, 255, 0.8)');
+          gradient.addColorStop(1, 'rgba(0, 212, 255, 0.2)');
+        }
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(bubble.x, bubble.y, bubble.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw visibility percentage in center
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.max(10, bubble.radius / 3)}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(
+          `${bubble.data.visibility_percentage.toFixed(0)}%`,
+          bubble.x,
+          bubble.y
+        );
       });
 
       requestAnimationFrame(animate);
@@ -348,8 +395,8 @@ const BUandApplicationView: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-32 w-32 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-xl font-bold text-cyan-400">ANALYZING BUSINESS VISIBILITY</div>
+          <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
+          <div className="mt-4 text-lg font-bold text-cyan-400">ANALYZING BUSINESS VISIBILITY</div>
         </div>
       </div>
     );
@@ -357,53 +404,49 @@ const BUandApplicationView: React.FC = () => {
 
   if (!businessData) return null;
 
-  const currentData = selectedView === 'bu' ? businessData.businessUnits :
-                     selectedView === 'cio' ? businessData.cioCoverage :
-                     selectedView === 'apm' ? businessData.businessUnits :
-                     businessData.applicationClasses;
+  const currentData = selectedView === 'bu' ? businessData.business_unit_breakdown :
+                     selectedView === 'cio' ? businessData.cio_breakdown :
+                     selectedView === 'apm' ? businessData.apm_breakdown :
+                     businessData.application_class_breakdown || [];
 
-  const avgVisibility = currentData.reduce((sum: number, item: any) => sum + item.visibilityPercentage, 0) / currentData.length;
+  const avgVisibility = currentData.reduce((sum: number, item: any) => sum + item.visibility_percentage, 0) / currentData.length || 0;
+  const criticalCount = currentData.filter((item: any) => item.status === 'CRITICAL').length;
 
   return (
-    <div className="h-full p-6 flex flex-col">
+    <div className="h-full flex flex-col p-4">
       {/* Critical Alert */}
       {avgVisibility < 30 && (
-        <div className="mb-4 bg-black border border-pink-500/50 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
-            <div>
-              <div className="text-lg font-bold text-pink-400">BUSINESS VISIBILITY FAILURE</div>
-              <div className="text-sm text-white">
-                Average visibility across {selectedView === 'bu' ? 'Business Units' : 
-                                         selectedView === 'cio' ? 'CIOs' :
-                                         selectedView === 'apm' ? 'APMs' : 
-                                         'Applications'}: {avgVisibility.toFixed(1)}%
-              </div>
-            </div>
+        <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
+            <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
+            <span className="text-white text-sm">
+              Business visibility at {avgVisibility.toFixed(1)}% - {criticalCount} critical units
+            </span>
           </div>
         </div>
       )}
 
-      <div className="flex-1 grid grid-cols-12 gap-6">
+      <div className="flex-1 grid grid-cols-12 gap-4">
         {/* 3D Hierarchy */}
         <div className="col-span-7">
-          <div className="h-full glass-panel rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-cyan-400">ORGANIZATIONAL VISIBILITY</h2>
+          <div className="h-full glass-panel rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-cyan-400">ORGANIZATIONAL VISIBILITY</h2>
               <div className="flex gap-2">
                 {[
-                  { key: 'bu', label: 'Business Unit', icon: Building },
+                  { key: 'bu', label: 'BUSINESS UNIT', icon: Building },
                   { key: 'cio', label: 'CIO', icon: Users },
                   { key: 'apm', label: 'APM', icon: Briefcase },
-                  { key: 'application', label: 'Application', icon: Layers }
+                  { key: 'class', label: 'APP CLASS', icon: Layers }
                 ].map(({ key, label, icon: Icon }) => (
                   <button
                     key={key}
                     onClick={() => setSelectedView(key as any)}
-                    className={`px-3 py-2 rounded-lg font-bold text-xs uppercase transition-all flex items-center gap-1 ${
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1 ${
                       selectedView === key
                         ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
-                        : 'bg-gray-900/50 border border-gray-700 text-gray-400'
+                        : 'bg-gray-900/50 border border-gray-700 text-gray-400 hover:border-gray-500'
                     }`}
                   >
                     <Icon className="w-3 h-3" />
@@ -413,106 +456,109 @@ const BUandApplicationView: React.FC = () => {
               </div>
             </div>
             
-            <div ref={hierarchyRef} className="w-full h-[400px]" />
-            
-            {/* Visibility Flow */}
-            <div className="mt-4">
-              <canvas ref={flowRef} className="w-full h-[100px]" />
-            </div>
+            <div ref={hierarchyRef} className="w-full" style={{ height: 'calc(100% - 40px)' }} />
           </div>
         </div>
 
-        {/* Right Column - Detailed Cards */}
-        <div className="col-span-5 space-y-4 overflow-y-auto">
-          {currentData.map((item: any) => (
-            <div
-              key={item.name}
-              className={`glass-panel rounded-xl p-4 cursor-pointer transition-all hover:scale-105 ${
-                selectedItem === item.name ? 'border-cyan-400' : ''
-              }`}
-              onClick={() => setSelectedItem(item.name)}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <div className="text-lg font-bold text-white">{item.name}</div>
-                  {item.cio && (
-                    <div className="text-xs text-gray-400">CIO: {item.cio}</div>
-                  )}
-                  {item.apm && (
-                    <div className="text-xs text-gray-400">APM: {item.apm}</div>
-                  )}
-                  {item.businessUnits && (
-                    <div className="text-xs text-gray-400">
-                      {item.businessUnits.length} Business Units
-                    </div>
-                  )}
-                </div>
-                <div className="text-right">
-                  <div className={`text-3xl font-bold ${
-                    item.status === 'critical' ? 'text-pink-400' :
-                    item.status === 'warning' ? 'text-purple-400' :
-                    'text-cyan-400'
-                  }`}>
-                    {item.visibilityPercentage.toFixed(1)}%
-                  </div>
-                  <div className="text-xs text-gray-400 uppercase">Visibility</div>
-                </div>
-              </div>
+        {/* Right Column */}
+        <div className="col-span-5 space-y-3">
+          {/* Visibility Flow */}
+          <div className="glass-panel rounded-xl p-3">
+            <h3 className="text-sm font-bold text-purple-400 mb-2">VISIBILITY FLOW</h3>
+            <canvas ref={sankeyRef} className="w-full h-32" />
+          </div>
+
+          {/* Bubble Chart */}
+          <div className="glass-panel rounded-xl p-3">
+            <h3 className="text-sm font-bold text-cyan-400 mb-2">RELATIVE SCALE</h3>
+            <canvas ref={bubbleRef} className="w-full h-32" />
+          </div>
+
+          {/* Detail Cards */}
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {currentData.slice(0, 10).map((item: any, index: number) => {
+              const name = item.business_unit || item.cio || item.apm || item.application_class || 'Unknown';
               
-              {/* Visibility Bar */}
-              <div className="h-6 bg-gray-800 rounded-full overflow-hidden mb-2">
-                <div 
-                  className="h-full relative transition-all duration-1000"
-                  style={{
-                    width: `${item.visibilityPercentage}%`,
-                    background: item.status === 'critical' 
-                      ? 'linear-gradient(90deg, #ff00ff, #ff00ff88)'
-                      : item.status === 'warning'
-                      ? 'linear-gradient(90deg, #a855f7, #c084fc)'
-                      : 'linear-gradient(90deg, #00ffff, #00d4ff)'
-                  }}
+              return (
+                <div
+                  key={`${selectedView}-${index}`}
+                  className={`glass-panel rounded-lg p-2.5 cursor-pointer transition-all hover:scale-102 ${
+                    selectedItem === name ? 'border-cyan-400' : ''
+                  }`}
+                  onClick={() => setSelectedItem(name)}
                 >
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-xs font-bold text-black">
-                      {item.visibleHosts?.toLocaleString()} / {item.totalHosts?.toLocaleString()}
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="text-xs font-bold text-white truncate max-w-[180px]">
+                        {name}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {item.total_hosts.toLocaleString()} hosts
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-xl font-bold ${
+                        item.status === 'CRITICAL' ? 'text-purple-400' :
+                        item.status === 'WARNING' ? 'text-yellow-400' :
+                        'text-cyan-400'
+                      }`}>
+                        {item.visibility_percentage.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Visibility Bar */}
+                  <div className="mt-2 h-2 bg-black/50 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full transition-all duration-500"
+                      style={{
+                        width: `${item.visibility_percentage}%`,
+                        background: item.status === 'CRITICAL' 
+                          ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
+                          : 'linear-gradient(90deg, #00d4ff, #0099ff)'
+                      }}
+                    />
+                  </div>
+                  
+                  <div className="mt-1 flex justify-between items-center">
+                    <span className="text-xs text-cyan-400">
+                      <Eye className="w-3 h-3 inline mr-1" />
+                      {item.visible_hosts.toLocaleString()}
+                    </span>
+                    <span className={`text-xs font-bold ${
+                      item.status === 'CRITICAL' ? 'text-purple-400' :
+                      item.status === 'WARNING' ? 'text-yellow-400' :
+                      'text-cyan-400'
+                    }`}>
+                      {item.status}
                     </span>
                   </div>
                 </div>
-              </div>
-              
-              {/* Applications if BU */}
-              {item.applications && (
-                <div className="mt-2">
-                  <div className="text-xs text-gray-400 mb-1">Applications:</div>
-                  <div className="flex flex-wrap gap-1">
-                    {item.applications.slice(0, 3).map((app: string, i: number) => (
-                      <span key={i} className="text-xs px-2 py-1 bg-gray-900/50 rounded border border-gray-700 text-cyan-400">
-                        {app}
-                      </span>
-                    ))}
-                    {item.applications.length > 3 && (
-                      <span className="text-xs px-2 py-1 bg-gray-900/50 rounded border border-gray-700 text-gray-400">
-                        +{item.applications.length - 3}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              <div className="mt-2 flex items-center justify-between">
-                <Eye className={`w-4 h-4 ${
-                  item.visibilityPercentage > 30 ? 'text-cyan-400' : 'text-gray-600'
-                }`} />
-                <span className={`text-xs font-bold uppercase ${
-                  item.status === 'critical' ? 'text-pink-400' :
-                  item.status === 'warning' ? 'text-purple-400' :
+              );
+            })}
+          </div>
+
+          {/* Summary Stats */}
+          <div className="glass-panel rounded-xl p-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-gray-400">AVG VISIBILITY</div>
+                <div className={`text-2xl font-bold ${
+                  avgVisibility < 30 ? 'text-purple-400' :
+                  avgVisibility < 60 ? 'text-yellow-400' :
                   'text-cyan-400'
                 }`}>
-                  {item.status}
-                </span>
+                  {avgVisibility.toFixed(1)}%
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400">TOTAL</div>
+                <div className="text-2xl font-bold text-white">
+                  {currentData.length}
+                </div>
               </div>
             </div>
-          ))}
+          </div>
         </div>
       </div>
     </div>

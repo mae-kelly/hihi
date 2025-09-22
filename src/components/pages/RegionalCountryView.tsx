@@ -1,108 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Globe, MapPin, Eye, AlertTriangle, Activity, Shield, Zap } from 'lucide-react';
+import { Globe, MapPin, Eye, AlertTriangle, Activity, Building, Cloud, Server } from 'lucide-react';
 import * as THREE from 'three';
 
 const RegionalCountryView: React.FC = () => {
   const [regionalData, setRegionalData] = useState<any>(null);
-  const [countryData, setCountryData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
-  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'region' | 'country' | 'datacenter'>('region');
+  const [viewMode, setViewMode] = useState<'region' | 'country' | 'datacenter' | 'cloud'>('region');
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const globeRef = useRef<HTMLDivElement>(null);
   const heatmapRef = useRef<HTMLCanvasElement>(null);
-  const [rotation, setRotation] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
+  const [rotation, setRotation] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [regionalRes, countryRes] = await Promise.all([
-          fetch('http://localhost:5000/api/region_metrics'),
-          fetch('http://localhost:5000/api/country_metrics')
-        ]);
-
-        const regional = await regionalRes.json();
-        const country = await countryRes.json();
-        
-        // Calculate visibility percentages for each region/country
-        const processedRegional = {
-          regions: Object.entries(regional.regional_analytics || {}).map(([name, data]: [string, any]) => ({
-            name,
-            totalHosts: data.count,
-            visibleHosts: Math.floor(data.count * data.security_score / 100),
-            visibilityPercentage: data.security_score,
-            cmdbCoverage: data.cmdb_coverage,
-            taniumCoverage: data.tanium_coverage,
-            status: data.security_score < 30 ? 'critical' : data.security_score < 60 ? 'warning' : 'good',
-            coordinates: getRegionCoordinates(name)
-          })),
-          globalVisibility: 19.17
-        };
-
-        const processedCountry = {
-          countries: Object.entries(country.country_analysis || {}).map(([name, data]: [string, any]) => ({
-            name,
-            region: data.region,
-            totalHosts: data.count,
-            visibleHosts: Math.floor(data.count * data.security_score / 100),
-            visibilityPercentage: data.security_score,
-            status: data.threat_level === 'CRITICAL' ? 'critical' : 
-                   data.threat_level === 'HIGH' ? 'warning' : 'good',
-            coordinates: getCountryCoordinates(name)
-          }))
-        };
-
-        setRegionalData(processedRegional);
-        setCountryData(processedCountry);
+        const response = await fetch('http://localhost:5000/api/regional_visibility');
+        if (!response.ok) throw new Error('Failed to fetch regional data');
+        const data = await response.json();
+        setRegionalData(data);
       } catch (error) {
         console.error('Error:', error);
-        // Fallback data
-        setRegionalData({
-          regions: [
-            {
-              name: 'North America',
-              totalHosts: 105234,
-              visibleHosts: 34251,
-              visibilityPercentage: 32.5,
-              cmdbCoverage: 28.7,
-              taniumCoverage: 75.3,
-              status: 'warning',
-              coordinates: { lat: 40, lon: -100 }
-            },
-            {
-              name: 'EMEA',
-              totalHosts: 89456,
-              visibleHosts: 11003,
-              visibilityPercentage: 12.3,
-              cmdbCoverage: 15.2,
-              taniumCoverage: 62.8,
-              status: 'critical',
-              coordinates: { lat: 50, lon: 10 }
-            },
-            {
-              name: 'Asia Pacific',
-              totalHosts: 67342,
-              visibleHosts: 10640,
-              visibilityPercentage: 15.8,
-              cmdbCoverage: 19.5,
-              taniumCoverage: 68.1,
-              status: 'critical',
-              coordinates: { lat: 20, lon: 100 }
-            }
-          ],
-          globalVisibility: 19.17
-        });
-        setCountryData({
-          countries: [
-            { name: 'United States', region: 'North America', totalHosts: 85234, visibleHosts: 28251, visibilityPercentage: 33.1, status: 'warning', coordinates: { lat: 40, lon: -100 } },
-            { name: 'United Kingdom', region: 'EMEA', totalHosts: 45123, visibleHosts: 5543, visibilityPercentage: 12.3, status: 'critical', coordinates: { lat: 51, lon: 0 } },
-            { name: 'Japan', region: 'Asia Pacific', totalHosts: 35678, visibleHosts: 5640, visibilityPercentage: 15.8, status: 'critical', coordinates: { lat: 35, lon: 139 } }
-          ]
-        });
       } finally {
         setLoading(false);
       }
@@ -113,181 +34,259 @@ const RegionalCountryView: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Helper functions for coordinates
-  const getRegionCoordinates = (region: string) => {
-    const coords: Record<string, { lat: number; lon: number }> = {
-      'north america': { lat: 40, lon: -100 },
-      'emea': { lat: 50, lon: 10 },
-      'europe': { lat: 50, lon: 10 },
-      'asia pacific': { lat: 20, lon: 100 },
-      'asia': { lat: 30, lon: 90 },
-      'latin america': { lat: -15, lon: -60 },
-      'middle east': { lat: 25, lon: 45 },
-      'africa': { lat: 0, lon: 20 },
-      'oceania': { lat: -25, lon: 135 }
-    };
-    return coords[region.toLowerCase()] || { lat: 0, lon: 0 };
-  };
-
-  const getCountryCoordinates = (country: string) => {
-    const coords: Record<string, { lat: number; lon: number }> = {
-      'us': { lat: 40, lon: -100 },
-      'united states': { lat: 40, lon: -100 },
-      'uk': { lat: 51, lon: 0 },
-      'united kingdom': { lat: 51, lon: 0 },
-      'de': { lat: 51, lon: 10 },
-      'germany': { lat: 51, lon: 10 },
-      'jp': { lat: 35, lon: 139 },
-      'japan': { lat: 35, lon: 139 },
-      'cn': { lat: 35, lon: 105 },
-      'china': { lat: 35, lon: 105 },
-      'ca': { lat: 60, lon: -95 },
-      'canada': { lat: 60, lon: -95 },
-      'au': { lat: -25, lon: 135 },
-      'australia': { lat: -25, lon: 135 },
-      'fr': { lat: 46, lon: 2 },
-      'france': { lat: 46, lon: 2 },
-      'in': { lat: 20, lon: 77 },
-      'india': { lat: 20, lon: 77 },
-      'br': { lat: -15, lon: -47 },
-      'brazil': { lat: -15, lon: -47 }
-    };
-    return coords[country.toLowerCase()] || { lat: 0, lon: 0 };
-  };
-
-  // 3D Interactive Globe
+  // Interactive 3D Globe with visibility heat map
   useEffect(() => {
     if (!globeRef.current || !regionalData) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, globeRef.current.clientWidth / globeRef.current.clientHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    scene.fog = new THREE.FogExp2(0x000000, 0.001);
+    
+    const camera = new THREE.PerspectiveCamera(
+      60, 
+      globeRef.current.clientWidth / globeRef.current.clientHeight, 
+      0.1, 
+      1000
+    );
+    
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true, 
+      alpha: true 
+    });
     
     renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
     globeRef.current.appendChild(renderer.domElement);
 
     // Create globe
-    const globeGeometry = new THREE.SphereGeometry(100, 64, 64);
+    const globeRadius = 100;
+    const globeGeometry = new THREE.SphereGeometry(globeRadius, 64, 64);
     const globeMaterial = new THREE.MeshPhongMaterial({
       color: 0x001122,
-      emissive: 0x00ffff,
+      emissive: 0x00d4ff,
       emissiveIntensity: 0.02,
-      wireframe: false,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.9
     });
     const globe = new THREE.Mesh(globeGeometry, globeMaterial);
     scene.add(globe);
 
-    // Add wireframe overlay
-    const wireGeometry = new THREE.SphereGeometry(101, 32, 32);
+    // Add wireframe
+    const wireGeometry = new THREE.SphereGeometry(globeRadius + 0.5, 32, 32);
     const wireMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
+      color: 0x00d4ff,
       wireframe: true,
       transparent: true,
-      opacity: 0.1
+      opacity: 0.15
     });
     const wireframe = new THREE.Mesh(wireGeometry, wireMaterial);
     scene.add(wireframe);
 
-    // Add location markers based on view mode
-    const markers: THREE.Mesh[] = [];
+    // Location markers based on view mode
+    const markers: THREE.Group[] = [];
     const connections: THREE.Line[] = [];
     
-    const addMarker = (data: any) => {
-      const phi = (90 - data.coordinates.lat) * (Math.PI / 180);
-      const theta = (data.coordinates.lon + 180) * (Math.PI / 180);
+    const getLocationData = () => {
+      switch (viewMode) {
+        case 'region':
+          return regionalData.regional_breakdown || [];
+        case 'country':
+          return regionalData.country_breakdown || [];
+        case 'datacenter':
+          return regionalData.datacenter_breakdown || [];
+        case 'cloud':
+          return regionalData.cloud_region_breakdown || [];
+        default:
+          return [];
+      }
+    };
+
+    const getCoordinates = (location: any) => {
+      // Map location names to approximate coordinates
+      const regionCoords: Record<string, { lat: number; lon: number }> = {
+        'north america': { lat: 45, lon: -100 },
+        'europe': { lat: 50, lon: 10 },
+        'asia pacific': { lat: 25, lon: 105 },
+        'asia': { lat: 30, lon: 90 },
+        'latin america': { lat: -15, lon: -60 },
+        'middle east': { lat: 25, lon: 45 },
+        'africa': { lat: 0, lon: 20 },
+        'oceania': { lat: -25, lon: 135 }
+      };
+
+      const countryCoords: Record<string, { lat: number; lon: number }> = {
+        'us': { lat: 40, lon: -100 },
+        'united states': { lat: 40, lon: -100 },
+        'uk': { lat: 51, lon: 0 },
+        'de': { lat: 51, lon: 10 },
+        'jp': { lat: 35, lon: 139 },
+        'cn': { lat: 35, lon: 105 },
+        'au': { lat: -25, lon: 135 },
+        'ca': { lat: 60, lon: -95 },
+        'br': { lat: -15, lon: -47 },
+        'in': { lat: 20, lon: 77 }
+      };
+
+      const cloudRegions: Record<string, { lat: number; lon: number }> = {
+        'us-east-1': { lat: 39, lon: -77 },
+        'us-west-2': { lat: 45, lon: -122 },
+        'eu-west-1': { lat: 53, lon: -6 },
+        'ap-southeast-1': { lat: 1, lon: 103 },
+        'ap-northeast-1': { lat: 35, lon: 139 }
+      };
+
+      const name = location.region || location.country || location.data_center || location.cloud_region || '';
+      const lowerName = name.toLowerCase();
       
-      const x = 103 * Math.sin(phi) * Math.cos(theta);
-      const y = 103 * Math.cos(phi);
-      const z = 103 * Math.sin(phi) * Math.sin(theta);
+      return regionCoords[lowerName] || 
+             countryCoords[lowerName] || 
+             cloudRegions[lowerName] || 
+             { lat: Math.random() * 180 - 90, lon: Math.random() * 360 - 180 };
+    };
+
+    const locationData = getLocationData();
+    
+    locationData.forEach((location: any, index: number) => {
+      const coords = getCoordinates(location);
+      const phi = (90 - coords.lat) * (Math.PI / 180);
+      const theta = (coords.lon + 180) * (Math.PI / 180);
       
-      // Marker size based on number of hosts
-      const size = Math.log(data.totalHosts / 1000) + 1;
+      const x = globeRadius * Math.sin(phi) * Math.cos(theta);
+      const y = globeRadius * Math.cos(phi);
+      const z = globeRadius * Math.sin(phi) * Math.sin(theta);
       
-      const markerGeometry = new THREE.ConeGeometry(size, size * 2, 8);
+      // Create marker group
+      const markerGroup = new THREE.Group();
+      markerGroup.position.set(x * 1.05, y * 1.05, z * 1.05);
+      
+      // Marker cone
+      const markerSize = Math.log(location.total_hosts / 1000 + 1) * 2;
+      const markerGeometry = new THREE.ConeGeometry(markerSize, markerSize * 2, 8);
       const markerMaterial = new THREE.MeshPhongMaterial({
-        color: data.status === 'critical' ? 0xff00ff :
-               data.status === 'warning' ? 0xa855f7 : 0x00ffff,
-        emissive: data.status === 'critical' ? 0xff00ff : 0x00ffff,
-        emissiveIntensity: 0.5
+        color: location.status === 'CRITICAL' ? 0xa855f7 :
+               location.status === 'WARNING' ? 0xffaa00 : 0x00d4ff,
+        emissive: location.status === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
+        emissiveIntensity: 0.3
       });
       
       const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-      marker.position.set(x, y, z);
       marker.lookAt(0, 0, 0);
-      marker.userData = data;
-      markers.push(marker);
-      scene.add(marker);
+      marker.rotateX(Math.PI);
+      markerGroup.add(marker);
       
-      // Add visibility ring
-      const ringGeometry = new THREE.RingGeometry(size * 1.5, size * 2, 32);
+      // Visibility ring
+      const ringRadius = markerSize * 2;
+      const ringGeometry = new THREE.RingGeometry(ringRadius, ringRadius + 1, 32);
       const ringMaterial = new THREE.MeshBasicMaterial({
-        color: data.status === 'critical' ? 0xff00ff : 0x00ffff,
+        color: location.visibility_percentage < 30 ? 0xa855f7 : 0x00d4ff,
         transparent: true,
-        opacity: data.visibilityPercentage / 100,
+        opacity: location.visibility_percentage / 100,
         side: THREE.DoubleSide
       });
       
       const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-      ring.position.set(x * 1.02, y * 1.02, z * 1.02);
-      ring.lookAt(0, 0, 0);
-      scene.add(ring);
-    };
+      ring.lookAt(x, y, z);
+      markerGroup.add(ring);
+      
+      // Pulse effect for critical locations
+      if (location.status === 'CRITICAL') {
+        const pulseGeometry = new THREE.SphereGeometry(markerSize * 3, 16, 16);
+        const pulseMaterial = new THREE.MeshBasicMaterial({
+          color: 0xa855f7,
+          transparent: true,
+          opacity: 0.2,
+          wireframe: true
+        });
+        const pulse = new THREE.Mesh(pulseGeometry, pulseMaterial);
+        pulse.userData = { isPulse: true };
+        markerGroup.add(pulse);
+      }
+      
+      markerGroup.userData = location;
+      markers.push(markerGroup);
+      scene.add(markerGroup);
+    });
 
-    // Add markers based on view mode
-    if (viewMode === 'region') {
-      regionalData.regions.forEach((region: any) => addMarker(region));
-    } else if (viewMode === 'country' && countryData) {
-      countryData.countries.forEach((country: any) => addMarker(country));
-    }
-
-    // Add connections between regions
-    if (viewMode === 'region' && regionalData.regions.length > 1) {
-      for (let i = 0; i < regionalData.regions.length - 1; i++) {
-        for (let j = i + 1; j < regionalData.regions.length; j++) {
-          const r1 = regionalData.regions[i];
-          const r2 = regionalData.regions[j];
+    // Add connections between locations
+    if (viewMode === 'region' && markers.length > 1) {
+      for (let i = 0; i < markers.length - 1; i++) {
+        for (let j = i + 1; j < Math.min(i + 3, markers.length); j++) {
+          const start = markers[i].position;
+          const end = markers[j].position;
           
-          const points = [];
-          for (let t = 0; t <= 20; t++) {
-            const lat = r1.coordinates.lat + (r2.coordinates.lat - r1.coordinates.lat) * (t / 20);
-            const lon = r1.coordinates.lon + (r2.coordinates.lon - r1.coordinates.lon) * (t / 20);
-            const altitude = 110 + Math.sin((t / 20) * Math.PI) * 20;
-            
-            const phi = (90 - lat) * (Math.PI / 180);
-            const theta = (lon + 180) * (Math.PI / 180);
-            
-            points.push(new THREE.Vector3(
-              altitude * Math.sin(phi) * Math.cos(theta),
-              altitude * Math.cos(phi),
-              altitude * Math.sin(phi) * Math.sin(theta)
-            ));
-          }
+          // Create curved connection
+          const mid = new THREE.Vector3(
+            (start.x + end.x) / 2,
+            (start.y + end.y) / 2,
+            (start.z + end.z) / 2
+          );
+          mid.multiplyScalar(1.2);
           
-          const curve = new THREE.CatmullRomCurve3(points);
-          const tubeGeometry = new THREE.TubeGeometry(curve, 20, 0.5, 8, false);
-          const tubeMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00ffff,
+          const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+          const points = curve.getPoints(50);
+          const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+          
+          const lineMaterial = new THREE.LineBasicMaterial({
+            color: 0x00d4ff,
             transparent: true,
-            opacity: 0.3
+            opacity: 0.3,
+            linewidth: 1
           });
           
-          const connection = new THREE.Mesh(tubeGeometry, tubeMaterial);
-          connections.push(connection);
-          scene.add(connection);
+          const line = new THREE.Line(lineGeometry, lineMaterial);
+          connections.push(line);
+          scene.add(line);
         }
       }
     }
 
-    // Lighting
-    const light1 = new THREE.PointLight(0xffffff, 1, 300);
-    light1.position.set(150, 150, 150);
-    scene.add(light1);
+    // Add data flow particles
+    const particleCount = 500;
+    const particlesGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
     
-    scene.add(new THREE.AmbientLight(0x404040));
+    for (let i = 0; i < particleCount; i++) {
+      const phi = Math.acos(2 * Math.random() - 1);
+      const theta = 2 * Math.PI * Math.random();
+      const radius = globeRadius + Math.random() * 50;
+      
+      positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = radius * Math.cos(phi);
+      positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+      
+      colors[i * 3] = 0;
+      colors[i * 3 + 1] = 0.83;
+      colors[i * 3 + 2] = 1;
+    }
+    
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    
+    const particlesMaterial = new THREE.PointsMaterial({
+      size: 1,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+    
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
 
-    camera.position.z = 300;
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+    
+    const pointLight1 = new THREE.PointLight(0x00d4ff, 1, 500);
+    pointLight1.position.set(200, 200, 200);
+    scene.add(pointLight1);
+    
+    const pointLight2 = new THREE.PointLight(0xa855f7, 0.5, 500);
+    pointLight2.position.set(-200, -100, -200);
+    scene.add(pointLight2);
+
+    camera.position.set(0, 0, 300);
+    camera.lookAt(0, 0, 0);
 
     // Mouse controls
     const handleMouseDown = (e: MouseEvent) => {
@@ -325,15 +324,36 @@ const RegionalCountryView: React.FC = () => {
 
     // Animation
     const animate = () => {
+      // Rotate globe
       globe.rotation.y = rotation.y;
       globe.rotation.x = rotation.x;
       wireframe.rotation.y = rotation.y;
       wireframe.rotation.x = rotation.x;
       
-      markers.forEach(marker => {
-        marker.rotation.y += 0.01;
+      // Rotate markers
+      markers.forEach(markerGroup => {
+        markerGroup.rotation.y = rotation.y;
+        markerGroup.rotation.x = rotation.x;
+        
+        // Animate pulse
+        markerGroup.children.forEach(child => {
+          if (child.userData.isPulse) {
+            const scale = 1 + Math.sin(Date.now() * 0.003) * 0.3;
+            child.scale.setScalar(scale);
+          }
+        });
       });
       
+      // Rotate connections
+      connections.forEach(connection => {
+        connection.rotation.y = rotation.y;
+        connection.rotation.x = rotation.x;
+      });
+      
+      // Animate particles
+      particles.rotation.y += 0.0005;
+      
+      // Apply zoom
       camera.position.z = 300 / zoom;
       
       renderer.render(scene, camera);
@@ -353,7 +373,7 @@ const RegionalCountryView: React.FC = () => {
       }
       renderer.dispose();
     };
-  }, [regionalData, countryData, viewMode, rotation, zoom, isDragging, dragStart]);
+  }, [regionalData, viewMode, rotation, zoom, isDragging]);
 
   // Visibility Heatmap
   useEffect(() => {
@@ -367,56 +387,62 @@ const RegionalCountryView: React.FC = () => {
     canvas.height = canvas.offsetHeight;
 
     const animate = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const data = viewMode === 'region' ? regionalData.regions : 
-                  viewMode === 'country' && countryData ? countryData.countries : [];
+      const data = viewMode === 'region' ? regionalData.regional_breakdown :
+                  viewMode === 'country' ? regionalData.country_breakdown :
+                  viewMode === 'datacenter' ? regionalData.datacenter_breakdown :
+                  regionalData.cloud_region_breakdown || [];
 
-      // Draw heatmap bars
-      data.forEach((item: any, index: number) => {
-        const x = 10;
-        const y = index * 30 + 10;
-        const width = (canvas.width - 20) * (item.visibilityPercentage / 100);
+      const barHeight = canvas.height / Math.min(data.length, 10);
+      
+      data.slice(0, 10).forEach((item: any, index: number) => {
+        const y = index * barHeight;
+        const width = (canvas.width - 150) * (item.visibility_percentage / 100);
         
         // Bar gradient
-        const gradient = ctx.createLinearGradient(x, y, x + width, y);
-        if (item.status === 'critical') {
-          gradient.addColorStop(0, '#ff00ff');
-          gradient.addColorStop(1, '#ff00ff88');
-        } else if (item.status === 'warning') {
+        const gradient = ctx.createLinearGradient(0, y, width, y);
+        if (item.status === 'CRITICAL') {
           gradient.addColorStop(0, '#a855f7');
-          gradient.addColorStop(1, '#a855f788');
+          gradient.addColorStop(1, '#ff00ff');
+        } else if (item.status === 'WARNING') {
+          gradient.addColorStop(0, '#ffaa00');
+          gradient.addColorStop(1, '#ff8800');
         } else {
-          gradient.addColorStop(0, '#00ffff');
-          gradient.addColorStop(1, '#00ffff88');
+          gradient.addColorStop(0, '#00d4ff');
+          gradient.addColorStop(1, '#0099ff');
         }
         
         ctx.fillStyle = gradient;
-        ctx.fillRect(x, y, width, 20);
+        ctx.fillRect(0, y + 5, width, barHeight - 10);
         
-        // Label
+        // Location name
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
-        ctx.fillText(item.name.substring(0, 15), x + 5, y + 14);
+        ctx.fillText(
+          (item.region || item.country || item.data_center || item.cloud_region || '').substring(0, 20),
+          5,
+          y + barHeight / 2
+        );
         
         // Percentage
-        ctx.fillStyle = item.status === 'critical' ? '#ff00ff' : '#00ffff';
-        ctx.fillText(`${item.visibilityPercentage.toFixed(1)}%`, x + width + 5, y + 14);
+        ctx.fillStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
+        ctx.fillText(`${item.visibility_percentage.toFixed(1)}%`, width + 5, y + barHeight / 2);
       });
 
       requestAnimationFrame(animate);
     };
 
     animate();
-  }, [regionalData, countryData, viewMode]);
+  }, [regionalData, viewMode]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-32 w-32 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-xl font-bold text-cyan-400">MAPPING GLOBAL VISIBILITY</div>
+          <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
+          <div className="mt-4 text-lg font-bold text-cyan-400">MAPPING GLOBAL VISIBILITY</div>
         </div>
       </div>
     );
@@ -424,69 +450,76 @@ const RegionalCountryView: React.FC = () => {
 
   if (!regionalData) return null;
 
-  const currentData = viewMode === 'region' ? regionalData.regions :
-                      viewMode === 'country' && countryData ? countryData.countries : [];
+  const currentData = viewMode === 'region' ? regionalData.regional_breakdown :
+                      viewMode === 'country' ? regionalData.country_breakdown :
+                      viewMode === 'datacenter' ? regionalData.datacenter_breakdown :
+                      regionalData.cloud_region_breakdown || [];
 
-  const avgVisibility = currentData.reduce((sum: number, item: any) => sum + item.visibilityPercentage, 0) / currentData.length;
+  const avgVisibility = currentData.reduce((sum: number, item: any) => sum + item.visibility_percentage, 0) / currentData.length || 0;
+  const criticalCount = currentData.filter((item: any) => item.status === 'CRITICAL').length;
 
   return (
-    <div className="h-full p-6 flex flex-col">
+    <div className="h-full flex flex-col p-4">
       {/* Critical Alert */}
       {avgVisibility < 30 && (
-        <div className="mb-4 bg-black border border-pink-500/50 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
-            <div>
-              <div className="text-lg font-bold text-pink-400">GLOBAL VISIBILITY CRITICAL</div>
-              <div className="text-sm text-white">
-                Average visibility across {viewMode}s: {avgVisibility.toFixed(1)}%
-              </div>
-            </div>
+        <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
+            <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
+            <span className="text-white text-sm">
+              {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)} visibility at {avgVisibility.toFixed(1)}%
+            </span>
           </div>
         </div>
       )}
 
-      <div className="flex-1 grid grid-cols-12 gap-6">
+      <div className="flex-1 grid grid-cols-12 gap-4">
         {/* Interactive Globe */}
         <div className="col-span-8">
-          <div className="h-full glass-panel rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-cyan-400">GLOBAL VISIBILITY MAP</h2>
+          <div className="h-full glass-panel rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-cyan-400">GEOGRAPHIC VISIBILITY MAP</h2>
               <div className="flex gap-2">
-                {['region', 'country', 'datacenter'].map(mode => (
+                {[
+                  { key: 'region', label: 'REGIONS', icon: Globe },
+                  { key: 'country', label: 'COUNTRIES', icon: MapPin },
+                  { key: 'datacenter', label: 'DATA CENTERS', icon: Building },
+                  { key: 'cloud', label: 'CLOUD', icon: Cloud }
+                ].map(({ key, label, icon: Icon }) => (
                   <button
-                    key={mode}
-                    onClick={() => setViewMode(mode as any)}
-                    className={`px-4 py-2 rounded-lg font-bold text-xs uppercase transition-all ${
-                      viewMode === mode
+                    key={key}
+                    onClick={() => setViewMode(key as any)}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition-all ${
+                      viewMode === key
                         ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
-                        : 'bg-gray-900/50 border border-gray-700 text-gray-400'
+                        : 'bg-gray-900/50 border border-gray-700 text-gray-400 hover:border-gray-500'
                     }`}
                   >
-                    {mode}
+                    <Icon className="w-3 h-3" />
+                    {label}
                   </button>
                 ))}
               </div>
             </div>
             
-            <div ref={globeRef} className="w-full h-[400px]" />
+            <div ref={globeRef} className="w-full" style={{ height: 'calc(100% - 80px)' }} />
             
-            <div className="mt-4 flex items-center justify-between">
-              <div className="text-xs text-gray-400">
+            <div className="mt-3 flex items-center justify-between text-xs">
+              <div className="text-gray-400">
                 🖱️ Drag to rotate • Scroll to zoom
               </div>
-              <div className="flex gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-cyan-400 rounded-full"></div>
-                  <span className="text-xs text-gray-400">Good (&gt;60%)</span>
+              <div className="flex gap-3">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
+                  <span className="text-gray-400">Good</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-purple-400 rounded-full"></div>
-                  <span className="text-xs text-gray-400">Warning (30-60%)</span>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                  <span className="text-gray-400">Warning</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-pink-400 rounded-full"></div>
-                  <span className="text-xs text-gray-400">Critical (&lt;30%)</span>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                  <span className="text-gray-400">Critical</span>
                 </div>
               </div>
             </div>
@@ -494,74 +527,88 @@ const RegionalCountryView: React.FC = () => {
         </div>
 
         {/* Right Column - Metrics */}
-        <div className="col-span-4 space-y-6">
+        <div className="col-span-4 space-y-3">
+          {/* Summary Stats */}
+          <div className="glass-panel rounded-xl p-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-3xl font-bold">
+                  <span className={avgVisibility < 30 ? 'text-purple-400' : avgVisibility < 60 ? 'text-yellow-400' : 'text-cyan-400'}>
+                    {avgVisibility.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="text-xs text-gray-400 uppercase">Avg Visibility</div>
+              </div>
+              <div>
+                <div className="text-3xl font-bold text-purple-400">
+                  {criticalCount}
+                </div>
+                <div className="text-xs text-gray-400 uppercase">Critical</div>
+              </div>
+            </div>
+          </div>
+
           {/* Visibility Heatmap */}
-          <div className="glass-panel rounded-2xl p-6">
-            <h3 className="text-lg font-bold text-purple-400 mb-4">VISIBILITY HEATMAP</h3>
-            <canvas ref={heatmapRef} className="w-full h-[200px]" />
+          <div className="glass-panel rounded-xl p-3">
+            <h3 className="text-sm font-bold text-purple-400 mb-2">VISIBILITY HEATMAP</h3>
+            <canvas ref={heatmapRef} className="w-full h-48" />
           </div>
 
           {/* Location Cards */}
-          <div className="space-y-3 max-h-[300px] overflow-y-auto">
-            {currentData.map((item: any) => (
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {currentData.slice(0, 10).map((item: any) => (
               <div
-                key={item.name}
-                className={`glass-panel rounded-xl p-4 cursor-pointer transition-all hover:scale-105 ${
-                  (viewMode === 'region' && selectedRegion === item.name) ||
-                  (viewMode === 'country' && selectedCountry === item.name)
+                key={item.region || item.country || item.data_center || item.cloud_region}
+                className={`glass-panel rounded-lg p-3 cursor-pointer transition-all hover:scale-102 ${
+                  selectedLocation === (item.region || item.country || item.data_center || item.cloud_region)
                     ? 'border-cyan-400'
                     : ''
                 }`}
-                onClick={() => {
-                  if (viewMode === 'region') setSelectedRegion(item.name);
-                  else if (viewMode === 'country') setSelectedCountry(item.name);
-                }}
+                onClick={() => setSelectedLocation(item.region || item.country || item.data_center || item.cloud_region)}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-cyan-400" />
-                    <div>
-                      <div className="text-sm font-bold text-white">{item.name}</div>
-                      <div className="text-xs text-gray-400">
-                        {item.totalHosts.toLocaleString()} hosts
-                      </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold text-white">
+                      {(item.region || item.country || item.data_center || item.cloud_region || '').substring(0, 25)}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {item.total_hosts.toLocaleString()} hosts
                     </div>
                   </div>
                   <div className="text-right">
                     <div className={`text-2xl font-bold ${
-                      item.status === 'critical' ? 'text-pink-400' :
-                      item.status === 'warning' ? 'text-purple-400' :
+                      item.status === 'CRITICAL' ? 'text-purple-400' :
+                      item.status === 'WARNING' ? 'text-yellow-400' :
                       'text-cyan-400'
                     }`}>
-                      {item.visibilityPercentage.toFixed(1)}%
+                      {item.visibility_percentage.toFixed(1)}%
                     </div>
-                    <div className="text-xs text-gray-400 uppercase">Visibility</div>
                   </div>
                 </div>
                 
                 {/* Visibility Bar */}
-                <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+                <div className="mt-2 h-2 bg-black/50 rounded-full overflow-hidden">
                   <div 
                     className="h-full transition-all duration-500"
                     style={{
-                      width: `${item.visibilityPercentage}%`,
-                      background: item.status === 'critical' 
-                        ? 'linear-gradient(90deg, #ff00ff, #ff00ff88)'
-                        : item.status === 'warning'
-                        ? 'linear-gradient(90deg, #a855f7, #c084fc)'
-                        : 'linear-gradient(90deg, #00ffff, #00d4ff)'
+                      width: `${item.visibility_percentage}%`,
+                      background: item.status === 'CRITICAL' 
+                        ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
+                        : item.status === 'WARNING'
+                        ? 'linear-gradient(90deg, #ffaa00, #ff8800)'
+                        : 'linear-gradient(90deg, #00d4ff, #0099ff)'
                     }}
                   />
                 </div>
                 
-                <div className="mt-2 flex justify-between text-xs">
-                  <span className="text-cyan-400">
+                <div className="mt-2 flex justify-between items-center">
+                  <span className="text-xs text-cyan-400">
                     <Eye className="w-3 h-3 inline mr-1" />
-                    {item.visibleHosts.toLocaleString()} visible
+                    {item.visible_hosts.toLocaleString()} visible
                   </span>
-                  <span className={`font-bold uppercase ${
-                    item.status === 'critical' ? 'text-pink-400' :
-                    item.status === 'warning' ? 'text-purple-400' :
+                  <span className={`text-xs font-bold ${
+                    item.status === 'CRITICAL' ? 'text-purple-400' :
+                    item.status === 'WARNING' ? 'text-yellow-400' :
                     'text-cyan-400'
                   }`}>
                     {item.status}
@@ -571,27 +618,25 @@ const RegionalCountryView: React.FC = () => {
             ))}
           </div>
 
-          {/* Summary Stats */}
-          <div className="glass-panel rounded-xl p-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-xs text-gray-400 uppercase">Avg Visibility</div>
-                <div className={`text-2xl font-bold ${
-                  avgVisibility < 30 ? 'text-pink-400' :
-                  avgVisibility < 60 ? 'text-purple-400' :
-                  'text-cyan-400'
-                }`}>
-                  {avgVisibility.toFixed(1)}%
+          {/* Best/Worst Locations */}
+          {regionalData.worst_visibility_region && regionalData.best_visibility_region && (
+            <div className="glass-panel rounded-xl p-3">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-gray-400">BEST</span>
+                  <span className="text-xs font-bold text-cyan-400">
+                    {regionalData.best_visibility_region.region} - {regionalData.best_visibility_region.visibility_percentage.toFixed(1)}%
+                  </span>
                 </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 uppercase">Total {viewMode}s</div>
-                <div className="text-2xl font-bold text-white">
-                  {currentData.length}
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-gray-400">WORST</span>
+                  <span className="text-xs font-bold text-purple-400">
+                    {regionalData.worst_visibility_region.region} - {regionalData.worst_visibility_region.visibility_percentage.toFixed(1)}%
+                  </span>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
