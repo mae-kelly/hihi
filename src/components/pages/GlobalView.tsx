@@ -43,7 +43,6 @@ const GlobalView = () => {
     renderer.setPixelRatio(window.devicePixelRatio);
     globeRef.current.appendChild(renderer.domElement);
 
-    const textureLoader = new THREE.TextureLoader();
     const earthGeometry = new THREE.SphereGeometry(100, 128, 128);
     
     const earthMaterial = new THREE.ShaderMaterial({
@@ -316,8 +315,8 @@ const GlobalView = () => {
     return (
       <div className="flex items-center justify-center h-full bg-black">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-lg font-bold text-cyan-400">INITIALIZING GLOBAL SURVEILLANCE</div>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-400"></div>
+          <div className="mt-3 text-sm font-bold text-cyan-400">INITIALIZING GLOBAL SURVEILLANCE</div>
         </div>
       </div>
     );
@@ -328,28 +327,28 @@ const GlobalView = () => {
   const isCritical = globalData.global_visibility_percentage < 50;
 
   return (
-    <div className="h-full bg-black p-6">
-      <div className="h-full grid grid-cols-12 gap-6">
+    <div className="h-full bg-black p-4 overflow-hidden">
+      <div className="h-full grid grid-cols-12 gap-3">
         <div className="col-span-8">
-          <div className="h-full bg-black/80 border border-white/10 rounded-xl p-6 backdrop-blur-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">PLANETARY SURVEILLANCE NETWORK</h3>
-              <div className="flex gap-2">
+          <div className="h-full bg-black/80 border border-white/10 rounded-xl backdrop-blur-xl flex flex-col">
+            <div className="flex items-center justify-between p-3 border-b border-white/10">
+              <h3 className="text-sm font-bold text-white">PLANETARY SURVEILLANCE NETWORK</h3>
+              <div className="flex gap-1">
                 <button 
                   onClick={() => setZoom(prev => Math.min(3, prev + 0.2))}
-                  className="px-3 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 transition-all"
+                  className="px-2 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 transition-all text-xs"
                 >
                   +
                 </button>
                 <button 
                   onClick={() => setZoom(prev => Math.max(0.5, prev - 0.2))}
-                  className="px-3 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 transition-all"
+                  className="px-2 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 transition-all text-xs"
                 >
                   −
                 </button>
                 <button 
                   onClick={() => { setZoom(1); setRotation({ x: 0, y: 0 }); }}
-                  className="px-3 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 transition-all"
+                  className="px-2 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 transition-all text-xs"
                 >
                   RESET
                 </button>
@@ -358,8 +357,7 @@ const GlobalView = () => {
             
             <div 
               ref={globeRef} 
-              className="w-full cursor-grab"
-              style={{ height: 'calc(100% - 120px)' }}
+              className="flex-1 cursor-grab"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
@@ -368,8 +366,8 @@ const GlobalView = () => {
             />
             
             {hoveredCountry && (
-              <div className="absolute bottom-8 left-8 bg-black/90 border border-cyan-400/50 rounded-lg p-4 backdrop-blur-xl">
-                <div className="text-sm font-bold text-cyan-400 mb-1">{hoveredCountry.name}</div>
+              <div className="absolute bottom-4 left-4 bg-black/90 border border-cyan-400/50 rounded-lg p-2 backdrop-blur-xl">
+                <div className="text-xs font-bold text-cyan-400 mb-1">{hoveredCountry.name}</div>
                 <div className="text-xs text-white/80">
                   <div>Visibility: {hoveredCountry.visibility}%</div>
                   <div>Hosts: {hoveredCountry.hosts.toLocaleString()}</div>
@@ -377,31 +375,31 @@ const GlobalView = () => {
               </div>
             )}
             
-            <div className="mt-4 flex items-center justify-between text-xs text-white/40">
+            <div className="p-2 flex items-center justify-between text-xs text-white/40 border-t border-white/10">
               <div>Drag to rotate • Scroll to zoom • Click regions for details</div>
               <div>ZOOM: {(zoom * 100).toFixed(0)}%</div>
             </div>
           </div>
         </div>
 
-        <div className="col-span-4 space-y-4">
-          <div className="bg-black/80 border border-white/10 rounded-xl p-6 backdrop-blur-xl">
-            <h3 className="text-sm font-bold text-white/60 mb-4">GLOBAL VISIBILITY STATUS</h3>
-            <div className="text-5xl font-bold mb-2">
+        <div className="col-span-4 flex flex-col gap-3">
+          <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
+            <h3 className="text-xs font-bold text-white/60 mb-2">GLOBAL VISIBILITY STATUS</h3>
+            <div className="text-3xl font-bold mb-1">
               <span className={isCritical ? 'text-pink-400' : 'text-cyan-400'}>
                 {globalData.global_visibility_percentage.toFixed(1)}%
               </span>
             </div>
-            <div className="text-sm text-white/60 mb-4">
+            <div className="text-xs text-white/60 mb-2">
               {globalData.visible_hosts.toLocaleString()} / {globalData.total_hosts.toLocaleString()} ASSETS
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-cyan-400">SPLUNK</span>
                   <span className="text-white">{globalData.splunk_visibility_percentage.toFixed(1)}%</span>
                 </div>
-                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-cyan-400 to-cyan-400/50"
                     style={{ width: `${globalData.splunk_visibility_percentage}%` }}
@@ -413,7 +411,7 @@ const GlobalView = () => {
                   <span className="text-purple-400">CHRONICLE</span>
                   <span className="text-white">{globalData.chronicle_visibility_percentage.toFixed(1)}%</span>
                 </div>
-                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-purple-400 to-purple-400/50"
                     style={{ width: `${globalData.chronicle_visibility_percentage}%` }}
@@ -424,20 +422,20 @@ const GlobalView = () => {
           </div>
 
           {selectedRegion && (
-            <div className="bg-black/80 border border-cyan-400/30 rounded-xl p-6 backdrop-blur-xl">
-              <h3 className="text-sm font-bold text-cyan-400 mb-4">{selectedRegion.name.toUpperCase()}</h3>
-              <div className="space-y-3">
+            <div className="bg-black/80 border border-cyan-400/30 rounded-xl p-3 backdrop-blur-xl">
+              <h3 className="text-xs font-bold text-cyan-400 mb-2">{selectedRegion.name.toUpperCase()}</h3>
+              <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-xs text-white/60">VISIBILITY</span>
-                  <span className="text-sm font-bold text-white">{selectedRegion.visibility}%</span>
+                  <span className="text-xs font-bold text-white">{selectedRegion.visibility}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-white/60">TOTAL HOSTS</span>
-                  <span className="text-sm font-bold text-white">{selectedRegion.hosts.toLocaleString()}</span>
+                  <span className="text-xs font-bold text-white">{selectedRegion.hosts.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-white/60">STATUS</span>
-                  <span className={`text-sm font-bold ${
+                  <span className={`text-xs font-bold ${
                     selectedRegion.visibility < 40 ? 'text-pink-400' : 
                     selectedRegion.visibility < 70 ? 'text-purple-400' : 
                     'text-cyan-400'
@@ -451,20 +449,20 @@ const GlobalView = () => {
             </div>
           )}
 
-          <div className="bg-black/80 border border-white/10 rounded-xl p-6 backdrop-blur-xl">
-            <h3 className="text-sm font-bold text-white/60 mb-4">THREAT ANALYSIS</h3>
-            <div className="space-y-2">
+          <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl flex-1">
+            <h3 className="text-xs font-bold text-white/60 mb-2">THREAT ANALYSIS</h3>
+            <div className="space-y-1.5">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/60">INVISIBLE HOSTS</span>
-                <span className="text-sm font-bold text-pink-400">{globalData.invisible_hosts.toLocaleString()}</span>
+                <span className="text-xs font-bold text-pink-400">{globalData.invisible_hosts.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/60">VISIBILITY GAP</span>
-                <span className="text-sm font-bold text-purple-400">{globalData.visibility_gap_percentage.toFixed(1)}%</span>
+                <span className="text-xs font-bold text-purple-400">{globalData.visibility_gap_percentage.toFixed(1)}%</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/60">STATUS</span>
-                <span className={`text-sm font-bold ${
+                <span className={`text-xs font-bold ${
                   globalData.status === 'CRITICAL' ? 'text-pink-400' : 
                   globalData.status === 'WARNING' ? 'text-purple-400' : 
                   'text-cyan-400'

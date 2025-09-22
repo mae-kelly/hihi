@@ -1,12 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, CheckCircle, XCircle, AlertCircle, Shield, Database, Network, Activity, Terminal, Lock, Layers, Server, Wifi, Cloud, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { FileText, CheckCircle, XCircle, AlertCircle, Shield, Database, Network, Activity, Terminal, Lock, Layers, Server, Wifi, Cloud, AlertTriangle, Eye, Target, Zap } from 'lucide-react';
+import * as THREE from 'three';
 
 const LoggingStandards: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [complianceScore, setComplianceScore] = useState(0);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const standardsRef = useRef<HTMLDivElement>(null);
+  const flowRef = useRef<HTMLCanvasElement>(null);
+  const matrixRef = useRef<HTMLCanvasElement>(null);
+  const complianceRef = useRef<HTMLCanvasElement>(null);
 
-  // ACTUAL DATA FROM AO1 REQUIREMENTS - Logging Standards and Requirements
+  // ACTUAL DATA FROM AO1 REQUIREMENTS
   const loggingRoles = {
     'Network': {
       role: 'Network',
@@ -38,11 +44,7 @@ const LoggingStandards: React.FC = () => {
       status: 'warning',
       coverage: 69.29,
       logTypes: ['OS logs (WinEVT, Linux syslog)', 'EDR', 'DLP', 'FIM'],
-      commonDataFields: [
-        'system name',
-        'IP',
-        'filename'
-      ],
+      commonDataFields: ['system name', 'IP', 'filename'],
       visibilityFactors: [
         { factor: 'CMDB Asset Visibility', status: 'complete', percentage: 100 },
         { factor: 'Crowdstrike Agent Coverage', status: 'partial', percentage: 87.2 },
@@ -55,21 +57,8 @@ const LoggingStandards: React.FC = () => {
       role: 'Cloud',
       status: 'critical',
       coverage: 19.17,
-      logTypes: [
-        'Cloud Event',
-        'Cloud Load Balancer',
-        'Cloud Config',
-        'Theom',
-        'WIZ',
-        'Cloud Security'
-      ],
-      commonDataFields: [
-        'VPC',
-        'Instance ID',
-        'Region',
-        'Account ID',
-        'Resource Tags'
-      ],
+      logTypes: ['Cloud Event', 'Cloud Load Balancer', 'Cloud Config', 'Theom', 'WIZ', 'Cloud Security'],
+      commonDataFields: ['VPC', 'Instance ID', 'Region', 'Account ID', 'Resource Tags'],
       visibilityFactors: [
         { factor: 'VPC', status: 'failed', percentage: 19.17 },
         { factor: 'IPAM Public IP Coverage', status: 'failed', percentage: 23.4 },
@@ -84,13 +73,7 @@ const LoggingStandards: React.FC = () => {
       status: 'warning',
       coverage: 42.8,
       logTypes: ['Web Logs (HTTP Access)', 'API Gateway'],
-      commonDataFields: [
-        'URL',
-        'Method',
-        'Status Code',
-        'Response Time',
-        'User Agent'
-      ],
+      commonDataFields: ['URL', 'Method', 'Status Code', 'Response Time', 'User Agent'],
       visibilityFactors: [
         { factor: 'URL/FQDN coverage', status: 'partial', percentage: 67.2 },
         { factor: 'Control Coverage', status: 'failed', percentage: 42.8 }
@@ -102,18 +85,8 @@ const LoggingStandards: React.FC = () => {
       role: 'Identity and Authentication',
       status: 'active',
       coverage: 82.3,
-      logTypes: [
-        'Authentication attempts',
-        'Privilege escalation',
-        'Identity create/modify/destroy'
-      ],
-      commonDataFields: [
-        'Username',
-        'Domain',
-        'Authentication Type',
-        'Source IP',
-        'Result'
-      ],
+      logTypes: ['Authentication attempts', 'Privilege escalation', 'Identity create/modify/destroy'],
+      commonDataFields: ['Username', 'Domain', 'Authentication Type', 'Source IP', 'Result'],
       visibilityFactors: [
         { factor: 'Domain', status: 'complete', percentage: 95.2 },
         { factor: 'Internal', status: 'partial', percentage: 78.9 },
@@ -130,7 +103,7 @@ const LoggingStandards: React.FC = () => {
       step: 1,
       status: 'complete',
       completion: 100,
-      description: 'Using concepts in Log Role Mapping table and Logging Standard, assets determined if they fall within scope',
+      description: 'Assets determined if they fall within scope',
       issues: [],
       action: 'Completed - all assets mapped'
     },
@@ -138,75 +111,302 @@ const LoggingStandards: React.FC = () => {
       step: 2,
       status: 'partial',
       completion: 75,
-      description: 'Mechanism selected to collect logs from local systems and export to architected destinations',
-      issues: [
-        'Linux syslog collection incomplete',
-        'Cloud collectors not deployed in all regions',
-        'Network device collection gaps'
-      ],
+      description: 'Mechanism to collect logs from local systems',
+      issues: ['Linux syslog collection incomplete', 'Cloud collectors not deployed'],
       action: 'Deploy missing collectors'
     },
     'Transport': {
       step: 3,
       status: 'partial',
       completion: 68,
-      description: 'Transport layer ensures log data forwarded to SIEM - variety of transport methods',
-      issues: [
-        'Bandwidth constraints in APAC',
-        'TLS encryption not enabled on all streams',
-        'Kafka pipeline bottlenecks'
-      ],
+      description: 'Transport layer ensures log forwarding to SIEM',
+      issues: ['Bandwidth constraints', 'TLS not enabled'],
       action: 'Upgrade transport infrastructure'
     },
     'Ingest': {
       step: 4,
       status: 'warning',
       completion: 52,
-      description: 'Data ingested into SIEM - transport flow, credentials, and latency reviewed',
-      issues: [
-        'High ingestion latency (>5 min)',
-        'Chronicle ingestion failing for some sources',
-        'Splunk license limits reached'
-      ],
+      description: 'Data ingested into SIEM',
+      issues: ['High ingestion latency', 'Chronicle failing'],
       action: 'Optimize ingestion pipeline'
     },
     'Normalize': {
       step: 5,
       status: 'failed',
       completion: 38,
-      description: 'Data normalization requirement - many SIEMs need data properly parsed',
-      issues: [
-        'Custom log formats not parsed',
-        'Field mapping incomplete',
-        'Timestamp normalization failing'
-      ],
+      description: 'Data normalization requirement',
+      issues: ['Custom formats not parsed', 'Field mapping incomplete'],
       action: 'Implement parsing rules'
     }
   };
 
-  const visibilityFactorMetrics = {
-    'Host Parity': {
-      description: 'Comparing host name covered in control/mapping visibility based on existence in CMDB',
-      current: 87.3,
-      target: 100,
-      gap: 12.7,
-      status: 'warning'
-    },
-    'URL/FQDN Coverage': {
-      description: 'Every URL/FQDN covered in SIEM, cross reference with listed FQDN "external" flag',
-      current: 67.8,
-      target: 95,
-      gap: 27.2,
-      status: 'warning'
-    },
-    'Public IP Space': {
-      description: 'How do we account for all public IP space, full list of CIDR',
-      current: 72.3,
-      target: 100,
-      gap: 27.7,
-      status: 'warning'
+  // 3D Standards Visualization
+  useEffect(() => {
+    if (!standardsRef.current) return;
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.001);
+    
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      standardsRef.current.clientWidth / standardsRef.current.clientHeight,
+      0.1,
+      1000
+    );
+    
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true, 
+      alpha: true 
+    });
+    
+    renderer.setSize(standardsRef.current.clientWidth, standardsRef.current.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    standardsRef.current.appendChild(renderer.domElement);
+
+    // Create central compliance core
+    const coreGeometry = new THREE.IcosahedronGeometry(15, 2);
+    const coreMaterial = new THREE.MeshPhongMaterial({
+      color: complianceScore < 50 ? 0xff00ff : complianceScore < 80 ? 0xc084fc : 0x00d4ff,
+      emissive: complianceScore < 50 ? 0xff00ff : 0x00d4ff,
+      emissiveIntensity: 0.3,
+      transparent: true,
+      opacity: 0.9
+    });
+    const core = new THREE.Mesh(coreGeometry, coreMaterial);
+    scene.add(core);
+
+    // Create role nodes around core
+    const roleNodes: THREE.Group[] = [];
+    Object.entries(loggingRoles).forEach(([roleName, role], index) => {
+      const angle = (index / Object.keys(loggingRoles).length) * Math.PI * 2;
+      const radius = 50;
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      
+      const nodeGroup = new THREE.Group();
+      
+      // Node sphere
+      const nodeSize = 5 + Math.log(role.coverage / 10 + 1) * 3;
+      const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
+      const nodeMaterial = new THREE.MeshPhongMaterial({
+        color: role.status === 'critical' ? 0xff00ff :
+               role.status === 'warning' ? 0xffaa00 :
+               role.status === 'partial' ? 0xc084fc : 0x00d4ff,
+        emissive: role.status === 'critical' ? 0xff00ff : 0x00d4ff,
+        emissiveIntensity: 0.2,
+        transparent: true,
+        opacity: 0.8
+      });
+      
+      const nodeMesh = new THREE.Mesh(nodeGeometry, nodeMaterial);
+      nodeMesh.position.set(x, 0, z);
+      nodeGroup.add(nodeMesh);
+      
+      // Coverage indicator
+      const coverageRadius = nodeSize * (role.coverage / 100);
+      const coverageGeometry = new THREE.SphereGeometry(coverageRadius, 12, 12);
+      const coverageMaterial = new THREE.MeshPhongMaterial({
+        color: 0x00d4ff,
+        emissive: 0x00d4ff,
+        emissiveIntensity: 0.5,
+        transparent: true,
+        opacity: 0.9
+      });
+      const coverageSphere = new THREE.Mesh(coverageGeometry, coverageMaterial);
+      coverageSphere.position.copy(nodeMesh.position);
+      nodeGroup.add(coverageSphere);
+      
+      // Connection to core
+      const points = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(x, 0, z)
+      ];
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: role.status === 'critical' ? 0xff00ff : 0x00d4ff,
+        transparent: true,
+        opacity: 0.3
+      });
+      const line = new THREE.Line(lineGeometry, lineMaterial);
+      nodeGroup.add(line);
+      
+      roleNodes.push(nodeGroup);
+      scene.add(nodeGroup);
+    });
+
+    // Add particles for data flow
+    const particleCount = 500;
+    const particlesGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      positions[i] = (Math.random() - 0.5) * 200;
+      positions[i + 1] = (Math.random() - 0.5) * 150;
+      positions[i + 2] = (Math.random() - 0.5) * 200;
+      
+      const isCompliant = Math.random() < (complianceScore / 100);
+      colors[i] = isCompliant ? 0 : 1;
+      colors[i + 1] = isCompliant ? 0.83 : 0;
+      colors[i + 2] = 1;
     }
-  };
+    
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    
+    const particlesMaterial = new THREE.PointsMaterial({
+      size: 1,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+    
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+    
+    const pointLight1 = new THREE.PointLight(0x00d4ff, 1, 300);
+    pointLight1.position.set(150, 100, 150);
+    scene.add(pointLight1);
+    
+    const pointLight2 = new THREE.PointLight(0xff00ff, 1, 300);
+    pointLight2.position.set(-150, -100, -150);
+    scene.add(pointLight2);
+
+    camera.position.set(0, 80, 150);
+    camera.lookAt(0, 0, 0);
+
+    // Animation
+    const animate = () => {
+      core.rotation.y += 0.002;
+      core.rotation.x += 0.001;
+      
+      roleNodes.forEach((node, index) => {
+        node.rotation.y += 0.001 * (index + 1);
+      });
+      
+      particles.rotation.y += 0.0005;
+      
+      const time = Date.now() * 0.0003;
+      camera.position.x = Math.sin(time) * 200;
+      camera.position.z = Math.cos(time) * 200;
+      camera.position.y = 80 + Math.sin(time * 2) * 20;
+      camera.lookAt(0, 0, 0);
+      
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    };
+    
+    animate();
+
+    return () => {
+      if (standardsRef.current && renderer.domElement) {
+        standardsRef.current.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+    };
+  }, [complianceScore]);
+
+  // Flow visualization
+  useEffect(() => {
+    const canvas = flowRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw process flow
+      Object.entries(loggingProcess).forEach(([ step, data], index) => {
+        const x = (index + 1) * (canvas.width / 6);
+        const y = canvas.height / 2;
+        const radius = 20 * (data.completion / 100);
+        
+        // Draw circle
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = data.status === 'failed' ? 'rgba(255, 0, 255, 0.5)' :
+                       data.status === 'warning' ? 'rgba(255, 170, 0, 0.5)' :
+                       data.status === 'partial' ? 'rgba(192, 132, 252, 0.5)' :
+                       'rgba(0, 212, 255, 0.5)';
+        ctx.fill();
+        
+        // Draw connection line
+        if (index < Object.keys(loggingProcess).length - 1) {
+          const nextX = (index + 2) * (canvas.width / 6);
+          ctx.strokeStyle = 'rgba(0, 212, 255, 0.3)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x + radius, y);
+          ctx.lineTo(nextX - 20, y);
+          ctx.stroke();
+        }
+        
+        // Draw label
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(step, x, y - 30);
+        ctx.fillText(`${data.completion}%`, x, y + 35);
+      });
+
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  }, []);
+
+  // Matrix visualization
+  useEffect(() => {
+    const canvas = matrixRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const roles = Object.values(loggingRoles);
+      const cellWidth = canvas.width / roles.length;
+      const cellHeight = canvas.height / 5;
+
+      roles.forEach((role, col) => {
+        role.visibilityFactors.forEach((factor, row) => {
+          const x = col * cellWidth;
+          const y = row * cellHeight;
+          
+          const intensity = factor.percentage / 100;
+          ctx.fillStyle = factor.status === 'failed' ? `rgba(255, 0, 255, ${intensity * 0.5})` :
+                         factor.status === 'partial' ? `rgba(192, 132, 252, ${intensity * 0.5})` :
+                         `rgba(0, 212, 255, ${intensity * 0.5})`;
+          ctx.fillRect(x + 2, y + 2, cellWidth - 4, cellHeight - 4);
+          
+          ctx.strokeStyle = 'rgba(0, 212, 255, 0.2)';
+          ctx.strokeRect(x, y, cellWidth, cellHeight);
+        });
+      });
+
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  }, []);
 
   // Calculate overall compliance
   useEffect(() => {
@@ -214,309 +414,172 @@ const LoggingStandards: React.FC = () => {
     setComplianceScore(overallScore);
   }, []);
 
-  const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'complete': return { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500' };
-      case 'active': return { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500' };
-      case 'partial': return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500' };
-      case 'warning': return { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500' };
-      case 'failed': return { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500' };
-      case 'critical': return { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500' };
-      default: return { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500' };
-    }
-  };
-
   const getStatusIcon = (status: string) => {
     switch(status) {
-      case 'complete': return <CheckCircle className="w-5 h-5 text-green-400" />;
-      case 'partial': return <AlertCircle className="w-5 h-5 text-yellow-400" />;
-      case 'warning': return <AlertCircle className="w-5 h-5 text-orange-400" />;
-      case 'failed': return <XCircle className="w-5 h-5 text-red-400" />;
-      default: return <Shield className="w-5 h-5 text-gray-400" />;
+      case 'complete': return <CheckCircle className="w-4 h-4 text-cyan-400" />;
+      case 'partial': return <AlertCircle className="w-4 h-4 text-purple-400" />;
+      case 'warning': return <AlertCircle className="w-4 h-4 text-yellow-400" />;
+      case 'failed': return <XCircle className="w-4 h-4 text-pink-400" />;
+      default: return <Shield className="w-4 h-4 text-gray-400" />;
     }
   };
 
   return (
-    <div className="p-8 min-h-screen">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 holo-text">
-          LOGGING STANDARDS & COMPLIANCE
-        </h1>
-        <p className="text-purple-300/60 uppercase tracking-widest text-sm">
-          Fiserv Cybersecurity Logging Standard • Log Role Mapping • Process Compliance
-        </p>
+    <div className="h-full flex flex-col p-4">
+      {/* Critical Alert */}
+      <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
+          <span className="text-purple-400 font-bold text-sm">CRITICAL COMPLIANCE FAILURE:</span>
+          <span className="text-white text-sm">
+            Cloud at 19.17% • Network at 45.2% • Multiple standards violations
+          </span>
+        </div>
       </div>
 
-      {/* Critical Alert */}
-      <div className="mb-6 glass-panel rounded-xl p-4 border-red-500/50 bg-red-500/10">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="w-6 h-6 text-red-400 animate-pulse" />
-          <div>
-            <span className="text-red-400 font-bold">CRITICAL LOGGING FAILURE:</span>
-            <span className="text-white ml-2">Cloud infrastructure at 19.17% - Network at 45.2% - Multiple standards violations</span>
+      <div className="flex-1 grid grid-cols-12 gap-4">
+        {/* 3D Standards Visualization */}
+        <div className="col-span-7">
+          <div className="h-full glass-panel rounded-xl">
+            <div className="p-3 border-b border-cyan-400/20">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-cyan-400">LOGGING STANDARDS MATRIX</h2>
+                <div className="text-3xl font-bold">
+                  <span className={complianceScore < 50 ? 'text-purple-400' : complianceScore < 80 ? 'text-yellow-400' : 'text-cyan-400'}>
+                    {complianceScore.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div ref={standardsRef} className="w-full" style={{ height: 'calc(100% - 60px)' }} />
           </div>
         </div>
-      </div>
 
-      {/* Overall Compliance Score */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <div className="glass-panel rounded-xl p-6">
-          <FileText className="w-6 h-6 text-cyan-400 mb-2" />
-          <div className="text-3xl font-bold text-orange-400">{complianceScore.toFixed(1)}%</div>
-          <div className="text-xs text-gray-400 uppercase">Overall Compliance</div>
-        </div>
-        <div className="glass-panel rounded-xl p-6">
-          <Network className="w-6 h-6 text-red-400 mb-2" />
-          <div className="text-3xl font-bold text-red-400">3/5</div>
-          <div className="text-xs text-gray-400 uppercase">Failed Roles</div>
-        </div>
-        <div className="glass-panel rounded-xl p-6">
-          <Activity className="w-6 h-6 text-yellow-400 mb-2" />
-          <div className="text-3xl font-bold text-yellow-400">2/5</div>
-          <div className="text-xs text-gray-400 uppercase">Process Steps Failed</div>
-        </div>
-        <div className="glass-panel rounded-xl p-6">
-          <Shield className="w-6 h-6 text-purple-400 mb-2" />
-          <div className="text-3xl font-bold text-purple-400">HIGH</div>
-          <div className="text-xs text-gray-400 uppercase">Risk Level</div>
-        </div>
-      </div>
+        {/* Right Column */}
+        <div className="col-span-5 space-y-3">
+          {/* Summary Stats */}
+          <div className="grid grid-cols-4 gap-2">
+            <div className="glass-panel rounded-lg p-3">
+              <FileText className="w-4 h-4 text-cyan-400 mb-1" />
+              <div className="text-xl font-bold text-yellow-400">{complianceScore.toFixed(0)}%</div>
+              <div className="text-xs text-gray-400">Compliance</div>
+            </div>
+            <div className="glass-panel rounded-lg p-3">
+              <Network className="w-4 h-4 text-purple-400 mb-1" />
+              <div className="text-xl font-bold text-purple-400">3/5</div>
+              <div className="text-xs text-gray-400">Failed Roles</div>
+            </div>
+            <div className="glass-panel rounded-lg p-3">
+              <Activity className="w-4 h-4 text-yellow-400 mb-1" />
+              <div className="text-xl font-bold text-yellow-400">2/5</div>
+              <div className="text-xs text-gray-400">Process Failed</div>
+            </div>
+            <div className="glass-panel rounded-lg p-3">
+              <Shield className="w-4 h-4 text-purple-400 mb-1" />
+              <div className="text-xl font-bold text-purple-400">HIGH</div>
+              <div className="text-xs text-gray-400">Risk Level</div>
+            </div>
+          </div>
 
-      {/* Log Role Mapping */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-cyan-300 mb-4">LOG ROLE MAPPING</h2>
-        <div className="grid grid-cols-1 gap-6">
-          {Object.entries(loggingRoles).map(([roleName, role]) => {
-            const statusColors = getStatusColor(role.status);
-            return (
-              <div 
+          {/* Process Pipeline */}
+          <div className="glass-panel rounded-xl p-3">
+            <h3 className="text-sm font-bold text-purple-400 mb-2">LOGGING PIPELINE</h3>
+            <canvas ref={flowRef} className="w-full h-24" />
+          </div>
+
+          {/* Visibility Matrix */}
+          <div className="glass-panel rounded-xl p-3">
+            <h3 className="text-sm font-bold text-cyan-400 mb-2">VISIBILITY FACTORS</h3>
+            <canvas ref={matrixRef} className="w-full h-32" />
+          </div>
+
+          {/* Role Cards */}
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {Object.entries(loggingRoles).map(([roleName, role]) => (
+              <div
                 key={roleName}
-                className={`glass-panel rounded-2xl p-6 cursor-pointer transition-all ${statusColors.border} ${
-                  selectedRole === roleName ? 'scale-101' : ''
+                className={`glass-panel rounded-lg p-2.5 cursor-pointer transition-all hover:scale-102 ${
+                  selectedRole === roleName ? 'border-cyan-400' : ''
                 }`}
-                onClick={() => setSelectedRole(roleName === selectedRole ? null : roleName)}
-                style={{
-                  boxShadow: selectedRole === roleName ? '0 0 40px rgba(192, 132, 252, 0.4)' : undefined
-                }}
+                onClick={() => setSelectedRole(selectedRole === roleName ? null : roleName)}
               >
-                {/* Role Header */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    {roleName === 'Network' && <Network className="w-6 h-6 text-cyan-400" />}
-                    {roleName === 'Endpoint' && <Server className="w-6 h-6 text-purple-400" />}
-                    {roleName === 'Cloud' && <Cloud className="w-6 h-6 text-pink-400" />}
-                    {roleName === 'Application' && <Layers className="w-6 h-6 text-yellow-400" />}
-                    {roleName === 'Identity & Authentication' && <Lock className="w-6 h-6 text-green-400" />}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {roleName === 'Network' && <Network className="w-4 h-4 text-cyan-400" />}
+                    {roleName === 'Endpoint' && <Server className="w-4 h-4 text-purple-400" />}
+                    {roleName === 'Cloud' && <Cloud className="w-4 h-4 text-pink-400" />}
+                    {roleName === 'Application' && <Layers className="w-4 h-4 text-yellow-400" />}
+                    {roleName === 'Identity & Authentication' && <Lock className="w-4 h-4 text-cyan-400" />}
                     <div>
-                      <h3 className="text-xl font-bold text-white">{roleName}</h3>
-                      <p className="text-sm text-gray-400">{role.logTypes.length} log types configured</p>
+                      <div className="text-xs font-bold text-white">{roleName}</div>
+                      <div className="text-xs text-gray-400">{role.logTypes.length} log types</div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-3xl font-bold" style={{
-                      color: role.coverage < 30 ? '#ff0044' : 
-                             role.coverage < 60 ? '#ffaa00' : 
-                             role.coverage < 80 ? '#ffff00' :
-                             '#00ff88'
-                    }}>
-                      {role.coverage}%
+                    <div className={`text-xl font-bold ${
+                      role.coverage < 30 ? 'text-purple-400' :
+                      role.coverage < 60 ? 'text-yellow-400' :
+                      role.coverage < 80 ? 'text-yellow-400' :
+                      'text-cyan-400'
+                    }`}>
+                      {role.coverage.toFixed(1)}%
                     </div>
-                    <div className="text-xs text-gray-400">Coverage</div>
                   </div>
                 </div>
-
-                {/* Coverage Bar */}
-                <div className="mb-4">
-                  <div className="h-4 bg-black/50 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${role.coverage}%`,
-                        background: role.coverage < 30 ? 'linear-gradient(90deg, #ff0044, #ff00ff)' :
-                                   role.coverage < 60 ? 'linear-gradient(90deg, #ffaa00, #ffff00)' :
-                                   role.coverage < 80 ? 'linear-gradient(90deg, #ffff00, #00ffff)' :
-                                   'linear-gradient(90deg, #00ff88, #00ffff)'
-                      }}
-                    />
-                  </div>
+                
+                <div className="mt-2 h-2 bg-black/50 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full transition-all duration-500"
+                    style={{
+                      width: `${role.coverage}%`,
+                      background: role.coverage < 30 
+                        ? 'linear-gradient(90deg, #ff00ff, #ff00ff)'
+                        : role.coverage < 60
+                        ? 'linear-gradient(90deg, #ffaa00, #ff8800)'
+                        : role.coverage < 80
+                        ? 'linear-gradient(90deg, #c084fc, #ff00ff)'
+                        : 'linear-gradient(90deg, #00d4ff, #00d4ff)'
+                    }}
+                  />
                 </div>
-
-                {/* Log Types */}
-                <div className="mb-4">
-                  <h4 className="text-sm font-semibold text-gray-400 mb-2">Log Types</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {role.logTypes.map(type => (
-                      <span key={type} className="px-2 py-1 rounded bg-gray-700/50 text-xs text-gray-300">
-                        {type}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Expanded Details */}
+                
                 {selectedRole === roleName && (
-                  <>
-                    {/* Data Fields */}
-                    <div className="mb-4 pt-4 border-t border-gray-700">
-                      <h4 className="text-sm font-semibold text-gray-400 mb-2">Common Data Fields</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {role.commonDataFields.map(field => (
-                          <span key={field} className="px-2 py-1 rounded bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-400">
-                            {field}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Visibility Factors */}
-                    <div className="mb-4">
-                      <h4 className="text-sm font-semibold text-gray-400 mb-3">Visibility Factors</h4>
-                      <div className="space-y-2">
-                        {role.visibilityFactors.map(factor => (
-                          <div key={factor.factor} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              {getStatusIcon(factor.status)}
-                              <span className="text-sm text-gray-300">{factor.factor}</span>
-                            </div>
-                            <span className={`text-sm font-mono font-bold ${
-                              factor.percentage < 30 ? 'text-red-400' :
-                              factor.percentage < 60 ? 'text-yellow-400' :
-                              factor.percentage < 80 ? 'text-orange-400' :
-                              'text-green-400'
-                            }`}>
-                              {factor.percentage}%
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Gaps and Recommendations */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded">
-                        <h4 className="text-sm font-semibold text-red-400 mb-1">Gap</h4>
-                        <p className="text-xs text-gray-300">{role.gaps}</p>
-                      </div>
-                      <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded">
-                        <h4 className="text-sm font-semibold text-yellow-400 mb-1">Action Required</h4>
-                        <p className="text-xs text-gray-300">{role.recommendation}</p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Logging Process Pipeline */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-purple-300 mb-4">LOGGING PROCESS PIPELINE</h2>
-        <div className="glass-panel rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            {Object.entries(loggingProcess).map(([step, data], index) => (
-              <React.Fragment key={step}>
-                <div className="flex-1">
-                  <div className={`text-center ${data.status === 'failed' ? 'animate-pulse' : ''}`}>
-                    <div className={`w-16 h-16 mx-auto mb-2 rounded-full flex items-center justify-center ${
-                      getStatusColor(data.status).bg
-                    } ${getStatusColor(data.status).border} border-2`}>
-                      {getStatusIcon(data.status)}
-                    </div>
-                    <h4 className="font-semibold text-white">{step}</h4>
-                    <div className={`text-xs mt-1 ${getStatusColor(data.status).text}`}>
-                      {data.completion}%
-                    </div>
+                  <div className="mt-2 pt-2 border-t border-white/10">
+                    <div className="text-xs text-purple-400 mb-1">GAP: {role.gaps}</div>
+                    <div className="text-xs text-cyan-400">ACTION: {role.recommendation}</div>
                   </div>
-                </div>
-                {index < Object.keys(loggingProcess).length - 1 && (
-                  <div className={`flex-shrink-0 w-12 h-0.5 ${
-                    data.status === 'complete' ? 'bg-green-400' :
-                    data.status === 'partial' ? 'bg-yellow-400' :
-                    'bg-red-400'
-                  }`} />
                 )}
-              </React.Fragment>
+              </div>
             ))}
           </div>
 
-          {/* Process Details */}
-          <div className="grid grid-cols-5 gap-4">
-            {Object.entries(loggingProcess).map(([step, data]) => (
-              <div key={step} className="text-center">
-                <div className="glass-panel rounded-lg p-3">
-                  <h5 className="text-xs font-semibold text-gray-400 mb-1">Step {data.step}</h5>
-                  <p className="text-xs text-gray-300 mb-2">{data.description}</p>
-                  {data.issues.length > 0 && (
-                    <div className="text-xs text-red-400">
-                      {data.issues.length} issues
-                    </div>
-                  )}
+          {/* Critical Actions */}
+          <div className="glass-panel rounded-xl p-3 border border-purple-500/30">
+            <h3 className="text-sm font-bold text-purple-400 mb-2">CRITICAL ACTIONS</h3>
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                <Target className="w-3 h-3 text-purple-400 mt-0.5" />
+                <div className="text-xs">
+                  <span className="text-purple-400 font-bold">CLOUD:</span>
+                  <span className="text-white ml-1">Enable CloudTrail, VPC Flow Logs (19.17%)</span>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Visibility Factor Metrics */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-cyan-300 mb-4">VISIBILITY FACTOR METRICS</h2>
-        <div className="grid grid-cols-3 gap-6">
-          {Object.entries(visibilityFactorMetrics).map(([factor, data]) => (
-            <div key={factor} className="glass-panel rounded-xl p-6">
-              <h3 className="text-sm font-semibold text-white mb-2">{factor}</h3>
-              <p className="text-xs text-gray-400 mb-3">{data.description}</p>
-              
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-400">Current</span>
-                <span className={`text-xl font-bold ${
-                  data.current < 50 ? 'text-red-400' :
-                  data.current < 80 ? 'text-yellow-400' :
-                  'text-green-400'
-                }`}>
-                  {data.current}%
-                </span>
+              <div className="flex items-start gap-2">
+                <Target className="w-3 h-3 text-yellow-400 mt-0.5" />
+                <div className="text-xs">
+                  <span className="text-yellow-400 font-bold">NETWORK:</span>
+                  <span className="text-white ml-1">Configure SNMP/NetFlow (45.2%)</span>
+                </div>
               </div>
-              
-              <div className="h-2 bg-black/50 rounded-full overflow-hidden mb-2">
-                <div 
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${data.current}%`,
-                    background: data.current < 50 ? '#ff0044' :
-                               data.current < 80 ? '#ffaa00' :
-                               '#00ff88'
-                  }}
-                />
-              </div>
-              
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-500">Target: {data.target}%</span>
-                <span className="text-red-400">Gap: {data.gap}%</span>
+              <div className="flex items-start gap-2">
+                <Target className="w-3 h-3 text-cyan-400 mt-0.5" />
+                <div className="text-xs">
+                  <span className="text-cyan-400 font-bold">NORMALIZE:</span>
+                  <span className="text-white ml-1">Fix parsing rules (38%)</span>
+                </div>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Action Plan */}
-      <div className="glass-panel rounded-2xl p-6 bg-red-500/5 border border-red-500/30">
-        <h3 className="text-xl font-bold text-red-400 mb-4">CRITICAL ACTIONS FOR LOGGING COMPLIANCE</h3>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="p-4 bg-black/50 rounded-lg">
-            <div className="text-sm font-bold text-yellow-400 mb-2">IMMEDIATE: CLOUD LOGGING</div>
-            <p className="text-xs text-gray-300">Enable CloudTrail, VPC Flow Logs, and cloud-native logging. Current 19.17% is critical.</p>
-          </div>
-          <div className="p-4 bg-black/50 rounded-lg">
-            <div className="text-sm font-bold text-yellow-400 mb-2">URGENT: NETWORK DEVICES</div>
-            <p className="text-xs text-gray-300">Configure SNMP/NetFlow on all devices. 45.2% coverage violates standards.</p>
-          </div>
-          <div className="p-4 bg-black/50 rounded-lg">
-            <div className="text-sm font-bold text-yellow-400 mb-2">PRIORITY: NORMALIZATION</div>
-            <p className="text-xs text-gray-300">Fix parsing rules for custom logs. 38% completion blocking compliance.</p>
           </div>
         </div>
       </div>

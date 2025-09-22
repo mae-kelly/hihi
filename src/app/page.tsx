@@ -76,7 +76,8 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-black overflow-hidden flex">
+    <div className="h-screen w-screen overflow-hidden flex bg-black">
+      {/* Background Effects */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-900/5 via-purple-900/5 to-pink-900/5" />
         <div className="absolute inset-0" style={{
@@ -86,30 +87,33 @@ export default function Home() {
         }} />
       </div>
       
+      {/* Navigation Sidebar */}
       <Navigation currentPage={currentPage} onNavigate={handleNavigate} />
       
-      <div className="flex-1 ml-64 flex flex-col relative z-10">
-        <header className="flex-shrink-0 border-b border-white/10 bg-black/80 backdrop-blur-xl">
-          <div className="px-6 py-4">
-            <div className="flex items-center justify-between">
+      {/* Main Content Area */}
+      <div className="flex-1 ml-56 flex flex-col relative z-10 h-screen">
+        {/* Header */}
+        <header className="flex-shrink-0 border-b border-white/10 bg-black/80 backdrop-blur-xl h-14">
+          <div className="px-4 h-full flex items-center">
+            <div className="flex items-center justify-between w-full">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight">
+                <h2 className="text-lg font-bold tracking-tight">
                   <span className="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                     {getPageTitle()}
                   </span>
                 </h2>
-                <p className="text-xs text-white/40 uppercase tracking-widest mt-1">
+                <p className="text-[10px] text-white/40 uppercase tracking-widest mt-0">
                   CLEARANCE LEVEL: OMEGA • REAL-TIME SURVEILLANCE ACTIVE
                 </p>
               </div>
               
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
-                  <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                  <span className="text-xs font-medium text-cyan-400">LIVE</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                  <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                  <span className="text-[10px] font-medium text-cyan-400">LIVE</span>
                 </div>
                 
-                <div className="text-sm font-mono text-white/60">
+                <div className="text-xs font-mono text-white/60">
                   {currentTime}
                 </div>
               </div>
@@ -117,6 +121,7 @@ export default function Home() {
           </div>
         </header>
         
+        {/* Main Content - Full height minus header */}
         <main className="flex-1 overflow-hidden bg-black">
           <div className="h-full">
             {renderPage()}

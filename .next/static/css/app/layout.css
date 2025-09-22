@@ -744,6 +744,15 @@ video {
 .ml-4{
   margin-left: 1rem;
 }
+.ml-56{
+  margin-left: 14rem;
+}
+.mt-0{
+  margin-top: 0px;
+}
+.mt-0\.5{
+  margin-top: 0.125rem;
+}
 .line-clamp-1{
   overflow: hidden;
   display: -webkit-box;
@@ -873,6 +882,12 @@ video {
 .h-\[350px\]{
   height: 350px;
 }
+.h-3\.5{
+  height: 0.875rem;
+}
+.h-14{
+  height: 3.5rem;
+}
 .max-h-64{
   max-height: 16rem;
 }
@@ -947,6 +962,12 @@ video {
 }
 .w-screen{
   width: 100vw;
+}
+.w-3\.5{
+  width: 0.875rem;
+}
+.w-56{
+  width: 14rem;
 }
 .max-w-2xl{
   max-width: 42rem;
@@ -1074,6 +1095,9 @@ video {
 .flex-wrap{
   flex-wrap: wrap;
 }
+.items-start{
+  align-items: flex-start;
+}
 .items-center{
   align-items: center;
 }
@@ -1138,6 +1162,11 @@ video {
   --tw-space-y-reverse: 0;
   margin-top: calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));
   margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
+}
+.space-y-2\.5 > :not([hidden]) ~ :not([hidden]){
+  --tw-space-y-reverse: 0;
+  margin-top: calc(0.625rem * calc(1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(0.625rem * var(--tw-space-y-reverse));
 }
 .overflow-auto{
   overflow: auto;
@@ -1855,6 +1884,10 @@ video {
 .px-5{
   padding-left: 1.25rem;
   padding-right: 1.25rem;
+}
+.px-2\.5{
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
 }
 .pl-12{
   padding-left: 3rem;
