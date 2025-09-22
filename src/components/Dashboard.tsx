@@ -16,6 +16,8 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
   const [animatedValues, setAnimatedValues] = useState<Record<string, number>>({});
+  const [criticalSystems, setCriticalSystems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const hologramRef = useRef<HTMLDivElement>(null);
   const matrixRef = useRef<HTMLCanvasElement>(null);
   const pulseRef = useRef<HTMLCanvasElement>(null);
@@ -23,7 +25,41 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
   const barChartRef = useRef<HTMLCanvasElement>(null);
   const [glitchActive, setGlitchActive] = useState(false);
 
-  // 3D Holographic Core Visualization with proper colors
+  // Fetch real critical systems data from API
+  useEffect(() => {
+    const fetchCriticalSystems = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/region_metrics');
+        if (!response.ok) throw new Error('Failed to fetch critical systems');
+        
+        const data = await response.json();
+        
+        // Process regional data into critical systems
+        const systems = Object.entries(data.regional_analytics || {})
+          .map(([region, regionData]: [string, any]) => ({
+            name: region.toUpperCase(),
+            coverage: regionData.security_score || 0,
+            gap: Math.floor(regionData.count * (1 - regionData.security_score / 100)),
+            status: regionData.security_score < 30 ? 'critical' : 
+                   regionData.security_score < 60 ? 'warning' : 'stable'
+          }))
+          .sort((a, b) => a.coverage - b.coverage)
+          .slice(0, 4);
+        
+        setCriticalSystems(systems);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching critical systems:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchCriticalSystems();
+    const interval = setInterval(fetchCriticalSystems, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 3D Holographic Core Visualization with real metrics
   useEffect(() => {
     if (!hologramRef.current) return;
 
@@ -47,10 +83,10 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     renderer.setPixelRatio(window.devicePixelRatio);
     hologramRef.current.appendChild(renderer.domElement);
 
-    // Central Core System with proper colors
+    // Central Core System with colors based on real coverage
     const coreGroup = new THREE.Group();
     
-    // Inner core - color based on coverage
+    // Inner core - color based on actual coverage
     const innerGeometry = new THREE.IcosahedronGeometry(8, 2);
     const innerMaterial = new THREE.MeshPhongMaterial({
       color: metrics.csocCoverage < 20 ? 0xff00ff : metrics.csocCoverage < 50 ? 0xc084fc : 0x00ffff,
@@ -63,7 +99,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     const innerCore = new THREE.Mesh(innerGeometry, innerMaterial);
     coreGroup.add(innerCore);
 
-    // Data streams - wireframe layers
+    // Data streams - wireframe layers based on real metrics
     for (let i = 0; i < 3; i++) {
       const streamGeometry = new THREE.IcosahedronGeometry(12 + i * 6, 1);
       const streamMaterial = new THREE.MeshPhongMaterial({
@@ -79,7 +115,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
 
     scene.add(coreGroup);
 
-    // Platform rings with correct colors
+    // Platform rings with real coverage data
     const rings: THREE.Mesh[] = [];
     const createDataRing = (radius: number, color: number, coverage: number, rotSpeed: number) => {
       const ringGroup = new THREE.Group();
@@ -109,8 +145,8 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     scene.add(splunkRing);
     scene.add(chronicleRing);
 
-    // Threat particles with proper colors
-    const threatCount = 500;
+    // Threat particles based on real critical gaps
+    const threatCount = Math.min(500, metrics.criticalGaps / 100);
     const threatsGeometry = new THREE.BufferGeometry();
     const threatPositions = new Float32Array(threatCount * 3);
     const threatColors = new Float32Array(threatCount * 3);
@@ -124,20 +160,17 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
       threatPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
       threatPositions[i * 3 + 2] = radius * Math.cos(phi);
       
-      // Use proper color scheme
+      // Color based on risk level
       const severity = Math.random();
-      if (severity > 0.7) {
-        // Pink for critical
+      if (severity > 0.7 || metrics.riskLevel === 'CRITICAL') {
         threatColors[i * 3] = 1;
         threatColors[i * 3 + 1] = 0;
         threatColors[i * 3 + 2] = 1;
-      } else if (severity > 0.4) {
-        // Purple for warning
+      } else if (severity > 0.4 || metrics.riskLevel === 'HIGH') {
         threatColors[i * 3] = 0.75;
         threatColors[i * 3 + 1] = 0.52;
         threatColors[i * 3 + 2] = 0.99;
       } else {
-        // Cyan for normal
         threatColors[i * 3] = 0;
         threatColors[i * 3 + 1] = 1;
         threatColors[i * 3 + 2] = 1;
@@ -158,7 +191,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     const threats = new THREE.Points(threatsGeometry, threatsMaterial);
     scene.add(threats);
 
-    // Lighting with proper colors
+    // Lighting
     const ambientLight = new THREE.AmbientLight(0x0a0a0a);
     scene.add(ambientLight);
 
@@ -224,7 +257,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     };
   }, [metrics]);
 
-  // Animated Bar Chart
+  // Animated Bar Chart with real metrics
   useEffect(() => {
     const canvas = barChartRef.current;
     if (!canvas) return;
@@ -302,7 +335,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     animate();
   }, [metrics]);
 
-  // Matrix Rain with proper colors
+  // Matrix Rain with real data
   useEffect(() => {
     const canvas = matrixRef.current;
     if (!canvas) return;
@@ -320,7 +353,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
       drops[i] = Math.random() * -100;
     }
 
-    const matrix = '01CSOC1917CRITICAL';
+    const matrix = `01${metrics.complianceStatus}${metrics.riskLevel}`;
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -332,7 +365,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
         const x = i * 10;
         const y = drops[i] * 10;
         
-        // Use proper colors
+        // Use colors based on risk level
         if (i % 3 === 0) ctx.fillStyle = '#00ffff';
         else if (i % 3 === 1) ctx.fillStyle = '#c084fc';
         else ctx.fillStyle = '#ff00ff';
@@ -349,9 +382,9 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     };
 
     animate();
-  }, []);
+  }, [metrics]);
 
-  // Threat Network Graph
+  // Threat Network Graph with real data
   useEffect(() => {
     const canvas = threatRef.current;
     if (!canvas) return;
@@ -363,14 +396,17 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     canvas.height = canvas.offsetHeight;
 
     const particles: any[] = [];
-    for (let i = 0; i < 30; i++) {
+    const particleCount = Math.min(30, Math.floor(metrics.criticalGaps / 5000));
+    
+    for (let i = 0; i < particleCount; i++) {
       particles.push({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
         vx: (Math.random() - 0.5) * 1,
         vy: (Math.random() - 0.5) * 1,
         size: Math.random() * 3 + 1,
-        color: Math.random() > 0.5 ? '#ff00ff' : Math.random() > 0.5 ? '#c084fc' : '#00ffff'
+        color: metrics.riskLevel === 'CRITICAL' ? '#ff00ff' : 
+               metrics.riskLevel === 'HIGH' ? '#c084fc' : '#00ffff'
       });
     }
 
@@ -419,9 +455,9 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     };
 
     animate();
-  }, []);
+  }, [metrics]);
 
-  // Wave Visualization with proper colors
+  // Wave Visualization with real metrics
   useEffect(() => {
     const canvas = pulseRef.current;
     if (!canvas) return;
@@ -438,7 +474,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
 
       const time = Date.now() * 0.001;
       
-      // Platform waves
+      // Platform waves based on real metrics
       const platforms = [
         { coverage: metrics.csocCoverage, color: '#00ffff', offset: 0, freq: 1 },
         { coverage: metrics.splunkCoverage, color: '#c084fc', offset: 2, freq: 1.5 },
@@ -485,13 +521,6 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     }, 100);
   }, [metrics]);
 
-  const criticalSystems = [
-    { name: 'EMEA', coverage: 12.3, gap: 78456, status: 'critical' },
-    { name: 'Linux', coverage: 69.29, gap: 24001, status: 'warning' },
-    { name: 'Network', coverage: 45.2, gap: 7537, status: 'warning' },
-    { name: 'Cloud', coverage: 19.17, gap: 40626, status: 'critical' }
-  ];
-
   return (
     <div className="p-2 bg-black h-screen overflow-hidden flex flex-col">
       {/* Critical Alert */}
@@ -503,7 +532,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
         </div>
       </div>
 
-      {/* Metrics Bar */}
+      {/* Metrics Bar with real data */}
       <div className="grid grid-cols-6 gap-1.5 mb-2">
         {[
           { icon: Database, value: (animatedValues.assets / 1000 || 0).toFixed(0) + 'K', label: 'Assets', color: '#00ffff' },
@@ -511,7 +540,7 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
           { icon: Server, value: metrics.splunkCoverage + '%', label: 'Splunk', color: '#c084fc' },
           { icon: Cloud, value: metrics.chronicleCoverage + '%', label: 'Chronicle', color: '#00ffff' },
           { icon: AlertCircle, value: (animatedValues.gaps / 1000 || 0).toFixed(0) + 'K', label: 'Gaps', color: '#ff00ff' },
-          { icon: Shield, value: 'CRITICAL', label: 'Risk', color: '#ff00ff' }
+          { icon: Shield, value: metrics.riskLevel, label: 'Risk', color: '#ff00ff' }
         ].map((metric, idx) => (
           <div key={idx} className="bg-gray-900/30 rounded-lg p-1.5 border border-gray-800">
             <metric.icon className="w-3 h-3 mb-0.5" style={{ color: metric.color }} />
@@ -581,27 +610,31 @@ const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
 
       {/* Bottom Status */}
       <div className="grid grid-cols-2 gap-2 mt-2">
-        {/* Critical Systems */}
+        {/* Critical Systems from real data */}
         <div className="bg-gray-900/30 rounded-lg p-2 border border-gray-800">
           <h3 className="text-xs font-bold text-pink-400 mb-1.5">CRITICAL SYSTEMS</h3>
           <div className="space-y-1">
-            {criticalSystems.map((sys, idx) => (
-              <div key={idx} className="flex justify-between items-center p-1 bg-black/50 rounded border border-gray-800">
-                <span className="text-[9px] text-white">{sys.name}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-[9px] font-mono ${
-                    sys.status === 'critical' ? 'text-pink-400' : 'text-purple-400'
-                  }`}>
-                    {sys.coverage}%
-                  </span>
-                  <span className="text-[8px] text-gray-500">{(sys.gap/1000).toFixed(0)}K</span>
+            {loading ? (
+              <div className="text-[9px] text-gray-400">Loading...</div>
+            ) : (
+              criticalSystems.map((sys, idx) => (
+                <div key={idx} className="flex justify-between items-center p-1 bg-black/50 rounded border border-gray-800">
+                  <span className="text-[9px] text-white">{sys.name}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[9px] font-mono ${
+                      sys.status === 'critical' ? 'text-pink-400' : 'text-purple-400'
+                    }`}>
+                      {sys.coverage.toFixed(1)}%
+                    </span>
+                    <span className="text-[8px] text-gray-500">{(sys.gap/1000).toFixed(0)}K</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
-        {/* Platform Progress */}
+        {/* Platform Progress with real data */}
         <div className="bg-gray-900/30 rounded-lg p-2 border border-gray-800">
           <h3 className="text-xs font-bold text-purple-400 mb-1.5">PLATFORM STATUS</h3>
           <div className="space-y-1.5">

@@ -27,34 +27,89 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
   const [zoom, setZoom] = useState(1);
   const [hoveredLocation, setHoveredLocation] = useState<any>(null);
   const animationRef = useRef<number>();
+  const [globalLocations, setGlobalLocations] = useState<any[]>([]);
+  const [connectionPaths, setConnectionPaths] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Global threat locations
-  const globalLocations = [
-    { id: 'nyc', name: 'New York', lat: 40.7128, lon: -74.0060, status: 'secure', systems: 45 },
-    { id: 'lon', name: 'London', lat: 51.5074, lon: -0.1278, status: 'warning', systems: 32 },
-    { id: 'tok', name: 'Tokyo', lat: 35.6762, lon: 139.6503, status: 'secure', systems: 28 },
-    { id: 'syd', name: 'Sydney', lat: -33.8688, lon: 151.2093, status: 'critical', systems: 18 },
-    { id: 'sin', name: 'Singapore', lat: 1.3521, lon: 103.8198, status: 'secure', systems: 22 },
-    { id: 'fra', name: 'Frankfurt', lat: 50.1109, lon: 8.6821, status: 'warning', systems: 35 },
-    { id: 'sfo', name: 'San Francisco', lat: 37.7749, lon: -122.4194, status: 'secure', systems: 41 },
-    { id: 'tor', name: 'Toronto', lat: 43.6532, lon: -79.3832, status: 'secure', systems: 15 }
-  ];
+  // Fetch real regional data from API
+  useEffect(() => {
+    const fetchGlobalData = async () => {
+      try {
+        const [regionalResponse, countryResponse] = await Promise.all([
+          fetch('http://localhost:5000/api/region_metrics'),
+          fetch('http://localhost:5000/api/country_metrics')
+        ]);
 
-  // Connection paths between locations
-  const connectionPaths = [
-    { from: 'nyc', to: 'lon', active: true, bandwidth: 85 },
-    { from: 'lon', to: 'fra', active: true, bandwidth: 92 },
-    { from: 'fra', to: 'sin', active: true, bandwidth: 78 },
-    { from: 'sin', to: 'tok', active: true, bandwidth: 88 },
-    { from: 'tok', to: 'syd', active: false, bandwidth: 45 },
-    { from: 'syd', to: 'sfo', active: true, bandwidth: 67 },
-    { from: 'sfo', to: 'nyc', active: true, bandwidth: 95 },
-    { from: 'nyc', to: 'tor', active: true, bandwidth: 99 }
-  ];
+        if (!regionalResponse.ok || !countryResponse.ok) {
+          throw new Error('Failed to fetch global data');
+        }
+
+        const regionalData = await regionalResponse.json();
+        const countryData = await countryResponse.json();
+
+        // Process regional data into location points
+        const locations = Object.entries(regionalData.regional_analytics || {})
+          .map(([region, data]: [string, any], index) => {
+            // Approximate lat/lon for regions
+            const regionCoords: Record<string, { lat: number; lon: number }> = {
+              'north america': { lat: 40.7128, lon: -74.0060 },
+              'europe': { lat: 51.5074, lon: -0.1278 },
+              'asia pacific': { lat: 35.6762, lon: 139.6503 },
+              'asia': { lat: 1.3521, lon: 103.8198 },
+              'oceania': { lat: -33.8688, lon: 151.2093 },
+              'latin america': { lat: -23.5505, lon: -46.6333 },
+              'middle east': { lat: 25.2048, lon: 55.2708 },
+              'africa': { lat: -33.9249, lon: 18.4241 }
+            };
+            
+            const coords = regionCoords[region.toLowerCase()] || 
+                          { lat: index * 20 - 60, lon: index * 45 - 180 };
+            
+            return {
+              id: region.toLowerCase().replace(/\s+/g, '-'),
+              name: region,
+              lat: coords.lat,
+              lon: coords.lon,
+              status: data.security_score < 50 ? 'critical' : 
+                     data.security_score < 75 ? 'warning' : 'secure',
+              systems: data.count,
+              security_score: data.security_score,
+              cmdb_coverage: data.cmdb_coverage,
+              tanium_coverage: data.tanium_coverage
+            };
+          });
+
+        setGlobalLocations(locations);
+
+        // Create connections between regions based on data flow
+        const paths = [];
+        for (let i = 0; i < locations.length - 1; i++) {
+          for (let j = i + 1; j < Math.min(i + 3, locations.length); j++) {
+            paths.push({
+              from: locations[i].id,
+              to: locations[j].id,
+              active: locations[i].security_score > 50 && locations[j].security_score > 50,
+              bandwidth: Math.min(locations[i].security_score, locations[j].security_score)
+            });
+          }
+        }
+
+        setConnectionPaths(paths);
+        setLoading(false);
+      } catch (error) {
+        console.error('Failed to fetch global data:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchGlobalData();
+    const interval = setInterval(fetchGlobalData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || loading) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -115,7 +170,7 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
         ctx.stroke();
       }
 
-      // Draw connections
+      // Draw connections between regions
       connectionPaths.forEach(conn => {
         const fromLoc = globalLocations.find(l => l.id === conn.from);
         const toLoc = globalLocations.find(l => l.id === conn.to);
@@ -159,7 +214,7 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // Animate data packets
+            // Animate data packets if active
             if (conn.active) {
               const progress = (time * 50) % 100 / 100;
               const packetX = from3D.x + (to3D.x - from3D.x) * progress;
@@ -185,7 +240,7 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
         }
       });
 
-      // Draw location nodes
+      // Draw location nodes with real data
       globalLocations.forEach(loc => {
         const coords = latLonTo3D(loc.lat, loc.lon, radius, rotation);
         
@@ -193,7 +248,7 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
           const x = centerX + coords.x;
           const y = centerY + coords.y;
           
-          // Node glow
+          // Node glow based on security status
           const glowSize = loc.status === 'critical' ? 20 : 15;
           const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, glowSize);
           
@@ -218,7 +273,7 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
           ctx.arc(x, y, 5, 0, Math.PI * 2);
           ctx.fill();
           
-          // Pulse ring
+          // Pulse ring for critical nodes
           const pulseRadius = 8 + Math.sin(time * 4) * 3;
           ctx.strokeStyle = loc.status === 'critical' ? 'rgba(255, 0, 68, 0.5)' : 
                            loc.status === 'warning' ? 'rgba(255, 136, 0, 0.5)' : 
@@ -228,11 +283,12 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
           ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
           ctx.stroke();
           
-          // Label
+          // Label with real data
           ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
           ctx.font = '10px monospace';
           ctx.fillText(loc.name, x + 10, y - 10);
-          ctx.fillText(`${loc.systems} systems`, x + 10, y + 2);
+          ctx.fillText(`${loc.systems} assets`, x + 10, y + 2);
+          ctx.fillText(`${loc.security_score.toFixed(1)}% secure`, x + 10, y + 14);
         }
       });
 
@@ -256,7 +312,7 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [rotation, zoom, isDragging]);
+  }, [rotation, zoom, isDragging, globalLocations, connectionPaths, loading]);
 
   // Convert lat/lon to 3D coordinates
   const latLonTo3D = (lat: number, lon: number, radius: number, rotation: { x: number, y: number, z: number }) => {
@@ -305,6 +361,11 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
     setZoom(prev => Math.max(0.5, Math.min(2, prev + e.deltaY * -0.001)));
   };
 
+  // Calculate statistics from real data
+  const secureCount = globalLocations.filter(l => l.status === 'secure').length;
+  const warningCount = globalLocations.filter(l => l.status === 'warning').length;
+  const criticalCount = globalLocations.filter(l => l.status === 'critical').length;
+
   return (
     <div className="relative w-full h-full">
       <canvas
@@ -335,23 +396,29 @@ const GlobeVisualization: React.FC<GlobeVisualizationProps> = ({
         </div>
       </div>
       
-      {/* Stats overlay */}
+      {/* Stats overlay with real data */}
       <div className="absolute bottom-4 left-4 backdrop-blur-xl bg-black/60 rounded-lg p-4 border border-purple-400/30">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            <span className="text-xs font-mono text-green-400">5 SECURE</span>
+            <span className="text-xs font-mono text-green-400">{secureCount} SECURE</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" />
-            <span className="text-xs font-mono text-orange-400">2 WARNING</span>
+            <span className="text-xs font-mono text-orange-400">{warningCount} WARNING</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
-            <span className="text-xs font-mono text-red-400">1 CRITICAL</span>
+            <span className="text-xs font-mono text-red-400">{criticalCount} CRITICAL</span>
           </div>
         </div>
       </div>
+
+      {loading && (
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <div className="text-cyan-400 text-sm">Loading regional data...</div>
+        </div>
+      )}
     </div>
   );
 };
