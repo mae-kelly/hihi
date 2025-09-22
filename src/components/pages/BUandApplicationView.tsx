@@ -10,6 +10,11 @@ const BUandApplicationView: React.FC = () => {
   const hierarchyRef = useRef<HTMLDivElement>(null);
   const sankeyRef = useRef<HTMLCanvasElement>(null);
   const bubbleRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const sankeyFrameRef = useRef<number | null>(null);
+  const bubbleFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -21,6 +26,15 @@ const BUandApplicationView: React.FC = () => {
         setBusinessData(data);
       } catch (error) {
         console.error('Error:', error);
+        // Fallback data
+        setBusinessData({
+          business_unit_breakdown: [],
+          cio_breakdown: [],
+          apm_breakdown: [],
+          application_class_breakdown: [],
+          worst_visibility_bu: null,
+          best_visibility_bu: null
+        });
       } finally {
         setLoading(false);
       }
@@ -33,9 +47,18 @@ const BUandApplicationView: React.FC = () => {
 
   // 3D Organizational Hierarchy Visualization
   useEffect(() => {
-    if (!hierarchyRef.current || !businessData) return;
+    if (!hierarchyRef.current || !businessData || loading) return;
+
+    // Clean up previous scene
+    if (rendererRef.current) {
+      rendererRef.current.dispose();
+      if (hierarchyRef.current.contains(rendererRef.current.domElement)) {
+        hierarchyRef.current.removeChild(rendererRef.current.domElement);
+      }
+    }
 
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
     scene.fog = new THREE.FogExp2(0x000000, 0.001);
     
     const camera = new THREE.PerspectiveCamera(
@@ -47,11 +70,13 @@ const BUandApplicationView: React.FC = () => {
     
     const renderer = new THREE.WebGLRenderer({ 
       antialias: true, 
-      alpha: true 
+      alpha: true,
+      powerPreference: "high-performance"
     });
     
+    rendererRef.current = renderer;
     renderer.setSize(hierarchyRef.current.clientWidth, hierarchyRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     hierarchyRef.current.appendChild(renderer.domElement);
 
     const nodes: THREE.Group[] = [];
@@ -74,9 +99,9 @@ const BUandApplicationView: React.FC = () => {
     };
     
     const viewData = getData();
-    const maxHosts = Math.max(...viewData.map((d: any) => d.total_hosts));
+    const maxHosts = Math.max(...viewData.map((d: any) => d.total_hosts), 1);
     
-    // Central core representing overall visibility
+    // Central core
     const coreGeometry = new THREE.IcosahedronGeometry(10, 2);
     const coreMaterial = new THREE.MeshPhongMaterial({
       color: 0x00d4ff,
@@ -90,8 +115,8 @@ const BUandApplicationView: React.FC = () => {
     scene.add(core);
     
     // Create nodes for each business unit/CIO/APM/class
-    viewData.forEach((item: any, index: number) => {
-      const angle = (index / viewData.length) * Math.PI * 2;
+    viewData.slice(0, 20).forEach((item: any, index: number) => {
+      const angle = (index / Math.min(viewData.length, 20)) * Math.PI * 2;
       const radius = 60;
       
       const nodeGroup = new THREE.Group();
@@ -99,21 +124,8 @@ const BUandApplicationView: React.FC = () => {
       // Node size based on total hosts
       const nodeSize = 5 + (item.total_hosts / maxHosts) * 15;
       
-      // Node geometry - different shapes for different views
-      let nodeGeometry;
-      switch (selectedView) {
-        case 'bu':
-          nodeGeometry = new THREE.BoxGeometry(nodeSize, nodeSize, nodeSize);
-          break;
-        case 'cio':
-          nodeGeometry = new THREE.OctahedronGeometry(nodeSize);
-          break;
-        case 'apm':
-          nodeGeometry = new THREE.TetrahedronGeometry(nodeSize);
-          break;
-        default:
-          nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
-      }
+      // Node geometry - simple sphere
+      const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
       
       const nodeMaterial = new THREE.MeshPhongMaterial({
         color: item.status === 'CRITICAL' ? 0xa855f7 :
@@ -166,31 +178,24 @@ const BUandApplicationView: React.FC = () => {
       scene.add(line);
     });
     
-    // Add particles for data flow
+    // Add particles
     const particleCount = 500;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
     
     for (let i = 0; i < particleCount * 3; i += 3) {
       positions[i] = (Math.random() - 0.5) * 200;
       positions[i + 1] = (Math.random() - 0.5) * 100;
       positions[i + 2] = (Math.random() - 0.5) * 200;
-      
-      colors[i] = 0;
-      colors[i + 1] = 0.83;
-      colors[i + 2] = 1;
     }
     
     particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
     const particlesMaterial = new THREE.PointsMaterial({
       size: 1,
-      vertexColors: true,
+      color: 0x00d4ff,
       transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending
+      opacity: 0.6
     });
     
     const particles = new THREE.Points(particlesGeometry, particlesMaterial);
@@ -213,41 +218,50 @@ const BUandApplicationView: React.FC = () => {
     
     // Animation
     const animate = () => {
-      // Rotate core
+      if (!sceneRef.current) return;
+      frameRef.current = requestAnimationFrame(animate);
+      
       core.rotation.x += 0.005;
       core.rotation.y += 0.005;
       
-      // Animate nodes
       nodes.forEach((nodeGroup, index) => {
         nodeGroup.rotation.y += 0.01;
-        nodeGroup.children[0].rotation.x += 0.005;
-        
-        // Floating animation
         nodeGroup.position.y += Math.sin(Date.now() * 0.001 + index) * 0.05;
       });
       
-      // Rotate particles
       particles.rotation.y += 0.001;
       
-      // Camera orbit
       const time = Date.now() * 0.0003;
       camera.position.x = Math.sin(time) * 150;
       camera.position.z = Math.cos(time) * 150;
       camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
-      requestAnimationFrame(animate);
     };
     
     animate();
+
+    // Handle resize
+    const handleResize = () => {
+      if (!hierarchyRef.current || !camera || !renderer) return;
+      camera.aspect = hierarchyRef.current.clientWidth / hierarchyRef.current.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(hierarchyRef.current.clientWidth, hierarchyRef.current.clientHeight);
+    };
+    
+    window.addEventListener('resize', handleResize);
     
     return () => {
-      if (hierarchyRef.current && renderer.domElement) {
-        hierarchyRef.current.removeChild(renderer.domElement);
+      window.removeEventListener('resize', handleResize);
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+        if (hierarchyRef.current && hierarchyRef.current.contains(rendererRef.current.domElement)) {
+          hierarchyRef.current.removeChild(rendererRef.current.domElement);
+        }
       }
-      renderer.dispose();
     };
-  }, [businessData, selectedView]);
+  }, [businessData, selectedView, loading]);
 
   // Sankey Diagram for visibility flow
   useEffect(() => {
@@ -270,24 +284,21 @@ const BUandApplicationView: React.FC = () => {
                       businessData.application_class_breakdown || [];
 
       const time = Date.now() * 0.001;
-      const flowHeight = canvas.height / viewData.length;
+      const flowHeight = canvas.height / Math.min(viewData.length || 1, 10);
       
-      viewData.forEach((item: any, index: number) => {
+      viewData.slice(0, 10).forEach((item: any, index: number) => {
         const y = index * flowHeight + flowHeight / 2;
         const flowWidth = (canvas.width * 0.7) * (item.visibility_percentage / 100);
         
-        // Draw flow
         ctx.strokeStyle = item.status === 'CRITICAL' ? '#a855f7' :
                          item.status === 'WARNING' ? '#ffaa00' : '#00d4ff';
         ctx.lineWidth = flowHeight * 0.6;
         ctx.globalAlpha = 0.6;
+        ctx.lineCap = 'round';
         
         ctx.beginPath();
-        for (let x = 0; x < flowWidth; x++) {
-          const waveY = y + Math.sin((x / 30) + time + index) * 5;
-          if (x === 0) ctx.moveTo(x, waveY);
-          else ctx.lineTo(x, waveY);
-        }
+        ctx.moveTo(0, y);
+        ctx.lineTo(flowWidth, y);
         ctx.stroke();
         
         ctx.globalAlpha = 1;
@@ -303,16 +314,20 @@ const BUandApplicationView: React.FC = () => {
         
         // Percentage
         ctx.fillStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
-        ctx.fillText(`${item.visibility_percentage.toFixed(1)}%`, flowWidth + 10, y);
+        ctx.fillText(`${item.visibility_percentage?.toFixed(1)}%`, flowWidth + 10, y);
       });
 
-      requestAnimationFrame(animate);
+      sankeyFrameRef.current = requestAnimationFrame(animate);
     };
 
     animate();
+
+    return () => {
+      if (sankeyFrameRef.current) cancelAnimationFrame(sankeyFrameRef.current);
+    };
   }, [businessData, selectedView]);
 
-  // Bubble Chart for relative sizes
+  // Bubble Chart
   useEffect(() => {
     const canvas = bubbleRef.current;
     if (!canvas || !businessData) return;
@@ -328,10 +343,10 @@ const BUandApplicationView: React.FC = () => {
                     selectedView === 'apm' ? businessData.apm_breakdown :
                     businessData.application_class_breakdown || [];
 
-    const bubbles = viewData.map((item: any, index: number) => ({
+    const bubbles = viewData.slice(0, 10).map((item: any, index: number) => ({
       x: Math.random() * (canvas.width - 100) + 50,
       y: Math.random() * (canvas.height - 100) + 50,
-      radius: Math.sqrt(item.total_hosts) / 10,
+      radius: Math.max(20, Math.sqrt(item.total_hosts) / 10),
       vx: (Math.random() - 0.5) * 0.5,
       vy: (Math.random() - 0.5) * 0.5,
       data: item
@@ -373,22 +388,26 @@ const BUandApplicationView: React.FC = () => {
         ctx.arc(bubble.x, bubble.y, bubble.radius, 0, Math.PI * 2);
         ctx.fill();
         
-        // Draw visibility percentage in center
+        // Draw percentage
         ctx.fillStyle = '#ffffff';
         ctx.font = `bold ${Math.max(10, bubble.radius / 3)}px monospace`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(
-          `${bubble.data.visibility_percentage.toFixed(0)}%`,
+          `${bubble.data.visibility_percentage?.toFixed(0)}%`,
           bubble.x,
           bubble.y
         );
       });
 
-      requestAnimationFrame(animate);
+      bubbleFrameRef.current = requestAnimationFrame(animate);
     };
 
     animate();
+
+    return () => {
+      if (bubbleFrameRef.current) cancelAnimationFrame(bubbleFrameRef.current);
+    };
   }, [businessData, selectedView]);
 
   if (loading) {
@@ -402,19 +421,18 @@ const BUandApplicationView: React.FC = () => {
     );
   }
 
-  if (!businessData) return null;
+  const currentData = selectedView === 'bu' ? businessData?.business_unit_breakdown :
+                     selectedView === 'cio' ? businessData?.cio_breakdown :
+                     selectedView === 'apm' ? businessData?.apm_breakdown :
+                     businessData?.application_class_breakdown || [];
 
-  const currentData = selectedView === 'bu' ? businessData.business_unit_breakdown :
-                     selectedView === 'cio' ? businessData.cio_breakdown :
-                     selectedView === 'apm' ? businessData.apm_breakdown :
-                     businessData.application_class_breakdown || [];
-
-  const avgVisibility = currentData.reduce((sum: number, item: any) => sum + item.visibility_percentage, 0) / currentData.length || 0;
+  const avgVisibility = currentData.length > 0
+    ? currentData.reduce((sum: number, item: any) => sum + (item.visibility_percentage || 0), 0) / currentData.length
+    : 0;
   const criticalCount = currentData.filter((item: any) => item.status === 'CRITICAL').length;
 
   return (
     <div className="h-full flex flex-col p-4">
-      {/* Critical Alert */}
       {avgVisibility < 30 && (
         <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
           <div className="flex items-center gap-2">
@@ -493,7 +511,7 @@ const BUandApplicationView: React.FC = () => {
                         {name}
                       </div>
                       <div className="text-xs text-gray-400">
-                        {item.total_hosts.toLocaleString()} hosts
+                        {item.total_hosts?.toLocaleString() || 0} hosts
                       </div>
                     </div>
                     <div className="text-right">
@@ -502,17 +520,16 @@ const BUandApplicationView: React.FC = () => {
                         item.status === 'WARNING' ? 'text-yellow-400' :
                         'text-cyan-400'
                       }`}>
-                        {item.visibility_percentage.toFixed(1)}%
+                        {item.visibility_percentage?.toFixed(1) || '0.0'}%
                       </div>
                     </div>
                   </div>
                   
-                  {/* Visibility Bar */}
                   <div className="mt-2 h-2 bg-black/50 rounded-full overflow-hidden">
                     <div 
                       className="h-full transition-all duration-500"
                       style={{
-                        width: `${item.visibility_percentage}%`,
+                        width: `${item.visibility_percentage || 0}%`,
                         background: item.status === 'CRITICAL' 
                           ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
                           : 'linear-gradient(90deg, #00d4ff, #0099ff)'
@@ -523,14 +540,14 @@ const BUandApplicationView: React.FC = () => {
                   <div className="mt-1 flex justify-between items-center">
                     <span className="text-xs text-cyan-400">
                       <Eye className="w-3 h-3 inline mr-1" />
-                      {item.visible_hosts.toLocaleString()}
+                      {item.visible_hosts?.toLocaleString() || 0}
                     </span>
                     <span className={`text-xs font-bold ${
                       item.status === 'CRITICAL' ? 'text-purple-400' :
                       item.status === 'WARNING' ? 'text-yellow-400' :
                       'text-cyan-400'
                     }`}>
-                      {item.status}
+                      {item.status || 'UNKNOWN'}
                     </span>
                   </div>
                 </div>

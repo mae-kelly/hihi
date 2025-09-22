@@ -9,6 +9,9 @@ const RegionalCountryView: React.FC = () => {
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const globeRef = useRef<HTMLDivElement>(null);
   const heatmapRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const frameRef = useRef<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [rotation, setRotation] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -24,6 +27,15 @@ const RegionalCountryView: React.FC = () => {
         setRegionalData(data);
       } catch (error) {
         console.error('Error:', error);
+        // Fallback data
+        setRegionalData({
+          regional_breakdown: [],
+          country_breakdown: [],
+          datacenter_breakdown: [],
+          cloud_region_breakdown: [],
+          worst_visibility_region: null,
+          best_visibility_region: null
+        });
       } finally {
         setLoading(false);
       }
@@ -34,11 +46,20 @@ const RegionalCountryView: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Interactive 3D Globe with visibility heat map
+  // 3D Globe Visualization
   useEffect(() => {
-    if (!globeRef.current || !regionalData) return;
+    if (!globeRef.current || !regionalData || loading) return;
+
+    // Clean up previous scene
+    if (rendererRef.current) {
+      rendererRef.current.dispose();
+      if (globeRef.current.contains(rendererRef.current.domElement)) {
+        globeRef.current.removeChild(rendererRef.current.domElement);
+      }
+    }
 
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
     scene.fog = new THREE.FogExp2(0x000000, 0.001);
     
     const camera = new THREE.PerspectiveCamera(
@@ -50,16 +71,18 @@ const RegionalCountryView: React.FC = () => {
     
     const renderer = new THREE.WebGLRenderer({ 
       antialias: true, 
-      alpha: true 
+      alpha: true,
+      powerPreference: "high-performance"
     });
+    rendererRef.current = renderer;
     
     renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     globeRef.current.appendChild(renderer.domElement);
 
     // Create globe
     const globeRadius = 100;
-    const globeGeometry = new THREE.SphereGeometry(globeRadius, 64, 64);
+    const globeGeometry = new THREE.SphereGeometry(globeRadius, 32, 32);
     const globeMaterial = new THREE.MeshPhongMaterial({
       color: 0x001122,
       emissive: 0x00d4ff,
@@ -71,7 +94,7 @@ const RegionalCountryView: React.FC = () => {
     scene.add(globe);
 
     // Add wireframe
-    const wireGeometry = new THREE.SphereGeometry(globeRadius + 0.5, 32, 32);
+    const wireGeometry = new THREE.SphereGeometry(globeRadius + 0.5, 16, 16);
     const wireMaterial = new THREE.MeshBasicMaterial({
       color: 0x00d4ff,
       wireframe: true,
@@ -81,10 +104,7 @@ const RegionalCountryView: React.FC = () => {
     const wireframe = new THREE.Mesh(wireGeometry, wireMaterial);
     scene.add(wireframe);
 
-    // Location markers based on view mode
-    const markers: THREE.Group[] = [];
-    const connections: THREE.Line[] = [];
-    
+    // Get location data based on view mode
     const getLocationData = () => {
       switch (viewMode) {
         case 'region':
@@ -101,51 +121,25 @@ const RegionalCountryView: React.FC = () => {
     };
 
     const getCoordinates = (location: any) => {
-      // Map location names to approximate coordinates
-      const regionCoords: Record<string, { lat: number; lon: number }> = {
+      // Simple coordinate mapping
+      const name = (location.region || location.country || location.data_center || location.cloud_region || '').toLowerCase();
+      const coordMap: Record<string, { lat: number; lon: number }> = {
         'north america': { lat: 45, lon: -100 },
         'europe': { lat: 50, lon: 10 },
-        'asia pacific': { lat: 25, lon: 105 },
         'asia': { lat: 30, lon: 90 },
-        'latin america': { lat: -15, lon: -60 },
-        'middle east': { lat: 25, lon: 45 },
-        'africa': { lat: 0, lon: 20 },
-        'oceania': { lat: -25, lon: 135 }
-      };
-
-      const countryCoords: Record<string, { lat: number; lon: number }> = {
         'us': { lat: 40, lon: -100 },
-        'united states': { lat: 40, lon: -100 },
         'uk': { lat: 51, lon: 0 },
-        'de': { lat: 51, lon: 10 },
-        'jp': { lat: 35, lon: 139 },
-        'cn': { lat: 35, lon: 105 },
-        'au': { lat: -25, lon: 135 },
-        'ca': { lat: 60, lon: -95 },
-        'br': { lat: -15, lon: -47 },
-        'in': { lat: 20, lon: 77 }
+        default: { lat: Math.random() * 180 - 90, lon: Math.random() * 360 - 180 }
       };
-
-      const cloudRegions: Record<string, { lat: number; lon: number }> = {
-        'us-east-1': { lat: 39, lon: -77 },
-        'us-west-2': { lat: 45, lon: -122 },
-        'eu-west-1': { lat: 53, lon: -6 },
-        'ap-southeast-1': { lat: 1, lon: 103 },
-        'ap-northeast-1': { lat: 35, lon: 139 }
-      };
-
-      const name = location.region || location.country || location.data_center || location.cloud_region || '';
-      const lowerName = name.toLowerCase();
       
-      return regionCoords[lowerName] || 
-             countryCoords[lowerName] || 
-             cloudRegions[lowerName] || 
-             { lat: Math.random() * 180 - 90, lon: Math.random() * 360 - 180 };
+      return coordMap[name] || coordMap.default;
     };
 
+    // Add location markers
+    const markers: THREE.Group[] = [];
     const locationData = getLocationData();
     
-    locationData.forEach((location: any, index: number) => {
+    locationData.slice(0, 20).forEach((location: any) => {
       const coords = getCoordinates(location);
       const phi = (90 - coords.lat) * (Math.PI / 180);
       const theta = (coords.lon + 180) * (Math.PI / 180);
@@ -154,13 +148,12 @@ const RegionalCountryView: React.FC = () => {
       const y = globeRadius * Math.cos(phi);
       const z = globeRadius * Math.sin(phi) * Math.sin(theta);
       
-      // Create marker group
       const markerGroup = new THREE.Group();
       markerGroup.position.set(x * 1.05, y * 1.05, z * 1.05);
       
-      // Marker cone
-      const markerSize = Math.log(location.total_hosts / 1000 + 1) * 2;
-      const markerGeometry = new THREE.ConeGeometry(markerSize, markerSize * 2, 8);
+      // Marker sphere
+      const markerSize = 2 + Math.log(location.total_hosts / 1000 + 1);
+      const markerGeometry = new THREE.SphereGeometry(markerSize, 8, 8);
       const markerMaterial = new THREE.MeshPhongMaterial({
         color: location.status === 'CRITICAL' ? 0xa855f7 :
                location.status === 'WARNING' ? 0xffaa00 : 0x00d4ff,
@@ -169,81 +162,17 @@ const RegionalCountryView: React.FC = () => {
       });
       
       const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-      marker.lookAt(0, 0, 0);
-      marker.rotateX(Math.PI);
       markerGroup.add(marker);
-      
-      // Visibility ring
-      const ringRadius = markerSize * 2;
-      const ringGeometry = new THREE.RingGeometry(ringRadius, ringRadius + 1, 32);
-      const ringMaterial = new THREE.MeshBasicMaterial({
-        color: location.visibility_percentage < 30 ? 0xa855f7 : 0x00d4ff,
-        transparent: true,
-        opacity: location.visibility_percentage / 100,
-        side: THREE.DoubleSide
-      });
-      
-      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-      ring.lookAt(x, y, z);
-      markerGroup.add(ring);
-      
-      // Pulse effect for critical locations
-      if (location.status === 'CRITICAL') {
-        const pulseGeometry = new THREE.SphereGeometry(markerSize * 3, 16, 16);
-        const pulseMaterial = new THREE.MeshBasicMaterial({
-          color: 0xa855f7,
-          transparent: true,
-          opacity: 0.2,
-          wireframe: true
-        });
-        const pulse = new THREE.Mesh(pulseGeometry, pulseMaterial);
-        pulse.userData = { isPulse: true };
-        markerGroup.add(pulse);
-      }
       
       markerGroup.userData = location;
       markers.push(markerGroup);
       scene.add(markerGroup);
     });
 
-    // Add connections between locations
-    if (viewMode === 'region' && markers.length > 1) {
-      for (let i = 0; i < markers.length - 1; i++) {
-        for (let j = i + 1; j < Math.min(i + 3, markers.length); j++) {
-          const start = markers[i].position;
-          const end = markers[j].position;
-          
-          // Create curved connection
-          const mid = new THREE.Vector3(
-            (start.x + end.x) / 2,
-            (start.y + end.y) / 2,
-            (start.z + end.z) / 2
-          );
-          mid.multiplyScalar(1.2);
-          
-          const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
-          const points = curve.getPoints(50);
-          const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-          
-          const lineMaterial = new THREE.LineBasicMaterial({
-            color: 0x00d4ff,
-            transparent: true,
-            opacity: 0.3,
-            linewidth: 1
-          });
-          
-          const line = new THREE.Line(lineGeometry, lineMaterial);
-          connections.push(line);
-          scene.add(line);
-        }
-      }
-    }
-
-    // Add data flow particles
+    // Add particles
     const particleCount = 500;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
     
     for (let i = 0; i < particleCount; i++) {
       const phi = Math.acos(2 * Math.random() - 1);
@@ -253,21 +182,15 @@ const RegionalCountryView: React.FC = () => {
       positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = radius * Math.cos(phi);
       positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-      
-      colors[i * 3] = 0;
-      colors[i * 3 + 1] = 0.83;
-      colors[i * 3 + 2] = 1;
     }
     
     particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
     const particlesMaterial = new THREE.PointsMaterial({
       size: 1,
-      vertexColors: true,
+      color: 0x00d4ff,
       transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending
+      opacity: 0.6
     });
     
     const particles = new THREE.Points(particlesGeometry, particlesMaterial);
@@ -280,100 +203,53 @@ const RegionalCountryView: React.FC = () => {
     const pointLight1 = new THREE.PointLight(0x00d4ff, 1, 500);
     pointLight1.position.set(200, 200, 200);
     scene.add(pointLight1);
-    
-    const pointLight2 = new THREE.PointLight(0xa855f7, 0.5, 500);
-    pointLight2.position.set(-200, -100, -200);
-    scene.add(pointLight2);
 
     camera.position.set(0, 0, 300);
     camera.lookAt(0, 0, 0);
 
-    // Mouse controls
-    const handleMouseDown = (e: MouseEvent) => {
-      setIsDragging(true);
-      setDragStart({ x: e.clientX, y: e.clientY });
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      
-      const deltaX = e.clientX - dragStart.x;
-      const deltaY = e.clientY - dragStart.y;
-      
-      setRotation(prev => ({
-        x: prev.x + deltaY * 0.01,
-        y: prev.y - deltaX * 0.01
-      }));
-      
-      setDragStart({ x: e.clientX, y: e.clientY });
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      setZoom(prev => Math.max(0.5, Math.min(2, prev + e.deltaY * -0.001)));
-    };
-
-    renderer.domElement.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    renderer.domElement.addEventListener('wheel', handleWheel);
-
     // Animation
     const animate = () => {
-      // Rotate globe
+      if (!sceneRef.current) return;
+      frameRef.current = requestAnimationFrame(animate);
+      
       globe.rotation.y = rotation.y;
       globe.rotation.x = rotation.x;
       wireframe.rotation.y = rotation.y;
       wireframe.rotation.x = rotation.x;
       
-      // Rotate markers
       markers.forEach(markerGroup => {
-        markerGroup.rotation.y = rotation.y;
-        markerGroup.rotation.x = rotation.x;
-        
-        // Animate pulse
-        markerGroup.children.forEach(child => {
-          if (child.userData.isPulse) {
-            const scale = 1 + Math.sin(Date.now() * 0.003) * 0.3;
-            child.scale.setScalar(scale);
-          }
-        });
+        markerGroup.lookAt(camera.position);
       });
       
-      // Rotate connections
-      connections.forEach(connection => {
-        connection.rotation.y = rotation.y;
-        connection.rotation.x = rotation.x;
-      });
-      
-      // Animate particles
       particles.rotation.y += 0.0005;
-      
-      // Apply zoom
       camera.position.z = 300 / zoom;
       
       renderer.render(scene, camera);
-      requestAnimationFrame(animate);
     };
     
     animate();
 
-    return () => {
-      renderer.domElement.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      renderer.domElement.removeEventListener('wheel', handleWheel);
-      
-      if (globeRef.current && renderer.domElement) {
-        globeRef.current.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
+    // Handle resize
+    const handleResize = () => {
+      if (!globeRef.current || !camera || !renderer) return;
+      camera.aspect = globeRef.current.clientWidth / globeRef.current.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
     };
-  }, [regionalData, viewMode, rotation, zoom, isDragging]);
+    
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+        if (globeRef.current && globeRef.current.contains(rendererRef.current.domElement)) {
+          globeRef.current.removeChild(rendererRef.current.domElement);
+        }
+      }
+    };
+  }, [regionalData, viewMode, rotation, zoom, loading]);
 
   // Visibility Heatmap
   useEffect(() => {
@@ -386,6 +262,7 @@ const RegionalCountryView: React.FC = () => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
+    let animationId: number;
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -395,7 +272,7 @@ const RegionalCountryView: React.FC = () => {
                   viewMode === 'datacenter' ? regionalData.datacenter_breakdown :
                   regionalData.cloud_region_breakdown || [];
 
-      const barHeight = canvas.height / Math.min(data.length, 10);
+      const barHeight = canvas.height / Math.min(data.length || 1, 10);
       
       data.slice(0, 10).forEach((item: any, index: number) => {
         const y = index * barHeight;
@@ -428,14 +305,47 @@ const RegionalCountryView: React.FC = () => {
         
         // Percentage
         ctx.fillStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
-        ctx.fillText(`${item.visibility_percentage.toFixed(1)}%`, width + 5, y + barHeight / 2);
+        ctx.fillText(`${item.visibility_percentage?.toFixed(1)}%`, width + 5, y + barHeight / 2);
       });
 
-      requestAnimationFrame(animate);
+      animationId = requestAnimationFrame(animate);
     };
 
     animate();
+
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId);
+    };
   }, [regionalData, viewMode]);
+
+  // Mouse controls
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    
+    const deltaX = e.clientX - dragStart.x;
+    const deltaY = e.clientY - dragStart.y;
+    
+    setRotation(prev => ({
+      x: prev.x + deltaY * 0.01,
+      y: prev.y - deltaX * 0.01
+    }));
+    
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    setZoom(prev => Math.max(0.5, Math.min(2, prev + e.deltaY * -0.001)));
+  };
 
   if (loading) {
     return (
@@ -448,19 +358,18 @@ const RegionalCountryView: React.FC = () => {
     );
   }
 
-  if (!regionalData) return null;
+  const currentData = viewMode === 'region' ? regionalData?.regional_breakdown :
+                      viewMode === 'country' ? regionalData?.country_breakdown :
+                      viewMode === 'datacenter' ? regionalData?.datacenter_breakdown :
+                      regionalData?.cloud_region_breakdown || [];
 
-  const currentData = viewMode === 'region' ? regionalData.regional_breakdown :
-                      viewMode === 'country' ? regionalData.country_breakdown :
-                      viewMode === 'datacenter' ? regionalData.datacenter_breakdown :
-                      regionalData.cloud_region_breakdown || [];
-
-  const avgVisibility = currentData.reduce((sum: number, item: any) => sum + item.visibility_percentage, 0) / currentData.length || 0;
+  const avgVisibility = currentData.length > 0 
+    ? currentData.reduce((sum: number, item: any) => sum + (item.visibility_percentage || 0), 0) / currentData.length 
+    : 0;
   const criticalCount = currentData.filter((item: any) => item.status === 'CRITICAL').length;
 
   return (
     <div className="h-full flex flex-col p-4">
-      {/* Critical Alert */}
       {avgVisibility < 30 && (
         <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
           <div className="flex items-center gap-2">
@@ -502,7 +411,16 @@ const RegionalCountryView: React.FC = () => {
               </div>
             </div>
             
-            <div ref={globeRef} className="w-full" style={{ height: 'calc(100% - 80px)' }} />
+            <div 
+              ref={globeRef} 
+              className="w-full" 
+              style={{ height: 'calc(100% - 80px)', cursor: isDragging ? 'grabbing' : 'grab' }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onWheel={handleWheel}
+            />
             
             <div className="mt-3 flex items-center justify-between text-xs">
               <div className="text-gray-400">
@@ -572,7 +490,7 @@ const RegionalCountryView: React.FC = () => {
                       {(item.region || item.country || item.data_center || item.cloud_region || '').substring(0, 25)}
                     </div>
                     <div className="text-xs text-gray-400">
-                      {item.total_hosts.toLocaleString()} hosts
+                      {item.total_hosts?.toLocaleString() || 0} hosts
                     </div>
                   </div>
                   <div className="text-right">
@@ -581,17 +499,16 @@ const RegionalCountryView: React.FC = () => {
                       item.status === 'WARNING' ? 'text-yellow-400' :
                       'text-cyan-400'
                     }`}>
-                      {item.visibility_percentage.toFixed(1)}%
+                      {item.visibility_percentage?.toFixed(1) || '0.0'}%
                     </div>
                   </div>
                 </div>
                 
-                {/* Visibility Bar */}
                 <div className="mt-2 h-2 bg-black/50 rounded-full overflow-hidden">
                   <div 
                     className="h-full transition-all duration-500"
                     style={{
-                      width: `${item.visibility_percentage}%`,
+                      width: `${item.visibility_percentage || 0}%`,
                       background: item.status === 'CRITICAL' 
                         ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
                         : item.status === 'WARNING'
@@ -604,14 +521,14 @@ const RegionalCountryView: React.FC = () => {
                 <div className="mt-2 flex justify-between items-center">
                   <span className="text-xs text-cyan-400">
                     <Eye className="w-3 h-3 inline mr-1" />
-                    {item.visible_hosts.toLocaleString()} visible
+                    {item.visible_hosts?.toLocaleString() || 0} visible
                   </span>
                   <span className={`text-xs font-bold ${
                     item.status === 'CRITICAL' ? 'text-purple-400' :
                     item.status === 'WARNING' ? 'text-yellow-400' :
                     'text-cyan-400'
                   }`}>
-                    {item.status}
+                    {item.status || 'UNKNOWN'}
                   </span>
                 </div>
               </div>
@@ -619,19 +536,19 @@ const RegionalCountryView: React.FC = () => {
           </div>
 
           {/* Best/Worst Locations */}
-          {regionalData.worst_visibility_region && regionalData.best_visibility_region && (
+          {regionalData?.worst_visibility_region && regionalData?.best_visibility_region && (
             <div className="glass-panel rounded-xl p-3">
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-gray-400">BEST</span>
                   <span className="text-xs font-bold text-cyan-400">
-                    {regionalData.best_visibility_region.region} - {regionalData.best_visibility_region.visibility_percentage.toFixed(1)}%
+                    {regionalData.best_visibility_region.region} - {regionalData.best_visibility_region.visibility_percentage?.toFixed(1)}%
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-gray-400">WORST</span>
                   <span className="text-xs font-bold text-purple-400">
-                    {regionalData.worst_visibility_region.region} - {regionalData.worst_visibility_region.visibility_percentage.toFixed(1)}%
+                    {regionalData.worst_visibility_region.region} - {regionalData.worst_visibility_region.visibility_percentage?.toFixed(1)}%
                   </span>
                 </div>
               </div>

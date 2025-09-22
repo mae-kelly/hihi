@@ -10,6 +10,11 @@ const SecurityControlCoverage: React.FC = () => {
   const fortressRef = useRef<HTMLDivElement>(null);
   const coverageRef = useRef<HTMLCanvasElement>(null);
   const threatRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const coverageFrameRef = useRef<number | null>(null);
+  const threatFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -21,6 +26,34 @@ const SecurityControlCoverage: React.FC = () => {
         setSecurityData(data);
       } catch (error) {
         console.error('Error:', error);
+        // Fallback data
+        setSecurityData({
+          total_hosts: 0,
+          edr_coverage: {
+            protected_hosts: 0,
+            unprotected_hosts: 0,
+            coverage_percentage: 0,
+            status: 'CRITICAL'
+          },
+          tanium_coverage: {
+            managed_hosts: 0,
+            unmanaged_hosts: 0,
+            coverage_percentage: 0,
+            status: 'CRITICAL'
+          },
+          dlp_coverage: {
+            protected_hosts: 0,
+            unprotected_hosts: 0,
+            coverage_percentage: 0,
+            status: 'CRITICAL'
+          },
+          all_controls_coverage: {
+            fully_protected_hosts: 0,
+            partially_protected_hosts: 0,
+            coverage_percentage: 0,
+            status: 'CRITICAL'
+          }
+        });
       } finally {
         setLoading(false);
       }
@@ -33,9 +66,18 @@ const SecurityControlCoverage: React.FC = () => {
 
   // 3D Security Fortress Visualization
   useEffect(() => {
-    if (!fortressRef.current || !securityData) return;
+    if (!fortressRef.current || !securityData || loading) return;
+
+    // Clean up previous scene
+    if (rendererRef.current) {
+      rendererRef.current.dispose();
+      if (fortressRef.current.contains(rendererRef.current.domElement)) {
+        fortressRef.current.removeChild(rendererRef.current.domElement);
+      }
+    }
 
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
     scene.fog = new THREE.FogExp2(0x000000, 0.001);
 
     const camera = new THREE.PerspectiveCamera(
@@ -47,14 +89,16 @@ const SecurityControlCoverage: React.FC = () => {
 
     const renderer = new THREE.WebGLRenderer({ 
       antialias: true, 
-      alpha: true 
+      alpha: true,
+      powerPreference: "high-performance"
     });
     
+    rendererRef.current = renderer;
     renderer.setSize(fortressRef.current.clientWidth, fortressRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     fortressRef.current.appendChild(renderer.domElement);
 
-    // Central fortress core representing total hosts
+    // Central fortress core
     const fortressGroup = new THREE.Group();
     
     // Base platform
@@ -68,7 +112,6 @@ const SecurityControlCoverage: React.FC = () => {
     fortressGroup.add(platform);
 
     // Three security layers - EDR, Tanium, DLP
-    const controls = ['edr', 'tanium', 'dlp'];
     const layers: THREE.Group[] = [];
 
     // EDR Layer
@@ -78,58 +121,35 @@ const SecurityControlCoverage: React.FC = () => {
       const edrRadius = 40;
       const edrHeight = 30;
       
-      // Protected portion
-      const protectedAngle = (edrCoverage / 100) * Math.PI * 2;
-      const protectedShape = new THREE.Shape();
-      protectedShape.moveTo(0, 0);
-      protectedShape.arc(0, 0, edrRadius, 0, protectedAngle, false);
-      protectedShape.lineTo(0, 0);
-      
-      const protectedGeometry = new THREE.ExtrudeGeometry(protectedShape, {
-        depth: edrHeight,
-        bevelEnabled: true,
-        bevelThickness: 2,
-        bevelSize: 1
+      // Create simple cylinder for EDR
+      const edrGeometry = new THREE.CylinderGeometry(edrRadius, edrRadius, edrHeight, 32, 1, true);
+      const edrMaterial = new THREE.MeshPhongMaterial({
+        color: edrCoverage > 50 ? 0x00d4ff : 0xa855f7,
+        emissive: edrCoverage > 50 ? 0x00d4ff : 0xa855f7,
+        emissiveIntensity: 0.2,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide
       });
       
+      const edrMesh = new THREE.Mesh(edrGeometry, edrMaterial);
+      edrMesh.position.y = 10;
+      edrGroup.add(edrMesh);
+      
+      // Protected portion indicator
+      const protectedHeight = edrHeight * (edrCoverage / 100);
+      const protectedGeometry = new THREE.CylinderGeometry(edrRadius - 5, edrRadius - 5, protectedHeight, 32);
       const protectedMaterial = new THREE.MeshPhongMaterial({
         color: 0x00d4ff,
         emissive: 0x00d4ff,
-        emissiveIntensity: 0.2,
+        emissiveIntensity: 0.4,
         transparent: true,
         opacity: 0.8
       });
       
       const protectedMesh = new THREE.Mesh(protectedGeometry, protectedMaterial);
-      protectedMesh.rotation.x = -Math.PI / 2;
-      protectedMesh.position.y = 10;
+      protectedMesh.position.y = 10 - (edrHeight - protectedHeight) / 2;
       edrGroup.add(protectedMesh);
-      
-      // Unprotected portion
-      const unprotectedShape = new THREE.Shape();
-      unprotectedShape.moveTo(0, 0);
-      unprotectedShape.arc(0, 0, edrRadius, protectedAngle, Math.PI * 2, false);
-      unprotectedShape.lineTo(0, 0);
-      
-      const unprotectedGeometry = new THREE.ExtrudeGeometry(unprotectedShape, {
-        depth: edrHeight,
-        bevelEnabled: true,
-        bevelThickness: 2,
-        bevelSize: 1
-      });
-      
-      const unprotectedMaterial = new THREE.MeshPhongMaterial({
-        color: 0xa855f7,
-        emissive: 0xa855f7,
-        emissiveIntensity: 0.1,
-        transparent: true,
-        opacity: 0.4
-      });
-      
-      const unprotectedMesh = new THREE.Mesh(unprotectedGeometry, unprotectedMaterial);
-      unprotectedMesh.rotation.x = -Math.PI / 2;
-      unprotectedMesh.position.y = 10;
-      edrGroup.add(unprotectedMesh);
       
       edrGroup.userData = { type: 'EDR', coverage: edrCoverage };
       layers.push(edrGroup);
@@ -143,56 +163,33 @@ const SecurityControlCoverage: React.FC = () => {
       const taniumRadius = 35;
       const taniumHeight = 25;
       
-      const protectedAngle = (taniumCoverage / 100) * Math.PI * 2;
-      const protectedShape = new THREE.Shape();
-      protectedShape.moveTo(0, 0);
-      protectedShape.arc(0, 0, taniumRadius, 0, protectedAngle, false);
-      protectedShape.lineTo(0, 0);
-      
-      const protectedGeometry = new THREE.ExtrudeGeometry(protectedShape, {
-        depth: taniumHeight,
-        bevelEnabled: true,
-        bevelThickness: 2,
-        bevelSize: 1
+      const taniumGeometry = new THREE.CylinderGeometry(taniumRadius, taniumRadius, taniumHeight, 32, 1, true);
+      const taniumMaterial = new THREE.MeshPhongMaterial({
+        color: taniumCoverage > 50 ? 0x00d4ff : 0xa855f7,
+        emissive: taniumCoverage > 50 ? 0x00d4ff : 0xa855f7,
+        emissiveIntensity: 0.2,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide
       });
       
+      const taniumMesh = new THREE.Mesh(taniumGeometry, taniumMaterial);
+      taniumMesh.position.y = 45;
+      taniumGroup.add(taniumMesh);
+      
+      const protectedHeight = taniumHeight * (taniumCoverage / 100);
+      const protectedGeometry = new THREE.CylinderGeometry(taniumRadius - 5, taniumRadius - 5, protectedHeight, 32);
       const protectedMaterial = new THREE.MeshPhongMaterial({
         color: 0x00d4ff,
         emissive: 0x00d4ff,
-        emissiveIntensity: 0.2,
+        emissiveIntensity: 0.4,
         transparent: true,
         opacity: 0.8
       });
       
       const protectedMesh = new THREE.Mesh(protectedGeometry, protectedMaterial);
-      protectedMesh.rotation.x = -Math.PI / 2;
-      protectedMesh.position.y = 45;
+      protectedMesh.position.y = 45 - (taniumHeight - protectedHeight) / 2;
       taniumGroup.add(protectedMesh);
-      
-      const unprotectedShape = new THREE.Shape();
-      unprotectedShape.moveTo(0, 0);
-      unprotectedShape.arc(0, 0, taniumRadius, protectedAngle, Math.PI * 2, false);
-      unprotectedShape.lineTo(0, 0);
-      
-      const unprotectedGeometry = new THREE.ExtrudeGeometry(unprotectedShape, {
-        depth: taniumHeight,
-        bevelEnabled: true,
-        bevelThickness: 2,
-        bevelSize: 1
-      });
-      
-      const unprotectedMaterial = new THREE.MeshPhongMaterial({
-        color: 0xa855f7,
-        emissive: 0xa855f7,
-        emissiveIntensity: 0.1,
-        transparent: true,
-        opacity: 0.4
-      });
-      
-      const unprotectedMesh = new THREE.Mesh(unprotectedGeometry, unprotectedMaterial);
-      unprotectedMesh.rotation.x = -Math.PI / 2;
-      unprotectedMesh.position.y = 45;
-      taniumGroup.add(unprotectedMesh);
       
       taniumGroup.userData = { type: 'Tanium', coverage: taniumCoverage };
       layers.push(taniumGroup);
@@ -206,56 +203,33 @@ const SecurityControlCoverage: React.FC = () => {
       const dlpRadius = 30;
       const dlpHeight = 20;
       
-      const protectedAngle = (dlpCoverage / 100) * Math.PI * 2;
-      const protectedShape = new THREE.Shape();
-      protectedShape.moveTo(0, 0);
-      protectedShape.arc(0, 0, dlpRadius, 0, protectedAngle, false);
-      protectedShape.lineTo(0, 0);
-      
-      const protectedGeometry = new THREE.ExtrudeGeometry(protectedShape, {
-        depth: dlpHeight,
-        bevelEnabled: true,
-        bevelThickness: 2,
-        bevelSize: 1
+      const dlpGeometry = new THREE.CylinderGeometry(dlpRadius, dlpRadius, dlpHeight, 32, 1, true);
+      const dlpMaterial = new THREE.MeshPhongMaterial({
+        color: dlpCoverage > 50 ? 0x00d4ff : 0xa855f7,
+        emissive: dlpCoverage > 50 ? 0x00d4ff : 0xa855f7,
+        emissiveIntensity: 0.2,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide
       });
       
+      const dlpMesh = new THREE.Mesh(dlpGeometry, dlpMaterial);
+      dlpMesh.position.y = 75;
+      dlpGroup.add(dlpMesh);
+      
+      const protectedHeight = dlpHeight * (dlpCoverage / 100);
+      const protectedGeometry = new THREE.CylinderGeometry(dlpRadius - 5, dlpRadius - 5, protectedHeight, 32);
       const protectedMaterial = new THREE.MeshPhongMaterial({
         color: 0x00d4ff,
         emissive: 0x00d4ff,
-        emissiveIntensity: 0.2,
+        emissiveIntensity: 0.4,
         transparent: true,
         opacity: 0.8
       });
       
       const protectedMesh = new THREE.Mesh(protectedGeometry, protectedMaterial);
-      protectedMesh.rotation.x = -Math.PI / 2;
-      protectedMesh.position.y = 75;
+      protectedMesh.position.y = 75 - (dlpHeight - protectedHeight) / 2;
       dlpGroup.add(protectedMesh);
-      
-      const unprotectedShape = new THREE.Shape();
-      unprotectedShape.moveTo(0, 0);
-      unprotectedShape.arc(0, 0, dlpRadius, protectedAngle, Math.PI * 2, false);
-      unprotectedShape.lineTo(0, 0);
-      
-      const unprotectedGeometry = new THREE.ExtrudeGeometry(unprotectedShape, {
-        depth: dlpHeight,
-        bevelEnabled: true,
-        bevelThickness: 2,
-        bevelSize: 1
-      });
-      
-      const unprotectedMaterial = new THREE.MeshPhongMaterial({
-        color: 0xa855f7,
-        emissive: 0xa855f7,
-        emissiveIntensity: 0.1,
-        transparent: true,
-        opacity: 0.4
-      });
-      
-      const unprotectedMesh = new THREE.Mesh(unprotectedGeometry, unprotectedMaterial);
-      unprotectedMesh.rotation.x = -Math.PI / 2;
-      unprotectedMesh.position.y = 75;
-      dlpGroup.add(unprotectedMesh);
       
       dlpGroup.userData = { type: 'DLP', coverage: dlpCoverage };
       layers.push(dlpGroup);
@@ -277,14 +251,13 @@ const SecurityControlCoverage: React.FC = () => {
       fortressGroup.add(core);
     }
 
-    // Add threat particles for unprotected hosts
+    // Add threat particles
     const unprotectedCount = securityData.total_hosts - 
       (securityData.all_controls_coverage?.fully_protected_hosts || 0);
-    const particleCount = Math.min(500, Math.floor(unprotectedCount / 100));
+    const particleCount = Math.min(500, Math.max(50, Math.floor(unprotectedCount / 100)));
     
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
     
     for (let i = 0; i < particleCount * 3; i += 3) {
       const angle = Math.random() * Math.PI * 2;
@@ -294,21 +267,15 @@ const SecurityControlCoverage: React.FC = () => {
       positions[i] = Math.cos(angle) * radius;
       positions[i + 1] = height;
       positions[i + 2] = Math.sin(angle) * radius;
-      
-      colors[i] = 1;
-      colors[i + 1] = 0;
-      colors[i + 2] = 1;
     }
     
     particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
     const particlesMaterial = new THREE.PointsMaterial({
       size: 2,
-      vertexColors: true,
+      color: 0xa855f7,
       transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending
+      opacity: 0.6
     });
     
     const particles = new THREE.Points(particlesGeometry, particlesMaterial);
@@ -332,22 +299,11 @@ const SecurityControlCoverage: React.FC = () => {
     camera.lookAt(0, 50, 0);
 
     // Animation
-    let frameId: number;
     const animate = () => {
-      frameId = requestAnimationFrame(animate);
+      if (!sceneRef.current) return;
+      frameRef.current = requestAnimationFrame(animate);
       
       fortressGroup.rotation.y += 0.002;
-      
-      // Pulse unprotected sections
-      layers.forEach(layer => {
-        layer.children.forEach((child: any) => {
-          if (child.material && child.material.color.getHex() === 0xa855f7) {
-            child.material.opacity = 0.4 + Math.sin(Date.now() * 0.002) * 0.1;
-          }
-        });
-      });
-      
-      // Animate particles
       particles.rotation.y += 0.001;
       
       const time = Date.now() * 0.0003;
@@ -360,14 +316,27 @@ const SecurityControlCoverage: React.FC = () => {
 
     animate();
 
-    return () => {
-      if (frameId) cancelAnimationFrame(frameId);
-      if (fortressRef.current && renderer.domElement) {
-        fortressRef.current.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
+    // Handle resize
+    const handleResize = () => {
+      if (!fortressRef.current || !camera || !renderer) return;
+      camera.aspect = fortressRef.current.clientWidth / fortressRef.current.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(fortressRef.current.clientWidth, fortressRef.current.clientHeight);
     };
-  }, [securityData]);
+    
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+        if (fortressRef.current && fortressRef.current.contains(rendererRef.current.domElement)) {
+          fortressRef.current.removeChild(rendererRef.current.domElement);
+        }
+      }
+    };
+  }, [securityData, loading]);
 
   // Coverage Flow Visualization
   useEffect(() => {
@@ -420,7 +389,7 @@ const SecurityControlCoverage: React.FC = () => {
         ctx.font = 'bold 16px monospace';
         ctx.textAlign = 'right';
         ctx.fillText(
-          `${control.data.coverage_percentage.toFixed(1)}%`,
+          `${control.data.coverage_percentage?.toFixed(1) || '0.0'}%`,
           50 + barWidth + 10,
           y + 5
         );
@@ -430,23 +399,20 @@ const SecurityControlCoverage: React.FC = () => {
         ctx.font = '10px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(
-          `${control.data.protected_hosts?.toLocaleString() || 0} / ${securityData.total_hosts?.toLocaleString() || 0} hosts`,
+          `${control.data.protected_hosts?.toLocaleString() || control.data.managed_hosts?.toLocaleString() || 0} / ${securityData.total_hosts?.toLocaleString() || 0} hosts`,
           canvas.width / 2,
           y + 25
         );
-        
-        // Status indicator
-        const status = control.data.status || 'WARNING';
-        ctx.fillStyle = status === 'CRITICAL' ? '#a855f7' :
-                       status === 'WARNING' ? '#ffaa00' :
-                       '#00d4ff';
-        ctx.fillRect(10, y - 10, 5, 20);
       });
 
-      requestAnimationFrame(animate);
+      coverageFrameRef.current = requestAnimationFrame(animate);
     };
 
     animate();
+
+    return () => {
+      if (coverageFrameRef.current) cancelAnimationFrame(coverageFrameRef.current);
+    };
   }, [securityData]);
 
   // Threat Matrix
@@ -478,7 +444,6 @@ const SecurityControlCoverage: React.FC = () => {
           const x = i * gridSize;
           const y = j * gridSize;
           
-          // Calculate threat level based on position and security coverage
           const avgCoverage = (
             (securityData.edr_coverage?.coverage_percentage || 0) +
             (securityData.tanium_coverage?.coverage_percentage || 0) +
@@ -507,10 +472,14 @@ const SecurityControlCoverage: React.FC = () => {
       ctx.lineTo(canvas.width, scanY);
       ctx.stroke();
 
-      requestAnimationFrame(animate);
+      threatFrameRef.current = requestAnimationFrame(animate);
     };
 
     animate();
+
+    return () => {
+      if (threatFrameRef.current) cancelAnimationFrame(threatFrameRef.current);
+    };
   }, [securityData]);
 
   if (loading) {
@@ -524,16 +493,13 @@ const SecurityControlCoverage: React.FC = () => {
     );
   }
 
-  if (!securityData) return null;
-
-  const overallStatus = securityData.all_controls_coverage?.overall_status || 'CRITICAL';
-  const fullyProtected = securityData.all_controls_coverage?.fully_protected_hosts || 0;
-  const totalHosts = securityData.total_hosts || 0;
-  const overallCoverage = (fullyProtected / totalHosts * 100) || 0;
+  const overallStatus = securityData?.all_controls_coverage?.status || 'CRITICAL';
+  const fullyProtected = securityData?.all_controls_coverage?.fully_protected_hosts || 0;
+  const totalHosts = securityData?.total_hosts || 0;
+  const overallCoverage = totalHosts > 0 ? (fullyProtected / totalHosts * 100) : 0;
 
   return (
     <div className="h-full flex flex-col p-4">
-      {/* Critical Alert */}
       {overallStatus === 'CRITICAL' && (
         <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
           <div className="flex items-center gap-2">
@@ -546,7 +512,6 @@ const SecurityControlCoverage: React.FC = () => {
         </div>
       )}
 
-      {/* Main Grid */}
       <div className="flex-1 grid grid-cols-12 gap-4">
         {/* 3D Fortress */}
         <div className="col-span-7">
@@ -594,7 +559,7 @@ const SecurityControlCoverage: React.FC = () => {
           {/* Individual Controls */}
           <div className="space-y-2">
             {/* EDR Coverage */}
-            {securityData.edr_coverage && (
+            {securityData?.edr_coverage && (
               <div className="glass-panel rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -612,16 +577,16 @@ const SecurityControlCoverage: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-2xl font-bold text-cyan-400">
-                  {securityData.edr_coverage.coverage_percentage.toFixed(1)}%
+                  {securityData.edr_coverage.coverage_percentage?.toFixed(1) || '0.0'}%
                 </div>
                 <div className="text-xs text-gray-400">
-                  {securityData.edr_coverage.protected_hosts.toLocaleString()} protected
+                  {securityData.edr_coverage.protected_hosts?.toLocaleString() || 0} protected
                 </div>
               </div>
             )}
 
             {/* Tanium Coverage */}
-            {securityData.tanium_coverage && (
+            {securityData?.tanium_coverage && (
               <div className="glass-panel rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -639,16 +604,16 @@ const SecurityControlCoverage: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-2xl font-bold text-cyan-400">
-                  {securityData.tanium_coverage.coverage_percentage.toFixed(1)}%
+                  {securityData.tanium_coverage.coverage_percentage?.toFixed(1) || '0.0'}%
                 </div>
                 <div className="text-xs text-gray-400">
-                  {securityData.tanium_coverage.managed_hosts.toLocaleString()} managed
+                  {securityData.tanium_coverage.managed_hosts?.toLocaleString() || 0} managed
                 </div>
               </div>
             )}
 
             {/* DLP Coverage */}
-            {securityData.dlp_coverage && (
+            {securityData?.dlp_coverage && (
               <div className="glass-panel rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -666,10 +631,10 @@ const SecurityControlCoverage: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-2xl font-bold text-cyan-400">
-                  {securityData.dlp_coverage.coverage_percentage.toFixed(1)}%
+                  {securityData.dlp_coverage.coverage_percentage?.toFixed(1) || '0.0'}%
                 </div>
                 <div className="text-xs text-gray-400">
-                  {securityData.dlp_coverage.protected_hosts.toLocaleString()} protected
+                  {securityData.dlp_coverage.protected_hosts?.toLocaleString() || 0} protected
                 </div>
               </div>
             )}

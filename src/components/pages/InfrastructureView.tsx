@@ -9,20 +9,12 @@ const InfrastructureView: React.FC = () => {
   const [hoveredInfra, setHoveredInfra] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [rotationSpeed, setRotationSpeed] = useState(0.001);
-  const [selectedMetric, setSelectedMetric] = useState<any>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [rotation, setRotation] = useState({ x: 0, y: 0 });
   const stackRef = useRef<HTMLDivElement>(null);
   const matrixRef = useRef<HTMLCanvasElement>(null);
   const radarRef = useRef<HTMLCanvasElement>(null);
-  const networkRef = useRef<HTMLCanvasElement>(null);
-  const flowRef = useRef<HTMLCanvasElement>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const nodesRef = useRef<THREE.Group[]>([]);
-  const selectedNodeRef = useRef<THREE.Mesh | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const frameRef = useRef<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -34,6 +26,13 @@ const InfrastructureView: React.FC = () => {
         setInfrastructureData(data);
       } catch (error) {
         console.error('Error:', error);
+        // Fallback data
+        setInfrastructureData({
+          overall_infrastructure_visibility: 0,
+          category_summary: {},
+          detailed_breakdown: [],
+          critical_gaps: []
+        });
       } finally {
         setLoading(false);
       }
@@ -44,8 +43,17 @@ const InfrastructureView: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // 3D Infrastructure Stack Visualization
   useEffect(() => {
-    if (!stackRef.current || !infrastructureData) return;
+    if (!stackRef.current || !infrastructureData || loading) return;
+
+    // Clean up previous scene
+    if (rendererRef.current) {
+      rendererRef.current.dispose();
+      if (stackRef.current.contains(rendererRef.current.domElement)) {
+        stackRef.current.removeChild(rendererRef.current.domElement);
+      }
+    }
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
@@ -57,7 +65,6 @@ const InfrastructureView: React.FC = () => {
       0.1, 
       2000
     );
-    cameraRef.current = camera;
     
     const renderer = new THREE.WebGLRenderer({ 
       antialias: true, 
@@ -67,47 +74,38 @@ const InfrastructureView: React.FC = () => {
     rendererRef.current = renderer;
     
     renderer.setSize(stackRef.current.clientWidth, stackRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     stackRef.current.appendChild(renderer.domElement);
 
     const layers: THREE.Group[] = [];
-    nodesRef.current = [];
-    
     const infrastructureTypes = infrastructureData.detailed_breakdown || [];
-    const maxHosts = Math.max(...infrastructureTypes.map((t: any) => t.total_hosts));
+    const maxHosts = Math.max(...infrastructureTypes.map((t: any) => t.total_hosts), 1);
     
-    const createInteractiveLayer = (infra: any, index: number) => {
+    // Create infrastructure layers
+    infrastructureTypes.forEach((infra: any, index: number) => {
       const layerGroup = new THREE.Group();
       
-      const width = 150 * (infra.total_hosts / maxHosts);
+      const width = Math.max(50, 150 * (infra.total_hosts / maxHosts));
       const height = 20;
       const depth = 100;
       
+      // Main platform
       const geometry = new THREE.BoxGeometry(width, height, depth);
-      const edges = new THREE.EdgesGeometry(geometry);
-      const edgeMaterial = new THREE.LineBasicMaterial({
-        color: infra.status === 'CRITICAL' ? 0xff00ff : 
-               infra.status === 'WARNING' ? 0xc084fc : 0x00d4ff,
-        linewidth: 2
-      });
-      const edgeMesh = new THREE.LineSegments(edges, edgeMaterial);
-      
       const material = new THREE.MeshPhongMaterial({
         color: infra.status === 'CRITICAL' ? 0xff00ff : 
                infra.status === 'WARNING' ? 0xc084fc : 0x00d4ff,
         transparent: true,
         opacity: 0.3,
         emissive: infra.status === 'CRITICAL' ? 0xff00ff : 0x00d4ff,
-        emissiveIntensity: 0.1,
-        side: THREE.DoubleSide
+        emissiveIntensity: 0.1
       });
       
       const platform = new THREE.Mesh(geometry, material);
       platform.position.y = index * 40 - 100;
       platform.userData = infra;
       layerGroup.add(platform);
-      layerGroup.add(edgeMesh);
       
+      // Visibility layer
       const visibleWidth = width * (infra.visibility_percentage / 100);
       const visGeometry = new THREE.BoxGeometry(visibleWidth, height - 4, depth - 10);
       const visMaterial = new THREE.MeshPhongMaterial({
@@ -121,117 +119,36 @@ const InfrastructureView: React.FC = () => {
       const visLayer = new THREE.Mesh(visGeometry, visMaterial);
       visLayer.position.y = platform.position.y;
       visLayer.position.x = -(width - visibleWidth) / 2;
-      visLayer.userData = infra;
       layerGroup.add(visLayer);
       
-      if (infra.status === 'CRITICAL') {
-        const pulseGeometry = new THREE.RingGeometry(width/2, width/2 + 10, 32);
-        const pulseMaterial = new THREE.MeshBasicMaterial({
-          color: 0xff00ff,
-          transparent: true,
-          opacity: 0.3,
-          side: THREE.DoubleSide
-        });
-        const pulse = new THREE.Mesh(pulseGeometry, pulseMaterial);
-        pulse.rotation.x = Math.PI / 2;
-        pulse.position.y = platform.position.y;
-        pulse.userData = { isPulse: true, baseScale: 1 };
-        layerGroup.add(pulse);
-      }
-      
-      const particleCount = Math.floor(infra.invisible_hosts / 100);
-      if (particleCount > 0) {
-        const particlesGeometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        
-        for (let i = 0; i < particleCount * 3; i += 3) {
-          positions[i] = (Math.random() - 0.5) * width * 1.5;
-          positions[i + 1] = platform.position.y + (Math.random() - 0.5) * 20;
-          positions[i + 2] = (Math.random() - 0.5) * depth * 1.5;
-        }
-        
-        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        const particlesMaterial = new THREE.PointsMaterial({
-          color: 0xff00ff,
-          size: 2,
-          transparent: true,
-          opacity: 0.6,
-          blending: THREE.AdditiveBlending
-        });
-        const particles = new THREE.Points(particlesGeometry, particlesMaterial);
-        particles.userData = { isParticle: true };
-        layerGroup.add(particles);
-      }
-      
-      for (let i = 0; i < 3; i++) {
-        const connectorGeometry = new THREE.CylinderGeometry(0.5, 0.5, 20, 8);
-        const connectorMaterial = new THREE.MeshPhongMaterial({
-          color: 0x00d4ff,
-          emissive: 0x00d4ff,
-          emissiveIntensity: 0.3,
-          transparent: true,
-          opacity: 0.6
-        });
-        const connector = new THREE.Mesh(connectorGeometry, connectorMaterial);
-        connector.position.set(
-          (Math.random() - 0.5) * width * 0.8,
-          platform.position.y + height/2 + 10,
-          (Math.random() - 0.5) * depth * 0.8
-        );
-        layerGroup.add(connector);
-      }
-      
-      layerGroup.userData = infra;
-      nodesRef.current.push(layerGroup);
       layers.push(layerGroup);
       scene.add(layerGroup);
-    };
-    
-    infrastructureTypes.forEach((infra: any, index: number) => {
-      createInteractiveLayer(infra, index);
     });
 
-    const globalParticleCount = 2000;
-    const globalGeometry = new THREE.BufferGeometry();
-    const globalPositions = new Float32Array(globalParticleCount * 3);
-    const globalColors = new Float32Array(globalParticleCount * 3);
-    const globalSizes = new Float32Array(globalParticleCount);
+    // Add particles for atmosphere
+    const particleCount = 500;
+    const particlesGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
     
-    for (let i = 0; i < globalParticleCount; i++) {
-      globalPositions[i * 3] = (Math.random() - 0.5) * 500;
-      globalPositions[i * 3 + 1] = (Math.random() - 0.5) * 400;
-      globalPositions[i * 3 + 2] = (Math.random() - 0.5) * 500;
-      
-      const isVisible = Math.random() > 0.5;
-      if (isVisible) {
-        globalColors[i * 3] = 0;
-        globalColors[i * 3 + 1] = 0.83;
-        globalColors[i * 3 + 2] = 1;
-      } else {
-        globalColors[i * 3] = 1;
-        globalColors[i * 3 + 1] = 0;
-        globalColors[i * 3 + 2] = 1;
-      }
-      
-      globalSizes[i] = Math.random() * 2 + 0.5;
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      positions[i] = (Math.random() - 0.5) * 500;
+      positions[i + 1] = (Math.random() - 0.5) * 400;
+      positions[i + 2] = (Math.random() - 0.5) * 500;
     }
     
-    globalGeometry.setAttribute('position', new THREE.BufferAttribute(globalPositions, 3));
-    globalGeometry.setAttribute('color', new THREE.BufferAttribute(globalColors, 3));
-    globalGeometry.setAttribute('size', new THREE.BufferAttribute(globalSizes, 1));
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     
-    const globalMaterial = new THREE.PointsMaterial({
+    const particlesMaterial = new THREE.PointsMaterial({
       size: 1.5,
-      vertexColors: true,
+      color: 0x00d4ff,
       transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending,
-      sizeAttenuation: true
+      opacity: 0.6
     });
     
-    const globalParticles = new THREE.Points(globalGeometry, globalMaterial);
-    scene.add(globalParticles);
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
 
+    // Lighting
     const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
     scene.add(ambientLight);
     
@@ -242,120 +159,26 @@ const InfrastructureView: React.FC = () => {
     const light2 = new THREE.PointLight(0xff00ff, 1.5, 500);
     light2.position.set(-200, -100, 150);
     scene.add(light2);
-    
-    const light3 = new THREE.DirectionalLight(0xc084fc, 0.5);
-    light3.position.set(0, 200, 100);
-    scene.add(light3);
 
     camera.position.set(0, 0, 350);
     camera.lookAt(0, 0, 0);
 
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-    
-    const handleClick = (event: MouseEvent) => {
-      const rect = stackRef.current!.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(scene.children, true);
-      
-      if (intersects.length > 0) {
-        const clickedObject = intersects[0].object;
-        if (clickedObject.userData && clickedObject.userData.infrastructure_type) {
-          setSelectedType(clickedObject.userData.infrastructure_type);
-          setSelectedMetric(clickedObject.userData);
-          
-          if (selectedNodeRef.current) {
-            selectedNodeRef.current.material.emissiveIntensity = 0.1;
-          }
-          if (clickedObject instanceof THREE.Mesh) {
-            clickedObject.material.emissiveIntensity = 0.6;
-            selectedNodeRef.current = clickedObject;
-          }
-        }
-      }
-    };
-    
-    const handleMouseMove = (event: MouseEvent) => {
-      const rect = stackRef.current!.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(scene.children, true);
-      
-      if (intersects.length > 0 && intersects[0].object.userData.infrastructure_type) {
-        setHoveredInfra(intersects[0].object.userData.infrastructure_type);
-        renderer.domElement.style.cursor = 'pointer';
-      } else {
-        setHoveredInfra(null);
-        renderer.domElement.style.cursor = 'move';
-      }
-    };
-    
-    const handleMouseDown = (e: MouseEvent) => {
-      setIsDragging(true);
-      setDragStart({ x: e.clientX, y: e.clientY });
-    };
-    
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-    
-    const handleMouseDrag = (e: MouseEvent) => {
-      if (!isDragging) return;
-      
-      const deltaX = e.clientX - dragStart.x;
-      const deltaY = e.clientY - dragStart.y;
-      
-      setRotation({
-        x: rotation.x + deltaY * 0.01,
-        y: rotation.y + deltaX * 0.01
-      });
-      
-      setDragStart({ x: e.clientX, y: e.clientY });
-    };
-    
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      setZoomLevel(prev => Math.max(0.5, Math.min(3, prev + e.deltaY * -0.001)));
-    };
-    
-    renderer.domElement.addEventListener('click', handleClick);
-    renderer.domElement.addEventListener('mousemove', handleMouseMove);
-    renderer.domElement.addEventListener('mousedown', handleMouseDown);
-    renderer.domElement.addEventListener('mouseup', handleMouseUp);
-    renderer.domElement.addEventListener('mousemove', handleMouseDrag);
-    renderer.domElement.addEventListener('wheel', handleWheel);
-
-    let frameId: number;
+    // Animation
     const animate = () => {
-      frameId = requestAnimationFrame(animate);
+      if (!sceneRef.current) return;
+      frameRef.current = requestAnimationFrame(animate);
       
       layers.forEach((layer, index) => {
         layer.rotation.y += rotationSpeed * (index + 1);
         layer.position.x = Math.sin(Date.now() * 0.0003 + index) * 10;
-        
-        layer.children.forEach((child: any) => {
-          if (child.userData?.isPulse) {
-            const scale = 1 + Math.sin(Date.now() * 0.003) * 0.2;
-            child.scale.set(scale, scale, 1);
-            child.material.opacity = 0.3 + Math.sin(Date.now() * 0.003) * 0.2;
-          }
-          if (child.userData?.isParticle) {
-            child.rotation.y += 0.002;
-          }
-        });
       });
       
-      globalParticles.rotation.y += 0.0005;
+      particles.rotation.y += 0.0005;
       
       const time = Date.now() * 0.0002;
-      camera.position.x = Math.sin(time + rotation.y) * 300 * zoomLevel;
-      camera.position.z = Math.cos(time + rotation.y) * 300 * zoomLevel;
-      camera.position.y = 50 + Math.sin(time * 2) * 30 + rotation.x * 50;
+      camera.position.x = Math.sin(time) * 300 * zoomLevel;
+      camera.position.z = Math.cos(time) * 300 * zoomLevel;
+      camera.position.y = 50 + Math.sin(time * 2) * 30;
       camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
@@ -363,6 +186,7 @@ const InfrastructureView: React.FC = () => {
     
     animate();
 
+    // Handle resize
     const handleResize = () => {
       if (!stackRef.current || !camera || !renderer) return;
       camera.aspect = stackRef.current.clientWidth / stackRef.current.clientHeight;
@@ -374,20 +198,17 @@ const InfrastructureView: React.FC = () => {
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      renderer.domElement.removeEventListener('click', handleClick);
-      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
-      renderer.domElement.removeEventListener('mousedown', handleMouseDown);
-      renderer.domElement.removeEventListener('mouseup', handleMouseUp);
-      renderer.domElement.removeEventListener('mousemove', handleMouseDrag);
-      renderer.domElement.removeEventListener('wheel', handleWheel);
-      if (frameId) cancelAnimationFrame(frameId);
-      if (stackRef.current && renderer.domElement) {
-        stackRef.current.removeChild(renderer.domElement);
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+        if (stackRef.current && stackRef.current.contains(rendererRef.current.domElement)) {
+          stackRef.current.removeChild(rendererRef.current.domElement);
+        }
       }
-      renderer.dispose();
     };
-  }, [infrastructureData, zoomLevel, rotationSpeed, isDragging, rotation]);
+  }, [infrastructureData, zoomLevel, rotationSpeed, loading]);
 
+  // Matrix visualization
   useEffect(() => {
     const canvas = matrixRef.current;
     if (!canvas || !infrastructureData) return;
@@ -398,41 +219,33 @@ const InfrastructureView: React.FC = () => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
-    const logTypes = ['System', 'Application', 'Security', 'Network', 'Cloud', 'Container', 'Database'];
-    const colors = ['#00d4ff', '#c084fc', '#ff00ff', '#00d4ff', '#c084fc', '#ff00ff', '#00d4ff'];
-
-    let time = 0;
     const animate = () => {
-      time += 0.02;
       ctx.fillStyle = 'rgba(0, 0, 0, 0.02)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const infrastructureTypes = infrastructureData.detailed_breakdown || [];
-      const cellWidth = canvas.width / logTypes.length;
-      const cellHeight = canvas.height / Math.min(infrastructureTypes.length, 8);
+      const cellSize = 30;
+      const cols = Math.floor(canvas.width / cellSize);
+      const rows = Math.min(infrastructureTypes.length, 8);
 
-      infrastructureTypes.slice(0, 8).forEach((infra: any, row: number) => {
-        logTypes.forEach((logType, col: number) => {
-          const x = col * cellWidth;
-          const y = row * cellHeight;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = col * cellSize;
+          const y = row * cellSize;
+          
+          const infra = infrastructureTypes[row];
+          if (!infra) continue;
           
           const visibility = Math.random() * infra.visibility_percentage;
           const intensity = visibility / 100;
-          const pulse = Math.sin(time + row * 0.5 + col * 0.3) * 0.3 + 0.7;
           
-          ctx.fillStyle = `rgba(${visibility < 30 ? '255, 0, 255' : '0, 212, 255'}, ${intensity * pulse * 0.4})`;
-          ctx.fillRect(x + 2, y + 2, cellWidth - 4, cellHeight - 4);
+          ctx.fillStyle = `rgba(${visibility < 30 ? '255, 0, 255' : '0, 212, 255'}, ${intensity * 0.4})`;
+          ctx.fillRect(x + 2, y + 2, cellSize - 4, cellSize - 4);
           
-          ctx.strokeStyle = colors[col] + '60';
-          ctx.strokeRect(x, y, cellWidth, cellHeight);
-          
-          ctx.fillStyle = colors[col];
-          ctx.font = 'bold 11px monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(`${visibility.toFixed(0)}%`, x + cellWidth / 2, y + cellHeight / 2);
-        });
-      });
+          ctx.strokeStyle = 'rgba(0, 212, 255, 0.2)';
+          ctx.strokeRect(x, y, cellSize, cellSize);
+        }
+      }
 
       requestAnimationFrame(animate);
     };
@@ -440,6 +253,7 @@ const InfrastructureView: React.FC = () => {
     animate();
   }, [infrastructureData]);
 
+  // Radar visualization
   useEffect(() => {
     const canvas = radarRef.current;
     if (!canvas || !infrastructureData) return;
@@ -455,12 +269,12 @@ const InfrastructureView: React.FC = () => {
     const radius = Math.min(centerX, centerY) - 40;
 
     let sweepAngle = 0;
-    let blipTrails: any[] = [];
 
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      // Draw radar circles
       for (let i = 1; i <= 4; i++) {
         ctx.strokeStyle = 'rgba(0, 212, 255, 0.15)';
         ctx.lineWidth = 1;
@@ -469,68 +283,30 @@ const InfrastructureView: React.FC = () => {
         ctx.stroke();
       }
 
-      for (let i = 0; i < 8; i++) {
-        const angle = (i / 8) * Math.PI * 2;
-        ctx.strokeStyle = 'rgba(192, 132, 252, 0.1)';
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius);
-        ctx.stroke();
-      }
-
+      // Draw categories
       const categories = infrastructureData.category_summary || {};
       const categoryCount = Object.keys(categories).length;
       
-      Object.entries(categories).forEach(([category, data]: [string, any], index) => {
-        const startAngle = (index / categoryCount) * Math.PI * 2;
-        const endAngle = ((index + 1) / categoryCount) * Math.PI * 2;
-        const dataRadius = (data.visibility_percentage / 100) * radius;
-        
-        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, dataRadius);
-        gradient.addColorStop(0, data.status === 'CRITICAL' ? 'rgba(255, 0, 255, 0.4)' :
-                                 data.status === 'WARNING' ? 'rgba(192, 132, 252, 0.4)' :
-                                 'rgba(0, 212, 255, 0.4)');
-        gradient.addColorStop(1, data.status === 'CRITICAL' ? 'rgba(255, 0, 255, 0.1)' :
-                                 data.status === 'WARNING' ? 'rgba(192, 132, 252, 0.1)' :
-                                 'rgba(0, 212, 255, 0.1)');
-        
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.arc(centerX, centerY, dataRadius, startAngle, endAngle);
-        ctx.closePath();
-        ctx.fill();
-        
-        ctx.strokeStyle = data.status === 'CRITICAL' ? '#ff00ff' :
-                         data.status === 'WARNING' ? '#c084fc' : '#00d4ff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-        const labelAngle = (startAngle + endAngle) / 2;
-        const labelX = centerX + Math.cos(labelAngle) * (radius + 25);
-        const labelY = centerY + Math.sin(labelAngle) * (radius + 25);
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 10px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(category.substring(0, 12).toUpperCase(), labelX, labelY);
-        
-        ctx.fillStyle = data.status === 'CRITICAL' ? '#ff00ff' : '#00d4ff';
-        ctx.font = '9px monospace';
-        ctx.fillText(`${data.visibility_percentage.toFixed(1)}%`, labelX, labelY + 12);
-      });
+      if (categoryCount > 0) {
+        Object.entries(categories).forEach(([category, data]: [string, any], index) => {
+          const startAngle = (index / categoryCount) * Math.PI * 2;
+          const endAngle = ((index + 1) / categoryCount) * Math.PI * 2;
+          const dataRadius = (data.visibility_percentage / 100) * radius;
+          
+          ctx.fillStyle = data.status === 'CRITICAL' ? 'rgba(255, 0, 255, 0.3)' :
+                         data.status === 'WARNING' ? 'rgba(192, 132, 252, 0.3)' :
+                         'rgba(0, 212, 255, 0.3)';
+          ctx.beginPath();
+          ctx.moveTo(centerX, centerY);
+          ctx.arc(centerX, centerY, dataRadius, startAngle, endAngle);
+          ctx.closePath();
+          ctx.fill();
+        });
+      }
 
+      // Sweep line
       sweepAngle += 0.02;
-      const sweepGradient = ctx.createLinearGradient(
-        centerX, centerY,
-        centerX + Math.cos(sweepAngle) * radius,
-        centerY + Math.sin(sweepAngle) * radius
-      );
-      sweepGradient.addColorStop(0, 'rgba(0, 212, 255, 0)');
-      sweepGradient.addColorStop(0.7, 'rgba(0, 212, 255, 0.4)');
-      sweepGradient.addColorStop(1, 'rgba(0, 212, 255, 0.8)');
-      
-      ctx.strokeStyle = sweepGradient;
+      ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
@@ -539,27 +315,6 @@ const InfrastructureView: React.FC = () => {
         centerY + Math.sin(sweepAngle) * radius
       );
       ctx.stroke();
-
-      if (Math.random() > 0.95) {
-        blipTrails.push({
-          x: centerX + (Math.random() - 0.5) * radius * 1.8,
-          y: centerY + (Math.random() - 0.5) * radius * 1.8,
-          life: 1,
-          color: Math.random() > 0.5 ? '#00d4ff' : '#ff00ff'
-        });
-      }
-      
-      blipTrails = blipTrails.filter(blip => {
-        blip.life -= 0.02;
-        if (blip.life <= 0) return false;
-        
-        ctx.fillStyle = blip.color + Math.floor(blip.life * 255).toString(16).padStart(2, '0');
-        ctx.beginPath();
-        ctx.arc(blip.x, blip.y, 3 * blip.life, 0, Math.PI * 2);
-        ctx.fill();
-        
-        return true;
-      });
 
       requestAnimationFrame(animate);
     };
@@ -583,8 +338,6 @@ const InfrastructureView: React.FC = () => {
     );
   }
 
-  if (!infrastructureData) return null;
-
   const getIcon = (name: string) => {
     const lower = name.toLowerCase();
     if (lower.includes('cloud')) return Cloud;
@@ -597,13 +350,13 @@ const InfrastructureView: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col p-6 bg-black overflow-hidden">
-      {infrastructureData.overall_infrastructure_visibility < 30 && (
+      {infrastructureData?.overall_infrastructure_visibility < 30 && (
         <div className="mb-4 bg-black border border-[#ff00ff] rounded-xl p-4">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-6 h-6 text-[#ff00ff] animate-pulse" />
             <span className="text-[#ff00ff] font-bold">CRITICAL:</span>
             <span className="text-white">
-              Infrastructure visibility at {infrastructureData.overall_infrastructure_visibility.toFixed(1)}%
+              Infrastructure visibility at {infrastructureData?.overall_infrastructure_visibility?.toFixed(1) || '0.0'}%
             </span>
           </div>
         </div>
@@ -648,34 +401,6 @@ const InfrastructureView: React.FC = () => {
         </div>
 
         <div className="col-span-5 space-y-4 overflow-y-auto">
-          {selectedMetric && (
-            <div className="bg-black border-2 border-[#00d4ff] rounded-xl p-4">
-              <h3 className="text-sm font-bold text-[#00d4ff] mb-3">SELECTED INFRASTRUCTURE</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-white text-sm">Type:</span>
-                  <span className="text-[#c084fc] font-bold">{selectedMetric.infrastructure_type}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white text-sm">Visibility:</span>
-                  <span className="text-[#00d4ff] font-bold">{selectedMetric.visibility_percentage?.toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white text-sm">Total Hosts:</span>
-                  <span className="text-white">{selectedMetric.total_hosts?.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white text-sm">Visible:</span>
-                  <span className="text-[#00d4ff]">{selectedMetric.visible_hosts?.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white text-sm">Invisible:</span>
-                  <span className="text-[#ff00ff]">{selectedMetric.invisible_hosts?.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div className="bg-black border border-[#c084fc]/30 rounded-xl p-3">
             <h3 className="text-sm font-bold text-[#c084fc] mb-2">LOG TYPE MATRIX</h3>
             <canvas ref={matrixRef} className="w-full h-40" />
@@ -687,7 +412,7 @@ const InfrastructureView: React.FC = () => {
           </div>
 
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {(infrastructureData.detailed_breakdown || []).map((infra: any) => {
+            {(infrastructureData?.detailed_breakdown || []).map((infra: any) => {
               const Icon = getIcon(infra.infrastructure_type);
               
               return (
@@ -698,10 +423,7 @@ const InfrastructureView: React.FC = () => {
                       ? 'border-[#00d4ff]' 
                       : 'border-white/10 hover:border-[#c084fc]/50'
                   }`}
-                  onClick={() => {
-                    setSelectedType(infra.infrastructure_type);
-                    setSelectedMetric(infra);
-                  }}
+                  onClick={() => setSelectedType(infra.infrastructure_type)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -709,7 +431,7 @@ const InfrastructureView: React.FC = () => {
                       <div>
                         <div className="text-sm font-bold text-white">{infra.infrastructure_type}</div>
                         <div className="text-xs text-white/60">
-                          {infra.total_hosts.toLocaleString()} hosts
+                          {infra.total_hosts?.toLocaleString() || 0} hosts
                         </div>
                       </div>
                     </div>
@@ -719,7 +441,7 @@ const InfrastructureView: React.FC = () => {
                         infra.status === 'WARNING' ? 'text-[#c084fc]' :
                         'text-[#00d4ff]'
                       }`}>
-                        {infra.visibility_percentage.toFixed(1)}%
+                        {infra.visibility_percentage?.toFixed(1) || '0.0'}%
                       </div>
                       <div className="text-xs text-white/60">visibility</div>
                     </div>
@@ -729,7 +451,7 @@ const InfrastructureView: React.FC = () => {
                     <div 
                       className="h-full transition-all duration-1000"
                       style={{
-                        width: `${infra.visibility_percentage}%`,
+                        width: `${infra.visibility_percentage || 0}%`,
                         background: infra.status === 'CRITICAL' 
                           ? 'linear-gradient(90deg, #ff00ff, #c084fc)'
                           : 'linear-gradient(90deg, #00d4ff, #c084fc)'
@@ -743,7 +465,7 @@ const InfrastructureView: React.FC = () => {
                         infra.visibility_percentage > 60 ? 'text-[#00d4ff]' : 'text-white/30'
                       }`} />
                       <span className="text-xs text-[#00d4ff]">
-                        {infra.visible_hosts.toLocaleString()} visible
+                        {infra.visible_hosts?.toLocaleString() || 0} visible
                       </span>
                     </div>
                     <span className={`text-xs font-bold ${
