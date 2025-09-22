@@ -5,64 +5,37 @@ import * as THREE from 'three';
 const DomainVisibility: React.FC = () => {
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
   const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, number>>({});
+  const [domainData, setDomainData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const networkRef = useRef<HTMLDivElement>(null);
   const constellationRef = useRef<HTMLCanvasElement>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
-  // Domain visibility data
-  const domainData = {
-    'External': {
-      totalAssets: 45678,
-      visibility: 78.9,
-      gaps: 9654,
-      status: 'active',
-      color: '#00ffff',
-      domains: [
-        { name: 'api.company.com', visibility: 92.3, assets: 5234, risk: 'low' },
-        { name: 'portal.company.com', visibility: 85.7, assets: 8901, risk: 'medium' },
-        { name: 'cdn.company.com', visibility: 95.1, assets: 3456, risk: 'low' },
-        { name: 'services.company.com', visibility: 67.4, assets: 12345, risk: 'high' },
-        { name: 'mobile.company.com', visibility: 71.2, assets: 7890, risk: 'medium' }
-      ],
-      connections: 234,
-      dataFlow: '2.4TB/day'
-    },
-    'Internal': {
-      totalAssets: 89012,
-      visibility: 45.2,
-      gaps: 49093,
-      status: 'critical',
-      color: '#ff00ff',
-      domains: [
-        { name: 'intranet.local', visibility: 52.1, assets: 23456, risk: 'high' },
-        { name: 'database.internal', visibility: 38.9, assets: 34567, risk: 'critical' },
-        { name: 'admin.internal', visibility: 41.3, assets: 12345, risk: 'critical' },
-        { name: 'dev.internal', visibility: 67.8, assets: 8901, risk: 'medium' },
-        { name: 'staging.internal', visibility: 55.4, assets: 9743, risk: 'high' }
-      ],
-      connections: 567,
-      dataFlow: '5.8TB/day'
-    },
-    'Cloud': {
-      totalAssets: 67234,
-      visibility: 62.3,
-      gaps: 25322,
-      status: 'warning',
-      color: '#c084fc',
-      domains: [
-        { name: 'aws.cloud', visibility: 71.2, assets: 23456, risk: 'medium' },
-        { name: 'azure.cloud', visibility: 68.9, assets: 19012, risk: 'medium' },
-        { name: 'gcp.cloud', visibility: 58.3, assets: 15678, risk: 'high' },
-        { name: 'kubernetes.cloud', visibility: 45.7, assets: 9088, risk: 'critical' }
-      ],
-      connections: 412,
-      dataFlow: '3.9TB/day'
-    }
-  };
-
-  // 3D Network Visualization
+  // Fetch real data from Flask API
   useEffect(() => {
-    if (!networkRef.current) return;
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('http://localhost:5000/api/domain_metrics');
+        if (!response.ok) throw new Error('Failed to fetch domain data');
+        const data = await response.json();
+        setDomainData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 3D Network Visualization with real data
+  useEffect(() => {
+    if (!networkRef.current || !domainData) return;
 
     // Scene setup
     const scene = new THREE.Scene();
@@ -87,7 +60,7 @@ const DomainVisibility: React.FC = () => {
     renderer.setPixelRatio(window.devicePixelRatio);
     networkRef.current.appendChild(renderer.domElement);
 
-    // Create domain nodes
+    // Create domain nodes based on real data
     const nodes: THREE.Mesh[] = [];
     const connections: THREE.Line[] = [];
     
@@ -104,67 +77,65 @@ const DomainVisibility: React.FC = () => {
     const hub = new THREE.Mesh(hubGeometry, hubMaterial);
     scene.add(hub);
 
-    // Create domain clusters
-    Object.entries(domainData).forEach(([domainType, data], typeIndex) => {
-      const angleOffset = (typeIndex / 3) * Math.PI * 2;
+    // Create domain clusters from real data
+    Object.entries(domainData.domain_details || {}).slice(0, 8).forEach(([domain, data]: [string, any], index) => {
+      const angle = (index / 8) * Math.PI * 2;
       const radius = 60;
       
-      data.domains.forEach((domain, index) => {
-        const angle = angleOffset + (index / data.domains.length) * (Math.PI * 2 / 3);
-        const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
-        const y = (Math.random() - 0.5) * 30;
-        
-        // Domain node
-        const nodeSize = Math.sqrt(domain.assets) / 60;
-        const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
-        const nodeColor = domain.risk === 'critical' ? 0xff00ff : 
-                         domain.risk === 'high' ? 0xc084fc :
-                         domain.risk === 'medium' ? 0x00ffff :
-                         0x00ffff;
-        
-        const nodeMaterial = new THREE.MeshPhongMaterial({
-          color: nodeColor,
-          emissive: nodeColor,
-          emissiveIntensity: 0.2,
-          transparent: true,
-          opacity: 0.8
-        });
-        
-        const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
-        node.position.set(x, y, z);
-        node.userData = { domain, type: domainType };
-        scene.add(node);
-        nodes.push(node);
-        
-        // Connection to hub
-        const points = [
-          new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(x, y, z)
-        ];
-        const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-        const lineMaterial = new THREE.LineBasicMaterial({
-          color: nodeColor,
-          transparent: true,
-          opacity: domain.visibility / 100
-        });
-        const line = new THREE.Line(lineGeometry, lineMaterial);
-        scene.add(line);
-        connections.push(line);
-        
-        // Add orbiting satellites for subdomains
-        for (let i = 0; i < 2; i++) {
-          const satelliteGeometry = new THREE.TetrahedronGeometry(1.5);
-          const satelliteMaterial = new THREE.MeshBasicMaterial({
-            color: nodeColor,
-            transparent: true,
-            opacity: 0.5
-          });
-          const satellite = new THREE.Mesh(satelliteGeometry, satelliteMaterial);
-          satellite.userData = { parent: node, offset: i };
-          scene.add(satellite);
-        }
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      const y = (Math.random() - 0.5) * 30;
+      
+      // Domain node
+      const nodeSize = Math.sqrt(data.count) / 50;
+      const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
+      
+      // Color based on domain percentage
+      const nodeColor = data.percentage > 10 ? 0xff00ff : 
+                       data.percentage > 5 ? 0xc084fc :
+                       0x00ffff;
+      
+      const nodeMaterial = new THREE.MeshPhongMaterial({
+        color: nodeColor,
+        emissive: nodeColor,
+        emissiveIntensity: 0.2,
+        transparent: true,
+        opacity: 0.8
       });
+      
+      const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+      node.position.set(x, y, z);
+      node.userData = { domain, data };
+      scene.add(node);
+      nodes.push(node);
+      
+      // Connection to hub
+      const points = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(x, y, z)
+      ];
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: nodeColor,
+        transparent: true,
+        opacity: data.percentage / 100
+      });
+      const line = new THREE.Line(lineGeometry, lineMaterial);
+      scene.add(line);
+      connections.push(line);
+      
+      // Add orbiting satellites for subdomains
+      for (let i = 0; i < 2; i++) {
+        const satelliteGeometry = new THREE.TetrahedronGeometry(1.5);
+        const satelliteMaterial = new THREE.MeshBasicMaterial({
+          color: nodeColor,
+          transparent: true,
+          opacity: 0.5
+        });
+        const satellite = new THREE.Mesh(satelliteGeometry, satelliteMaterial);
+        satellite.userData = { parent: node, offset: i };
+        scene.add(satellite);
+      }
     });
 
     // Particle field for data flow
@@ -233,7 +204,7 @@ const DomainVisibility: React.FC = () => {
       if (intersects.length > 0) {
         const hoveredNode = intersects[0].object as THREE.Mesh;
         hoveredNode.scale.setScalar(1.3);
-        setHoveredNode(hoveredNode.userData.domain.name);
+        setHoveredNode(hoveredNode.userData.domain);
       } else {
         setHoveredNode(null);
       }
@@ -291,12 +262,12 @@ const DomainVisibility: React.FC = () => {
       }
       renderer.dispose();
     };
-  }, [selectedDomain]);
+  }, [domainData]);
 
-  // Constellation Map Canvas
+  // Constellation Map Canvas with real data
   useEffect(() => {
     const canvas = constellationRef.current;
-    if (!canvas) return;
+    if (!canvas || !domainData) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -304,83 +275,129 @@ const DomainVisibility: React.FC = () => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
+    // Convert domain data to visualization format
+    const domains = Object.entries(domainData.domain_details || {})
+      .slice(0, 6)
+      .map(([domain, data]: [string, any], i) => ({
+        name: domain,
+        x: ((i % 3 + 1) * canvas.width / 4),
+        y: (Math.floor(i / 3) + 1) * canvas.height / 3,
+        percentage: data.percentage,
+        count: data.count,
+        color: data.percentage > 10 ? '#ff00ff' : 
+               data.percentage > 5 ? '#c084fc' : 
+               '#00ffff'
+      }));
+
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Draw constellation connections
-      Object.entries(domainData).forEach(([domainType, data], typeIndex) => {
-        const centerX = (typeIndex + 1) * (canvas.width / 4);
-        const centerY = canvas.height / 2;
-        
-        // Draw central star
-        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 20);
-        gradient.addColorStop(0, data.color);
-        gradient.addColorStop(0.5, data.color + '80');
-        gradient.addColorStop(1, data.color + '00');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(centerX - 20, centerY - 20, 40, 40);
-        
-        // Draw domain points
-        data.domains.forEach((domain, index) => {
-          const angle = (index / data.domains.length) * Math.PI * 2;
-          const radius = 35 + domain.visibility * 0.3;
-          const x = centerX + Math.cos(angle) * radius;
-          const y = centerY + Math.sin(angle) * radius;
-          
-          // Connection line
-          ctx.strokeStyle = data.color + '40';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(centerX, centerY);
-          ctx.lineTo(x, y);
-          ctx.stroke();
-          
-          // Domain point
-          ctx.fillStyle = domain.risk === 'critical' ? '#ff00ff' : 
-                         domain.risk === 'high' ? '#c084fc' :
-                         '#00ffff';
-          ctx.beginPath();
-          ctx.arc(x, y, 3, 0, Math.PI * 2);
-          ctx.fill();
+      domains.forEach((domain, i) => {
+        domains.forEach((target, j) => {
+          if (i !== j && Math.abs(i - j) <= 2) {
+            const gradient = ctx.createLinearGradient(domain.x, domain.y, target.x, target.y);
+            gradient.addColorStop(0, domain.color + '40');
+            gradient.addColorStop(1, target.color + '40');
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(domain.x, domain.y);
+            ctx.lineTo(target.x, target.y);
+            ctx.stroke();
+          }
         });
+      });
+
+      // Draw domain points
+      domains.forEach(domain => {
+        const time = Date.now() * 0.001;
+        const pulseScale = 1 + Math.sin(time) * 0.1;
+        const size = Math.sqrt(domain.count) / 30 * pulseScale;
+        
+        // Domain glow
+        const glow = ctx.createRadialGradient(domain.x, domain.y, 0, domain.x, domain.y, size * 2);
+        glow.addColorStop(0, domain.color + '80');
+        glow.addColorStop(0.5, domain.color + '40');
+        glow.addColorStop(1, domain.color + '00');
+        ctx.fillStyle = glow;
+        ctx.fillRect(domain.x - size * 2, domain.y - size * 2, size * 4, size * 4);
+        
+        // Domain core
+        ctx.fillStyle = domain.color;
+        ctx.beginPath();
+        ctx.arc(domain.x, domain.y, size, 0, Math.PI * 2);
+        ctx.fill();
         
         // Label
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(domainType, centerX, centerY - 50);
+        ctx.fillText(domain.name.substring(0, 20), domain.x, domain.y - size - 10);
         
-        // Metrics
+        // Percentage
         ctx.font = '9px monospace';
-        ctx.fillStyle = data.color;
-        ctx.fillText(`${data.visibility}%`, centerX, centerY + 55);
+        ctx.fillStyle = domain.color;
+        ctx.fillText(`${domain.percentage.toFixed(1)}%`, domain.x, domain.y + size + 10);
       });
 
       requestAnimationFrame(animate);
     };
 
     animate();
-  }, []);
+  }, [domainData]);
 
   // Animate metrics
   useEffect(() => {
-    Object.entries(domainData).forEach(([domain, data], index) => {
-      setTimeout(() => {
-        setAnimatedMetrics(prev => ({
-          ...prev,
-          [domain]: data.visibility
-        }));
-      }, index * 200);
-    });
-  }, []);
+    if (domainData && domainData.domain_details) {
+      Object.entries(domainData.domain_details).forEach(([domain, data]: [string, any], index) => {
+        setTimeout(() => {
+          setAnimatedMetrics(prev => ({
+            ...prev,
+            [domain]: data.percentage
+          }));
+        }, index * 100);
+      });
+    }
+  }, [domainData]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-32 w-32 border-b-2 border-cyan-400"></div>
+          <div className="mt-4 text-xl font-bold text-cyan-400">LOADING DOMAIN DATA</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !domainData) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center glass-panel rounded-xl p-8">
+          <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <div className="text-xl font-bold text-red-400 mb-2">DATA LOAD ERROR</div>
+          <div className="text-sm text-gray-400">{error || 'No data available'}</div>
+        </div>
+      </div>
+    );
+  }
+
+  const AlertTriangle = () => (
+    <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+  );
 
   return (
     <div className="p-4 h-screen bg-black overflow-hidden flex flex-col">
       {/* Domain Selector and Stats */}
       <div className="flex justify-between items-center mb-3">
         <div className="flex gap-2">
-          {['all', 'External', 'Internal', 'Cloud'].map(domain => (
+          {['all', 'tdc', 'lead', 'corp'].map(domain => (
             <button
               key={domain}
               onClick={() => setSelectedDomain(domain)}
@@ -403,20 +420,24 @@ const DomainVisibility: React.FC = () => {
         </div>
         <div className="flex gap-3">
           <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
-            <div className="text-lg font-bold text-white">201K</div>
+            <div className="text-lg font-bold text-white">{domainData.total_analyzed?.toLocaleString() || '0'}</div>
             <div className="text-[9px] text-gray-400">Total Assets</div>
           </div>
           <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
-            <div className="text-lg font-bold text-pink-400">84K</div>
-            <div className="text-[9px] text-gray-400">Gaps</div>
+            <div className="text-lg font-bold text-blue-400">{domainData.unique_domains?.length || 0}</div>
+            <div className="text-[9px] text-gray-400">Domains</div>
           </div>
           <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
-            <div className="text-lg font-bold text-blue-400">62.1%</div>
-            <div className="text-[9px] text-gray-400">Avg Visibility</div>
+            <div className="text-lg font-bold text-purple-400">
+              {domainData.domain_distribution?.tdc_percentage?.toFixed(1) || '0'}%
+            </div>
+            <div className="text-[9px] text-gray-400">TDC</div>
           </div>
           <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
-            <div className="text-lg font-bold text-purple-400">1,213</div>
-            <div className="text-[9px] text-gray-400">Connections</div>
+            <div className="text-lg font-bold text-pink-400">
+              {domainData.domain_distribution?.lead_percentage?.toFixed(1) || '0'}%
+            </div>
+            <div className="text-[9px] text-gray-400">LEAD</div>
           </div>
         </div>
       </div>
@@ -456,7 +477,7 @@ const DomainVisibility: React.FC = () => {
             <canvas ref={constellationRef} className="w-full h-[140px]" />
           </div>
 
-          {/* Domain Details Table */}
+          {/* Domain Details Table from Real Data */}
           <div className="flex-1 bg-black border border-blue-500/30 rounded-xl p-3 overflow-hidden">
             <h3 className="text-xs font-bold text-blue-400 mb-2 uppercase">Domain Visibility Details</h3>
             <div className="overflow-x-auto overflow-y-auto h-[calc(100%-24px)]">
@@ -465,84 +486,42 @@ const DomainVisibility: React.FC = () => {
                   <tr className="border-b border-gray-700">
                     <th className="text-left py-1.5 px-2 text-[10px] font-semibold text-gray-400">Domain</th>
                     <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Assets</th>
-                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Visibility</th>
-                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Gaps</th>
-                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Status</th>
-                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Flow</th>
+                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Percentage</th>
+                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Unique Hosts</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(domainData).map(([domain, data]) => (
-                    <React.Fragment key={domain}>
-                      <tr className="border-b border-gray-800 hover:bg-gray-900/30 transition-colors">
-                        <td className="py-1.5 px-2 text-white font-medium">{domain}</td>
+                  {Object.entries(domainData.domain_details || {})
+                    .filter(([domain]) => selectedDomain === 'all' || domain.includes(selectedDomain))
+                    .slice(0, 15)
+                    .map(([domain, data]: [string, any]) => (
+                      <tr key={domain} className="border-b border-gray-800 hover:bg-gray-900/30 transition-colors">
+                        <td className="py-1.5 px-2 text-white font-medium truncate">{domain}</td>
                         <td className="py-1.5 px-2 text-center font-mono text-gray-300 text-[10px]">
-                          {(data.totalAssets/1000).toFixed(1)}K
+                          {data.count.toLocaleString()}
                         </td>
                         <td className="py-1.5 px-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <span className={`font-mono font-bold text-[10px] ${
-                              data.visibility < 50 ? 'text-pink-400' : 
-                              data.visibility < 80 ? 'text-purple-400' : 
-                              'text-blue-400'
+                              data.percentage < 5 ? 'text-blue-400' : 
+                              data.percentage < 10 ? 'text-purple-400' : 
+                              'text-pink-400'
                             }`}>
-                              {animatedMetrics[domain]?.toFixed(1) || 0}%
+                              {animatedMetrics[domain]?.toFixed(1) || data.percentage.toFixed(1)}%
                             </span>
                             <div className="w-12 h-1.5 bg-gray-900 rounded-full overflow-hidden">
                               <div 
                                 className="h-full transition-all duration-500 bg-gradient-to-r from-blue-400 to-purple-400"
-                                style={{ width: `${animatedMetrics[domain] || 0}%` }}
+                                style={{ width: `${animatedMetrics[domain] || data.percentage}%` }}
                               />
                             </div>
                           </div>
                         </td>
-                        <td className="py-1.5 px-2 text-center font-mono text-pink-400 text-[10px]">
-                          {(data.gaps/1000).toFixed(1)}K
-                        </td>
-                        <td className="py-1.5 px-2 text-center">
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                            data.status === 'critical' ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50' :
-                            data.status === 'warning' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50' :
-                            'bg-blue-500/20 text-blue-400 border border-blue-500/50'
-                          }`}>
-                            {data.status.toUpperCase()}
-                          </span>
-                        </td>
                         <td className="py-1.5 px-2 text-center font-mono text-purple-400 text-[10px]">
-                          {data.dataFlow}
+                          {data.unique_hosts || '-'}
                         </td>
                       </tr>
-                      {/* Subdomain rows */}
-                      {selectedDomain === domain && data.domains.slice(0, 2).map(subdomain => (
-                        <tr key={subdomain.name} className="border-b border-gray-900 bg-gray-900/20 text-[9px]">
-                          <td className="py-1 px-4 text-gray-400">↳ {subdomain.name}</td>
-                          <td className="py-1 px-2 text-center font-mono text-gray-500">
-                            {(subdomain.assets/1000).toFixed(1)}K
-                          </td>
-                          <td className="py-1 px-2 text-center">
-                            <span className={`font-mono ${
-                              subdomain.visibility < 50 ? 'text-pink-400' : 
-                              subdomain.visibility < 80 ? 'text-purple-400' : 
-                              'text-blue-400'
-                            }`}>
-                              {subdomain.visibility}%
-                            </span>
-                          </td>
-                          <td className="py-1 px-2 text-center text-gray-500">-</td>
-                          <td className="py-1 px-2 text-center">
-                            <span className={`text-[8px] ${
-                              subdomain.risk === 'critical' ? 'text-pink-400' :
-                              subdomain.risk === 'high' ? 'text-purple-400' :
-                              'text-blue-400'
-                            }`}>
-                              {subdomain.risk}
-                            </span>
-                          </td>
-                          <td className="py-1 px-2 text-center text-gray-500">-</td>
-                        </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
+                    ))}
                 </tbody>
               </table>
             </div>

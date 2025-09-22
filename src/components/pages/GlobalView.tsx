@@ -187,13 +187,13 @@ const GlobalView: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (error || !globalData) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center glass-panel rounded-xl p-8">
           <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <div className="text-xl font-bold text-red-400 mb-2">CONNECTION ERROR</div>
-          <div className="text-sm text-gray-400">{error}</div>
+          <div className="text-sm text-gray-400">{error || 'No data available'}</div>
           <div className="text-xs text-gray-500 mt-2">Make sure Python backend is running on port 5000</div>
         </div>
       </div>
@@ -207,10 +207,12 @@ const GlobalView: React.FC = () => {
         <div className="mb-3 bg-black border border-red-500/30 rounded-lg p-2 flex-shrink-0">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse" />
-            <span className="text-red-400 font-bold text-sm">CRITICAL COVERAGE:</span>
-            <span className="text-white ml-2 text-sm">
-              CMDB at {globalData.cmdb.registration_rate.toFixed(1)}% - {globalData.cmdb.status_breakdown.not_registered.toLocaleString()} assets unregistered
-            </span>
+            <div>
+              <span className="text-red-400 font-bold text-sm">CRITICAL COVERAGE:</span>
+              <span className="text-white ml-2 text-sm">
+                CMDB at {globalData.cmdb.registration_rate.toFixed(1)}% - {globalData.cmdb.status_breakdown.not_registered.toLocaleString()} assets unregistered
+              </span>
+            </div>
           </div>
         </div>
       )}
@@ -226,9 +228,7 @@ const GlobalView: React.FC = () => {
                 ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20'
                 : 'bg-gray-900/50 hover:bg-gray-800/50'
             }`}
-            style={{
-              border: selectedPlatform === platform ? '2px solid #00ffff' : '2px solid transparent'
-            }}
+            style={{ border: selectedPlatform === platform ? '2px solid #00ffff' : '2px solid transparent' }}
           >
             {platform}
           </button>
