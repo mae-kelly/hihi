@@ -7,9 +7,6 @@ const GlobalView = () => {
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [hoveredCountry, setHoveredCountry] = useState(null);
   const globeRef = useRef(null);
-  const rendererRef = useRef(null);
-  const sceneRef = useRef(null);
-  const frameRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -25,16 +22,6 @@ const GlobalView = () => {
         setGlobalData(data);
       } catch (error) {
         console.error('Error:', error);
-        setGlobalData({
-          global_visibility_percentage: 0,
-          total_hosts: 0,
-          visible_hosts: 0,
-          invisible_hosts: 0,
-          splunk_visibility_percentage: 0,
-          chronicle_visibility_percentage: 0,
-          visibility_gap_percentage: 0,
-          status: 'OFFLINE'
-        });
       } finally {
         setLoading(false);
       }
@@ -46,60 +33,93 @@ const GlobalView = () => {
   }, []);
 
   useEffect(() => {
-    if (!globeRef.current || !globalData || loading) return;
-
-    // Clean up previous scene
-    if (rendererRef.current) {
-      rendererRef.current.dispose();
-      if (globeRef.current.contains(rendererRef.current.domElement)) {
-        globeRef.current.removeChild(rendererRef.current.domElement);
-      }
-    }
+    if (!globeRef.current || !globalData) return;
 
     const scene = new THREE.Scene();
-    sceneRef.current = scene;
+    const camera = new THREE.PerspectiveCamera(45, globeRef.current.clientWidth / globeRef.current.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     
-    const camera = new THREE.PerspectiveCamera(
-      45, 
-      globeRef.current.clientWidth / globeRef.current.clientHeight, 
-      0.1, 
-      1000
-    );
-    
-    const renderer = new THREE.WebGLRenderer({ 
-      antialias: true, 
-      alpha: true,
-      powerPreference: "high-performance"
-    });
-    
-    rendererRef.current = renderer;
     renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(window.devicePixelRatio);
     globeRef.current.appendChild(renderer.domElement);
 
-    // Create earth sphere
-    const earthGeometry = new THREE.SphereGeometry(100, 64, 64);
-    const earthMaterial = new THREE.MeshPhongMaterial({
-      color: 0x2233ff,
-      emissive: 0x112244,
-      shininess: 10,
-      wireframe: true
+    const earthGeometry = new THREE.SphereGeometry(100, 128, 128);
+    
+    const earthMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        uniform float visibility;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        
+        void main() {
+          vec2 uv = vUv;
+          float lat = (uv.y - 0.5) * 3.14159;
+          float lon = (uv.x - 0.5) * 6.28318;
+          
+          vec3 baseColor = vec3(0.0, 0.05, 0.1);
+          vec3 landColor = vec3(0.0, 0.3, 0.4);
+          vec3 threatColor = vec3(1.0, 0.0, 1.0);
+          
+          float continents = step(0.3, sin(lon * 3.0) * sin(lat * 2.0));
+          vec3 earthColor = mix(baseColor, landColor, continents);
+          
+          float grid = step(0.98, max(sin(lon * 40.0), sin(lat * 20.0)));
+          earthColor += vec3(0.0, 0.8, 1.0) * grid * 0.3;
+          
+          float threat = sin(lon * 10.0 + time) * sin(lat * 8.0 - time) * 0.5 + 0.5;
+          threat *= (1.0 - visibility / 100.0);
+          earthColor = mix(earthColor, threatColor, threat * 0.3);
+          
+          float rim = 1.0 - dot(vNormal, vec3(0.0, 0.0, 1.0));
+          rim = pow(rim, 2.0);
+          vec3 rimColor = mix(vec3(0.0, 0.8, 1.0), vec3(1.0, 0.0, 1.0), threat);
+          
+          gl_FragColor = vec4(earthColor + rimColor * rim * 0.5, 1.0);
+        }
+      `,
+      uniforms: {
+        time: { value: 0 },
+        visibility: { value: globalData.global_visibility_percentage || 0 }
+      },
+      transparent: true
     });
+    
     const earth = new THREE.Mesh(earthGeometry, earthMaterial);
     scene.add(earth);
 
-    // Add atmosphere glow
-    const atmosphereGeometry = new THREE.SphereGeometry(105, 32, 32);
-    const atmosphereMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00d4ff,
-      transparent: true,
-      opacity: 0.1,
+    const atmosphereGeometry = new THREE.SphereGeometry(105, 64, 64);
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+          gl_FragColor = vec4(0.0, 0.8, 1.0, 1.0) * intensity;
+        }
+      `,
+      blending: THREE.AdditiveBlending,
       side: THREE.BackSide
     });
+    
     const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
     scene.add(atmosphere);
 
-    // Add region markers
     const regionData = [
       { name: 'North America', lat: 45, lon: -100, visibility: 85, hosts: 45000 },
       { name: 'Europe', lat: 50, lon: 10, visibility: 78, hosts: 38000 },
@@ -118,9 +138,11 @@ const GlobalView = () => {
       const y = 100 * Math.cos(phi);
       const z = 100 * Math.sin(phi) * Math.sin(theta);
       
-      const markerGeometry = new THREE.SphereGeometry(3, 8, 8);
+      const markerGeometry = new THREE.SphereGeometry(2, 16, 16);
       const markerMaterial = new THREE.MeshBasicMaterial({
-        color: region.visibility < 40 ? 0xff00ff : region.visibility < 70 ? 0xffaa00 : 0x00d4ff
+        color: region.visibility < 40 ? 0xff00ff : region.visibility < 70 ? 0xc084fc : 0x00d4ff,
+        emissive: region.visibility < 40 ? 0xff00ff : 0x00d4ff,
+        emissiveIntensity: 0.5
       });
       
       const marker = new THREE.Mesh(markerGeometry, markerMaterial);
@@ -128,12 +150,25 @@ const GlobalView = () => {
       marker.userData = region;
       markers.push(marker);
       scene.add(marker);
+      
+      const pulseGeometry = new THREE.RingGeometry(3, 5, 32);
+      const pulseMaterial = new THREE.MeshBasicMaterial({
+        color: region.visibility < 40 ? 0xff00ff : 0x00d4ff,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+      });
+      const pulse = new THREE.Mesh(pulseGeometry, pulseMaterial);
+      pulse.position.copy(marker.position);
+      pulse.lookAt(0, 0, 0);
+      pulse.userData = { isPulse: true, baseScale: 1 };
+      scene.add(pulse);
     });
 
-    // Add particles
-    const particleCount = 1000;
+    const particleCount = 5000;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
     
     for (let i = 0; i < particleCount * 3; i += 3) {
       const radius = 150 + Math.random() * 100;
@@ -143,22 +178,28 @@ const GlobalView = () => {
       positions[i] = radius * Math.sin(phi) * Math.cos(theta);
       positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
       positions[i + 2] = radius * Math.cos(phi);
+      
+      const isVisible = Math.random() > 0.5;
+      colors[i] = isVisible ? 0 : 1;
+      colors[i + 1] = isVisible ? 0.8 : 0;
+      colors[i + 2] = 1;
     }
     
     particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
     const particlesMaterial = new THREE.PointsMaterial({
-      color: 0x00d4ff,
       size: 1,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.6
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
     });
     
     const particles = new THREE.Points(particlesGeometry, particlesMaterial);
     scene.add(particles);
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
     scene.add(ambientLight);
     
     const directionalLight = new THREE.DirectionalLight(0x00d4ff, 0.5);
@@ -167,11 +208,45 @@ const GlobalView = () => {
 
     camera.position.set(0, 0, 300);
 
-    // Animation
-    const animate = () => {
-      if (!sceneRef.current) return;
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const handleMouseMove = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       
-      frameRef.current = requestAnimationFrame(animate);
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(markers);
+      
+      if (intersects.length > 0) {
+        setHoveredCountry(intersects[0].object.userData);
+        document.body.style.cursor = 'pointer';
+      } else {
+        setHoveredCountry(null);
+        document.body.style.cursor = isDragging ? 'grabbing' : 'grab';
+      }
+    };
+
+    const handleClick = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(markers);
+      
+      if (intersects.length > 0) {
+        setSelectedRegion(intersects[0].object.userData);
+      }
+    };
+
+    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    renderer.domElement.addEventListener('click', handleClick);
+
+    let frameId;
+    const animate = () => {
+      frameId = requestAnimationFrame(animate);
       
       earth.rotation.y = rotation.y;
       earth.rotation.x = rotation.x;
@@ -179,10 +254,19 @@ const GlobalView = () => {
       atmosphere.rotation.x = rotation.x;
       
       markers.forEach(marker => {
-        marker.lookAt(camera.position);
+        marker.rotation.y = rotation.y;
+        marker.rotation.x = rotation.x;
+      });
+      
+      scene.children.forEach(child => {
+        if (child.userData.isPulse) {
+          const scale = 1 + Math.sin(Date.now() * 0.003) * 0.3;
+          child.scale.setScalar(child.userData.baseScale * scale);
+        }
       });
       
       particles.rotation.y += 0.0001;
+      earthMaterial.uniforms.time.value = Date.now() * 0.001;
       
       camera.position.z = 300 / zoom;
       
@@ -191,25 +275,16 @@ const GlobalView = () => {
 
     animate();
 
-    // Handle resize
-    const handleResize = () => {
-      if (!globeRef.current) return;
-      camera.aspect = globeRef.current.clientWidth / globeRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
-    };
-
-    window.addEventListener('resize', handleResize);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
-      if (renderer) renderer.dispose();
-      if (globeRef.current && renderer.domElement && globeRef.current.contains(renderer.domElement)) {
+      if (frameId) cancelAnimationFrame(frameId);
+      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('click', handleClick);
+      if (globeRef.current && renderer.domElement) {
         globeRef.current.removeChild(renderer.domElement);
       }
+      renderer.dispose();
     };
-  }, [globalData, rotation, zoom, loading]);
+  }, [globalData, rotation, zoom, isDragging]);
 
   const handleMouseDown = (e) => {
     setIsDragging(true);
@@ -247,7 +322,9 @@ const GlobalView = () => {
     );
   }
 
-  const isCritical = globalData?.global_visibility_percentage < 50;
+  if (!globalData) return null;
+
+  const isCritical = globalData.global_visibility_percentage < 50;
 
   return (
     <div className="h-full bg-black p-4 overflow-hidden">
@@ -280,8 +357,7 @@ const GlobalView = () => {
             
             <div 
               ref={globeRef} 
-              className="flex-1"
-              style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+              className="flex-1 cursor-grab"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
@@ -289,8 +365,18 @@ const GlobalView = () => {
               onWheel={handleWheel}
             />
             
+            {hoveredCountry && (
+              <div className="absolute bottom-4 left-4 bg-black/90 border border-cyan-400/50 rounded-lg p-2 backdrop-blur-xl">
+                <div className="text-xs font-bold text-cyan-400 mb-1">{hoveredCountry.name}</div>
+                <div className="text-xs text-white/80">
+                  <div>Visibility: {hoveredCountry.visibility}%</div>
+                  <div>Hosts: {hoveredCountry.hosts.toLocaleString()}</div>
+                </div>
+              </div>
+            )}
+            
             <div className="p-2 flex items-center justify-between text-xs text-white/40 border-t border-white/10">
-              <div>Drag to rotate • Scroll to zoom</div>
+              <div>Drag to rotate • Scroll to zoom • Click regions for details</div>
               <div>ZOOM: {(zoom * 100).toFixed(0)}%</div>
             </div>
           </div>
@@ -301,63 +387,87 @@ const GlobalView = () => {
             <h3 className="text-xs font-bold text-white/60 mb-2">GLOBAL VISIBILITY STATUS</h3>
             <div className="text-3xl font-bold mb-1">
               <span className={isCritical ? 'text-pink-400' : 'text-cyan-400'}>
-                {globalData?.global_visibility_percentage?.toFixed(1) || '0.0'}%
+                {globalData.global_visibility_percentage.toFixed(1)}%
               </span>
             </div>
             <div className="text-xs text-white/60 mb-2">
-              {globalData?.visible_hosts?.toLocaleString() || '0'} / {globalData?.total_hosts?.toLocaleString() || '0'} ASSETS
+              {globalData.visible_hosts.toLocaleString()} / {globalData.total_hosts.toLocaleString()} ASSETS
             </div>
             <div className="space-y-2">
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-cyan-400">SPLUNK</span>
-                  <span className="text-white">{globalData?.splunk_visibility_percentage?.toFixed(1) || '0.0'}%</span>
+                  <span className="text-white">{globalData.splunk_visibility_percentage.toFixed(1)}%</span>
                 </div>
                 <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-cyan-400 to-cyan-400/50"
-                    style={{ width: `${globalData?.splunk_visibility_percentage || 0}%` }}
+                    style={{ width: `${globalData.splunk_visibility_percentage}%` }}
                   />
                 </div>
               </div>
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-purple-400">CHRONICLE</span>
-                  <span className="text-white">{globalData?.chronicle_visibility_percentage?.toFixed(1) || '0.0'}%</span>
+                  <span className="text-white">{globalData.chronicle_visibility_percentage.toFixed(1)}%</span>
                 </div>
                 <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-purple-400 to-purple-400/50"
-                    style={{ width: `${globalData?.chronicle_visibility_percentage || 0}%` }}
+                    style={{ width: `${globalData.chronicle_visibility_percentage}%` }}
                   />
                 </div>
               </div>
             </div>
           </div>
 
+          {selectedRegion && (
+            <div className="bg-black/80 border border-cyan-400/30 rounded-xl p-3 backdrop-blur-xl">
+              <h3 className="text-xs font-bold text-cyan-400 mb-2">{selectedRegion.name.toUpperCase()}</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-xs text-white/60">VISIBILITY</span>
+                  <span className="text-xs font-bold text-white">{selectedRegion.visibility}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-white/60">TOTAL HOSTS</span>
+                  <span className="text-xs font-bold text-white">{selectedRegion.hosts.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-white/60">STATUS</span>
+                  <span className={`text-xs font-bold ${
+                    selectedRegion.visibility < 40 ? 'text-pink-400' : 
+                    selectedRegion.visibility < 70 ? 'text-purple-400' : 
+                    'text-cyan-400'
+                  }`}>
+                    {selectedRegion.visibility < 40 ? 'CRITICAL' : 
+                     selectedRegion.visibility < 70 ? 'WARNING' : 
+                     'OPERATIONAL'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl flex-1">
             <h3 className="text-xs font-bold text-white/60 mb-2">THREAT ANALYSIS</h3>
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/60">INVISIBLE HOSTS</span>
-                <span className="text-xs font-bold text-pink-400">
-                  {globalData?.invisible_hosts?.toLocaleString() || '0'}
-                </span>
+                <span className="text-xs font-bold text-pink-400">{globalData.invisible_hosts.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/60">VISIBILITY GAP</span>
-                <span className="text-xs font-bold text-purple-400">
-                  {globalData?.visibility_gap_percentage?.toFixed(1) || '0.0'}%
-                </span>
+                <span className="text-xs font-bold text-purple-400">{globalData.visibility_gap_percentage.toFixed(1)}%</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/60">STATUS</span>
                 <span className={`text-xs font-bold ${
-                  globalData?.status === 'CRITICAL' ? 'text-pink-400' : 
-                  globalData?.status === 'WARNING' ? 'text-purple-400' : 
+                  globalData.status === 'CRITICAL' ? 'text-pink-400' : 
+                  globalData.status === 'WARNING' ? 'text-purple-400' : 
                   'text-cyan-400'
                 }`}>
-                  {globalData?.status || 'UNKNOWN'}
+                  {globalData.status}
                 </span>
               </div>
             </div>
