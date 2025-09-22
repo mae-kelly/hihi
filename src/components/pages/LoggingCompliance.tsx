@@ -1,122 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, CheckCircle, XCircle, AlertCircle, FileSearch, Database, Server, Cloud, Network, Activity, Lock, AlertTriangle } from 'lucide-react';
+import { Shield, CheckCircle, XCircle, AlertCircle, FileSearch, Database, Server, Cloud, Network, Activity, Lock, AlertTriangle, Zap, Binary, Layers } from 'lucide-react';
+import * as THREE from 'three';
 
 const LoggingCompliance: React.FC = () => {
-  const [selectedFramework, setSelectedFramework] = useState<string>('all');
-  const [animatedScores, setAnimatedScores] = useState<Record<string, number>>({});
-  const [complianceData, setComplianceData] = useState<any>(null);
+  const [loggingData, setLoggingData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [selectedPlatform, setSelectedPlatform] = useState<'splunk' | 'chronicle' | 'combined'>('combined');
+  const sphereRef = useRef<HTMLDivElement>(null);
+  const waveRef = useRef<HTMLCanvasElement>(null);
+  const matrixRef = useRef<HTMLCanvasElement>(null);
 
   // Fetch real data from Flask API
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
-        // Fetch compliance data from multiple endpoints
-        const [cmdbResponse, taniumResponse, domainResponse] = await Promise.all([
-          fetch('http://localhost:5000/api/cmdb_presence'),
-          fetch('http://localhost:5000/api/tanium_coverage'),
-          fetch('http://localhost:5000/api/domain_metrics')
-        ]);
-
-        if (!cmdbResponse.ok || !taniumResponse.ok || !domainResponse.ok) {
-          throw new Error('Failed to fetch compliance data');
-        }
-
-        const cmdbData = await cmdbResponse.json();
-        const taniumData = await taniumResponse.json();
-        const domainData = await domainResponse.json();
-
-        // Process real data into compliance framework structure
-        const processedData = {
-          'CMDB Compliance': {
-            framework: 'Asset Management Compliance',
-            gsoScore: cmdbData.registration_rate || 0,
-            splunkScore: Math.min(100, (cmdbData.registration_rate || 0) * 1.5),
-            overallScore: cmdbData.registration_rate || 0,
-            status: cmdbData.compliance_analysis?.compliance_status || 'UNKNOWN',
-            requirements: [
-              { 
-                item: 'CMDB Registration Status',
-                gso: cmdbData.registration_rate > 90 ? 'complete' : cmdbData.registration_rate > 70 ? 'partial' : 'failed',
-                splunk: cmdbData.registration_rate > 80 ? 'complete' : cmdbData.registration_rate > 60 ? 'partial' : 'failed',
-                gap: `${cmdbData.status_breakdown?.not_registered || 0} assets not registered`
-              },
-              { 
-                item: 'Data Quality Score',
-                gso: cmdbData.compliance_analysis?.governance_maturity === 'MATURE' ? 'complete' : 
-                     cmdbData.compliance_analysis?.governance_maturity === 'DEVELOPING' ? 'partial' : 'failed',
-                splunk: 'partial',
-                gap: `Governance: ${cmdbData.compliance_analysis?.governance_maturity || 'UNKNOWN'}`
-              }
-            ],
-            metrics: {
-              registered: cmdbData.cmdb_registered || 0,
-              total: cmdbData.total_assets || 0,
-              percentage: cmdbData.registration_rate || 0
-            }
-          },
-          'Tanium Coverage': {
-            framework: 'Endpoint Management Compliance',
-            gsoScore: taniumData.coverage_percentage || 0,
-            splunkScore: Math.min(100, (taniumData.coverage_percentage || 0) * 1.2),
-            overallScore: taniumData.coverage_percentage || 0,
-            status: taniumData.deployment_analysis?.coverage_status || 'UNKNOWN',
-            requirements: [
-              {
-                item: 'Endpoint Coverage',
-                gso: taniumData.coverage_percentage > 80 ? 'complete' : taniumData.coverage_percentage > 60 ? 'partial' : 'failed',
-                splunk: taniumData.coverage_percentage > 70 ? 'complete' : taniumData.coverage_percentage > 50 ? 'partial' : 'failed',
-                gap: `${taniumData.deployment_gaps?.total_unprotected_assets || 0} assets unprotected`
-              },
-              {
-                item: 'Regional Deployment',
-                gso: Object.values(taniumData.regional_coverage || {}).every((r: any) => r.coverage_percentage > 70) ? 'complete' : 'partial',
-                splunk: 'partial',
-                gap: `${Object.values(taniumData.regional_coverage || {}).filter((r: any) => r.priority === 'HIGH').length} high priority regions`
-              }
-            ],
-            metrics: {
-              deployed: taniumData.tanium_deployed || 0,
-              total: taniumData.total_assets || 0,
-              percentage: taniumData.coverage_percentage || 0
-            }
-          },
-          'Domain Visibility': {
-            framework: 'Domain Coverage Standards',
-            gsoScore: domainData.domain_distribution?.tdc_percentage || 0,
-            splunkScore: Math.max(domainData.domain_distribution?.tdc_percentage || 0, domainData.domain_distribution?.lead_percentage || 0),
-            overallScore: ((domainData.domain_distribution?.tdc_percentage || 0) + (domainData.domain_distribution?.lead_percentage || 0)) / 2,
-            status: domainData.unique_domains?.length > 10 ? 'AT RISK' : 'CRITICAL',
-            requirements: [
-              {
-                item: 'TDC Domain Coverage',
-                gso: domainData.domain_distribution?.tdc_percentage > 30 ? 'partial' : 'failed',
-                splunk: domainData.domain_distribution?.tdc_percentage > 40 ? 'partial' : 'failed',
-                gap: `TDC at ${domainData.domain_distribution?.tdc_percentage?.toFixed(1) || 0}%`
-              },
-              {
-                item: 'LEAD Domain Coverage',
-                gso: domainData.domain_distribution?.lead_percentage > 20 ? 'partial' : 'failed',
-                splunk: domainData.domain_distribution?.lead_percentage > 30 ? 'partial' : 'failed',
-                gap: `LEAD at ${domainData.domain_distribution?.lead_percentage?.toFixed(1) || 0}%`
-              }
-            ],
-            metrics: {
-              unique_domains: domainData.unique_domains?.length || 0,
-              total_analyzed: domainData.total_analyzed || 0,
-              tdc_percentage: domainData.domain_distribution?.tdc_percentage || 0
-            }
-          }
-        };
-
-        setComplianceData(processedData);
+        const response = await fetch('http://localhost:5000/api/logging_compliance');
+        if (!response.ok) throw new Error('Failed to fetch logging compliance data');
+        const data = await response.json();
+        setLoggingData(data);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load compliance data');
+        setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
         setLoading(false);
       }
@@ -127,328 +33,492 @@ const LoggingCompliance: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Real-time compliance monitoring visualization
+  // 3D Compliance Sphere Visualization
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !complianceData) return;
+    if (!sphereRef.current || !loggingData) return;
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.001);
+
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      sphereRef.current.clientWidth / sphereRef.current.clientHeight,
+      0.1,
+      1000
+    );
+    camera.position.set(0, 0, 200);
+
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true, 
+      alpha: true 
+    });
+    renderer.setSize(sphereRef.current.clientWidth, sphereRef.current.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    sphereRef.current.appendChild(renderer.domElement);
+
+    // Main sphere representing total hosts
+    const sphereGeometry = new THREE.SphereGeometry(50, 64, 64);
+    const sphereMaterial = new THREE.MeshPhongMaterial({
+      color: 0x000000,
+      emissive: 0x00d4ff,
+      emissiveIntensity: 0.05,
+      wireframe: false,
+      transparent: true,
+      opacity: 0.2
+    });
+    const mainSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    scene.add(mainSphere);
+
+    // Splunk coverage sphere
+    const splunkRadius = 50 * (loggingData.splunk_compliance.compliance_percentage / 100);
+    const splunkGeometry = new THREE.SphereGeometry(splunkRadius, 32, 32);
+    const splunkMaterial = new THREE.MeshPhongMaterial({
+      color: 0x00d4ff,
+      emissive: 0x00d4ff,
+      emissiveIntensity: 0.3,
+      transparent: true,
+      opacity: 0.6
+    });
+    const splunkSphere = new THREE.Mesh(splunkGeometry, splunkMaterial);
+    scene.add(splunkSphere);
+
+    // Chronicle coverage sphere
+    const chronicleRadius = 50 * (loggingData.chronicle_compliance.compliance_percentage / 100);
+    const chronicleGeometry = new THREE.SphereGeometry(chronicleRadius, 32, 32);
+    const chronicleMaterial = new THREE.MeshPhongMaterial({
+      color: 0xa855f7,
+      emissive: 0xa855f7,
+      emissiveIntensity: 0.3,
+      transparent: true,
+      opacity: 0.6
+    });
+    const chronicleSphere = new THREE.Mesh(chronicleGeometry, chronicleMaterial);
+    scene.add(chronicleSphere);
+
+    // Particle field for hosts
+    const particleCount = Math.min(2000, loggingData.total_hosts / 50);
+    const particlesGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const radius = 55 + Math.random() * 30;
+
+      positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+      positions[i * 3 + 2] = radius * Math.cos(phi);
+
+      // Color based on logging status
+      const isInSplunk = Math.random() < loggingData.splunk_compliance.compliance_percentage / 100;
+      const isInChronicle = Math.random() < loggingData.chronicle_compliance.compliance_percentage / 100;
+      
+      if (isInSplunk && isInChronicle) {
+        colors[i * 3] = 0; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 1; // Cyan
+      } else if (isInSplunk) {
+        colors[i * 3] = 0; colors[i * 3 + 1] = 0.83; colors[i * 3 + 2] = 1; // Blue
+      } else if (isInChronicle) {
+        colors[i * 3] = 0.66; colors[i * 3 + 1] = 0.33; colors[i * 3 + 2] = 0.97; // Purple
+      } else {
+        colors[i * 3] = 1; colors[i * 3 + 1] = 0; colors[i * 3 + 2] = 0.27; // Pink
+      }
+    }
+
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const particlesMaterial = new THREE.PointsMaterial({
+      size: 2,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending
+    });
+
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+
+    const pointLight1 = new THREE.PointLight(0x00d4ff, 1, 300);
+    pointLight1.position.set(100, 100, 100);
+    scene.add(pointLight1);
+
+    const pointLight2 = new THREE.PointLight(0xa855f7, 1, 300);
+    pointLight2.position.set(-100, -100, -100);
+    scene.add(pointLight2);
+
+    // Animation
+    const animate = () => {
+      mainSphere.rotation.y += 0.002;
+      splunkSphere.rotation.y += 0.003;
+      chronicleSphere.rotation.y -= 0.003;
+      particles.rotation.y += 0.001;
+
+      // Pulse effect
+      const pulse = 1 + Math.sin(Date.now() * 0.002) * 0.05;
+      splunkSphere.scale.setScalar(pulse);
+      chronicleSphere.scale.setScalar(1.1 - pulse * 0.1);
+
+      // Camera orbit
+      const time = Date.now() * 0.0005;
+      camera.position.x = Math.sin(time) * 200;
+      camera.position.z = Math.cos(time) * 200;
+      camera.lookAt(0, 0, 0);
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      if (sphereRef.current && renderer.domElement) {
+        sphereRef.current.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+    };
+  }, [loggingData]);
+
+  // Wave visualization for compliance trends
+  useEffect(() => {
+    const canvas = waveRef.current;
+    if (!canvas || !loggingData) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     canvas.width = canvas.offsetWidth;
-    canvas.height = 200;
+    canvas.height = canvas.offsetHeight;
 
-    let time = 0;
     const animate = () => {
-      time += 0.02;
-      
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw compliance lines based on real data
-      Object.entries(complianceData).forEach(([framework, data]: [string, any], index) => {
-        const gsoY = canvas.height * (1 - data.gsoScore / 100);
-        const splunkY = canvas.height * (1 - data.splunkScore / 100);
-        
-        // GSO line
-        ctx.strokeStyle = data.gsoScore < 50 ? 'rgba(255, 0, 68, 0.8)' : 
-                         data.gsoScore < 80 ? 'rgba(192, 132, 252, 0.8)' : 
-                         'rgba(0, 255, 136, 0.8)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        
-        for (let x = 0; x < canvas.width; x += 5) {
-          const y = gsoY + Math.sin((x / 50) + time + index) * 10;
-          if (x === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        ctx.stroke();
-
-        // Splunk line
-        ctx.strokeStyle = data.splunkScore < 50 ? 'rgba(255, 0, 68, 0.6)' : 
-                         data.splunkScore < 80 ? 'rgba(192, 132, 252, 0.6)' : 
-                         'rgba(0, 255, 136, 0.6)';
-        ctx.beginPath();
-        
-        for (let x = 0; x < canvas.width; x += 5) {
-          const y = splunkY + Math.sin((x / 50) + time + index + 1) * 10;
-          if (x === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        ctx.stroke();
-      });
-
-      // Draw threshold line (80%)
-      ctx.strokeStyle = 'rgba(0, 255, 136, 0.3)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([5, 5]);
+      const time = Date.now() * 0.001;
+      
+      // Splunk wave
+      ctx.strokeStyle = '#00d4ff';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(0, canvas.height * 0.2);
-      ctx.lineTo(canvas.width, canvas.height * 0.2);
+      
+      for (let x = 0; x < canvas.width; x++) {
+        const y = canvas.height / 2 + 
+                 Math.sin((x / 50) + time) * (loggingData.splunk_compliance.compliance_percentage / 5) +
+                 Math.sin((x / 25) + time * 2) * 10;
+        
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
       ctx.stroke();
-      ctx.setLineDash([]);
+
+      // Chronicle wave
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      
+      for (let x = 0; x < canvas.width; x++) {
+        const y = canvas.height / 2 + 
+                 Math.sin((x / 50) + time + Math.PI) * (loggingData.chronicle_compliance.compliance_percentage / 5) +
+                 Math.sin((x / 25) + time * 2 + Math.PI) * 10;
+        
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
 
       requestAnimationFrame(animate);
     };
+
     animate();
-  }, [complianceData]);
+  }, [loggingData]);
 
-  // Animate scores
+  // Status matrix visualization
   useEffect(() => {
-    if (!complianceData) return;
-    
-    Object.entries(complianceData).forEach(([framework, data]: [string, any], index) => {
-      setTimeout(() => {
-        setAnimatedScores(prev => ({
-          ...prev,
-          [`${framework}-gso`]: data.gsoScore,
-          [`${framework}-splunk`]: data.splunkScore,
-          [`${framework}-overall`]: data.overallScore
-        }));
-      }, index * 200);
-    });
-  }, [complianceData]);
+    const canvas = matrixRef.current;
+    if (!canvas || !loggingData) return;
 
-  const getStatusIcon = (status: string) => {
-    switch(status) {
-      case 'complete': return <CheckCircle className="w-5 h-5 text-green-400" />;
-      case 'partial': return <AlertCircle className="w-5 h-5 text-yellow-400" />;
-      case 'failed': return <XCircle className="w-5 h-5 text-red-400" />;
-      default: return null;
-    }
-  };
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw status breakdown grid
+      const statuses = [
+        ...loggingData.splunk_compliance.status_breakdown,
+        ...loggingData.chronicle_compliance.status_breakdown
+      ];
+
+      const cols = 4;
+      const rows = Math.ceil(statuses.length / cols);
+      const cellWidth = canvas.width / cols;
+      const cellHeight = canvas.height / rows;
+
+      statuses.forEach((status: any, index: number) => {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        const x = col * cellWidth;
+        const y = row * cellHeight;
+
+        // Cell color based on compliance
+        const color = status.is_compliant ? '#00d4ff' : '#a855f7';
+        const opacity = status.percentage / 100;
+
+        ctx.fillStyle = `${color}${Math.floor(opacity * 255).toString(16).padStart(2, '0')}`;
+        ctx.fillRect(x + 2, y + 2, cellWidth - 4, cellHeight - 4);
+
+        // Status text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(
+          status.status.substring(0, 12),
+          x + cellWidth / 2,
+          y + cellHeight / 2 - 10
+        );
+
+        // Percentage
+        ctx.font = 'bold 14px monospace';
+        ctx.fillStyle = status.is_compliant ? '#00d4ff' : '#a855f7';
+        ctx.fillText(
+          `${status.percentage.toFixed(1)}%`,
+          x + cellWidth / 2,
+          y + cellHeight / 2 + 10
+        );
+      });
+
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  }, [loggingData]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-32 w-32 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-xl font-bold text-cyan-400">LOADING COMPLIANCE DATA</div>
+          <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
+          <div className="mt-4 text-lg font-bold text-cyan-400">ANALYZING LOGGING COMPLIANCE</div>
         </div>
       </div>
     );
   }
 
-  if (error || !complianceData) {
+  if (error || !loggingData) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center glass-panel rounded-xl p-8">
-          <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <div className="text-xl font-bold text-red-400 mb-2">DATA LOAD ERROR</div>
-          <div className="text-sm text-gray-400">{error || 'No compliance data available'}</div>
+          <AlertTriangle className="w-12 h-12 text-purple-400 mx-auto mb-4" />
+          <div className="text-lg font-bold text-purple-400">DATA LOAD ERROR</div>
+          <div className="text-sm text-white">{error || 'No data available'}</div>
         </div>
       </div>
     );
   }
 
-  // Calculate overall metrics from real data
-  const overallGSOScore = Object.values(complianceData).reduce((sum: number, data: any) => sum + data.gsoScore, 0) / Object.keys(complianceData).length;
-  const overallSplunkScore = Object.values(complianceData).reduce((sum: number, data: any) => sum + data.splunkScore, 0) / Object.keys(complianceData).length;
-  const criticalFrameworks = Object.values(complianceData).filter((data: any) => data.status === 'CRITICAL' || data.status === 'NON_COMPLIANT').length;
-  const totalGaps = Object.values(complianceData).reduce((sum: number, data: any) => 
-    sum + data.requirements.filter((r: any) => r.gso === 'failed' || r.splunk === 'failed').length, 0
-  );
+  const getStatusColor = (percentage: number) => {
+    if (percentage >= 80) return 'text-cyan-400';
+    if (percentage >= 50) return 'text-purple-400';
+    return 'text-pink-400';
+  };
+
+  const getStatusLabel = (percentage: number) => {
+    if (percentage >= 80) return 'HEALTHY';
+    if (percentage >= 50) return 'WARNING';
+    return 'CRITICAL';
+  };
 
   return (
-    <div className="p-8 min-h-screen">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-5xl font-black mb-3 holo-text">
-          LOGGING COMPLIANCE DASHBOARD
-        </h1>
-        <p className="text-purple-300/60 uppercase tracking-widest text-sm">
-          Real-Time Compliance Status from Universal CMDB
-        </p>
-      </div>
-
-      {/* Critical Alert based on real data */}
-      {overallGSOScore < 50 && (
-        <div className="mb-6 glass-panel rounded-xl p-4 border-red-500/50 bg-red-500/10">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-6 h-6 text-red-400 animate-pulse" />
-            <div>
-              <span className="text-red-400 font-bold">COMPLIANCE FAILURE:</span>
-              <span className="text-white ml-2">Overall compliance at {overallGSOScore.toFixed(1)}% - {criticalFrameworks} frameworks critical</span>
-            </div>
+    <div className="h-full flex flex-col p-4">
+      {/* Critical Alert */}
+      {loggingData.combined_compliance.either_platform.percentage < 50 && (
+        <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
+            <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
+            <span className="text-white text-sm">
+              Only {loggingData.combined_compliance.either_platform.percentage.toFixed(1)}% of hosts have logging enabled
+            </span>
           </div>
         </div>
       )}
 
-      {/* Overall Compliance Scores from real data */}
-      <div className="grid grid-cols-5 gap-4 mb-8">
-        <div className="glass-panel rounded-xl p-6">
-          <Shield className="w-6 h-6 text-red-400 mb-2" />
-          <div className="text-3xl font-bold text-red-400">{overallGSOScore.toFixed(1)}%</div>
-          <div className="text-xs text-gray-400 uppercase">Overall GSO</div>
-        </div>
-        <div className="glass-panel rounded-xl p-6">
-          <Database className="w-6 h-6 text-yellow-400 mb-2" />
-          <div className="text-3xl font-bold text-yellow-400">{overallSplunkScore.toFixed(1)}%</div>
-          <div className="text-xs text-gray-400 uppercase">Overall Splunk</div>
-        </div>
-        <div className="glass-panel rounded-xl p-6">
-          <AlertCircle className="w-6 h-6 text-red-400 mb-2" />
-          <div className="text-3xl font-bold text-red-400">{criticalFrameworks}</div>
-          <div className="text-xs text-gray-400 uppercase">Critical</div>
-        </div>
-        <div className="glass-panel rounded-xl p-6">
-          <XCircle className="w-6 h-6 text-orange-400 mb-2" />
-          <div className="text-3xl font-bold text-orange-400">{totalGaps}</div>
-          <div className="text-xs text-gray-400 uppercase">Total Gaps</div>
-        </div>
-        <div className="glass-panel rounded-xl p-6">
-          <Activity className="w-6 h-6 text-purple-400 mb-2" />
-          <div className="text-3xl font-bold text-purple-400">{Object.keys(complianceData).length}</div>
-          <div className="text-xs text-gray-400 uppercase">Frameworks</div>
-        </div>
-      </div>
-
-      {/* Real-time Compliance Monitoring */}
-      <div className="glass-panel rounded-2xl p-6 mb-8">
-        <h3 className="text-sm font-semibold text-cyan-300 mb-4 uppercase tracking-wider">
-          Real-Time Compliance Monitoring
-        </h3>
-        <canvas 
-          ref={canvasRef}
-          className="w-full"
-          style={{
-            filter: 'drop-shadow(0 0 20px rgba(0, 255, 255, 0.3))'
-          }}
-        />
-        <div className="flex items-center justify-between mt-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-green-400 rounded-full"></div>
-              <span className="text-xs text-gray-400">Target (80%)</span>
+      <div className="flex-1 grid grid-cols-12 gap-4">
+        {/* 3D Compliance Sphere */}
+        <div className="col-span-7">
+          <div className="h-full glass-panel rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-cyan-400">LOGGING PLATFORM COVERAGE</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedPlatform('splunk')}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                    selectedPlatform === 'splunk' 
+                      ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                      : 'bg-gray-900/50 border border-gray-700 text-gray-400'
+                  }`}
+                >
+                  SPLUNK
+                </button>
+                <button
+                  onClick={() => setSelectedPlatform('chronicle')}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                    selectedPlatform === 'chronicle' 
+                      ? 'bg-purple-500/20 border border-purple-500 text-purple-400'
+                      : 'bg-gray-900/50 border border-gray-700 text-gray-400'
+                  }`}
+                >
+                  CHRONICLE
+                </button>
+                <button
+                  onClick={() => setSelectedPlatform('combined')}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                    selectedPlatform === 'combined' 
+                      ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500 text-white'
+                      : 'bg-gray-900/50 border border-gray-700 text-gray-400'
+                  }`}
+                >
+                  COMBINED
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-400 rounded-full"></div>
-              <span className="text-xs text-gray-400">Critical (&lt;50%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-purple-400 rounded-full"></div>
-              <span className="text-xs text-gray-400">Warning (50-80%)</span>
-            </div>
+            <div ref={sphereRef} className="w-full" style={{ height: 'calc(100% - 60px)' }} />
           </div>
-          <span className="text-xs text-red-400 font-bold">
-            {criticalFrameworks > 0 ? '⚠️ CRITICAL NON-COMPLIANCE' : '✓ MONITORING ACTIVE'}
-          </span>
         </div>
-      </div>
 
-      {/* Compliance Frameworks with real data */}
-      <div className="grid grid-cols-2 gap-6 mb-8">
-        {Object.entries(complianceData).map(([framework, data]: [string, any]) => (
-          <div key={framework} className="glass-panel rounded-2xl p-6">
-            {/* Framework Header */}
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-xl font-bold text-white">{framework}</h2>
-                <p className="text-sm text-gray-400">{data.framework}</p>
-              </div>
-              <span className={`px-3 py-1 rounded-full text-sm font-bold ${
-                data.status === 'CRITICAL' || data.status === 'NON_COMPLIANT' ? 'bg-red-500/20 text-red-400' :
-                data.status === 'FAILED' ? 'bg-orange-500/20 text-orange-400' :
-                data.status === 'PARTIAL_COMPLIANCE' ? 'bg-yellow-500/20 text-yellow-400' :
-                'bg-green-500/20 text-green-400'
-              }`}>
-                {data.status}
-              </span>
-            </div>
-
-            {/* Scores */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="text-center">
-                <div className="text-xs text-cyan-400/60 mb-1">GSO</div>
-                <div className={`text-xl font-bold ${data.gsoScore < 30 ? 'text-red-400' : data.gsoScore < 60 ? 'text-yellow-400' : 'text-green-400'}`}>
-                  {animatedScores[`${framework}-gso`]?.toFixed(1) || 0}%
+        {/* Right Column */}
+        <div className="col-span-5 space-y-3">
+          {/* Main Metrics */}
+          <div className="glass-panel rounded-xl p-4">
+            <h3 className="text-sm font-bold text-purple-400 mb-3">COMPLIANCE OVERVIEW</h3>
+            
+            {/* Splunk */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center gap-2">
+                  <Database className="w-4 h-4 text-cyan-400" />
+                  <span className="text-white font-bold">SPLUNK</span>
+                </div>
+                <div>
+                  <span className={`text-2xl font-bold ${getStatusColor(loggingData.splunk_compliance.compliance_percentage)}`}>
+                    {loggingData.splunk_compliance.compliance_percentage.toFixed(1)}%
+                  </span>
+                  <span className={`ml-2 text-xs ${getStatusColor(loggingData.splunk_compliance.compliance_percentage)}`}>
+                    {getStatusLabel(loggingData.splunk_compliance.compliance_percentage)}
+                  </span>
                 </div>
               </div>
-              <div className="text-center">
-                <div className="text-xs text-purple-400/60 mb-1">SPLUNK</div>
-                <div className={`text-xl font-bold ${data.splunkScore < 30 ? 'text-red-400' : data.splunkScore < 60 ? 'text-yellow-400' : 'text-green-400'}`}>
-                  {animatedScores[`${framework}-splunk`]?.toFixed(1) || 0}%
-                </div>
+              <div className="h-3 bg-black/50 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-400/50 transition-all duration-1000"
+                  style={{ width: `${loggingData.splunk_compliance.compliance_percentage}%` }}
+                />
               </div>
-              <div className="text-center">
-                <div className="text-xs text-pink-400/60 mb-1">OVERALL</div>
-                <div className={`text-xl font-bold ${data.overallScore < 30 ? 'text-red-400' : data.overallScore < 60 ? 'text-yellow-400' : 'text-green-400'}`}>
-                  {animatedScores[`${framework}-overall`]?.toFixed(1) || 0}%
-                </div>
+              <div className="mt-2 flex justify-between text-xs">
+                <span className="text-cyan-400">
+                  {loggingData.splunk_compliance.compliant_hosts.toLocaleString()} compliant
+                </span>
+                <span className="text-purple-400">
+                  {loggingData.splunk_compliance.non_compliant_hosts.toLocaleString()} missing
+                </span>
               </div>
             </div>
 
-            {/* Requirements */}
-            <div className="space-y-3">
-              {data.requirements.map((req: any, idx: number) => (
-                <div key={idx} className="border-l-2 border-gray-700 pl-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-gray-300">{req.item}</span>
-                    <div className="flex gap-2">
-                      <div className="flex items-center gap-1">
-                        {getStatusIcon(req.gso)}
-                        <span className="text-xs text-gray-500">GSO</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {getStatusIcon(req.splunk)}
-                        <span className="text-xs text-gray-500">SPL</span>
-                      </div>
-                    </div>
+            {/* Chronicle */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-purple-400" />
+                  <span className="text-white font-bold">CHRONICLE</span>
+                </div>
+                <div>
+                  <span className={`text-2xl font-bold ${getStatusColor(loggingData.chronicle_compliance.compliance_percentage)}`}>
+                    {loggingData.chronicle_compliance.compliance_percentage.toFixed(1)}%
+                  </span>
+                  <span className={`ml-2 text-xs ${getStatusColor(loggingData.chronicle_compliance.compliance_percentage)}`}>
+                    {getStatusLabel(loggingData.chronicle_compliance.compliance_percentage)}
+                  </span>
+                </div>
+              </div>
+              <div className="h-3 bg-black/50 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-purple-400 to-purple-400/50 transition-all duration-1000"
+                  style={{ width: `${loggingData.chronicle_compliance.compliance_percentage}%` }}
+                />
+              </div>
+              <div className="mt-2 flex justify-between text-xs">
+                <span className="text-purple-400">
+                  {loggingData.chronicle_compliance.compliant_hosts.toLocaleString()} compliant
+                </span>
+                <span className="text-pink-400">
+                  {loggingData.chronicle_compliance.non_compliant_hosts.toLocaleString()} missing
+                </span>
+              </div>
+            </div>
+
+            {/* Combined Coverage */}
+            <div className="pt-3 border-t border-white/10">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">BOTH</div>
+                  <div className="text-lg font-bold text-cyan-400">
+                    {loggingData.combined_compliance.both_platforms.percentage.toFixed(1)}%
                   </div>
-                  <p className="text-xs text-red-400">Gap: {req.gap}</p>
                 </div>
-              ))}
-            </div>
-
-            {/* Metrics */}
-            {data.metrics && (
-              <div className="mt-4 pt-4 border-t border-gray-700">
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  {Object.entries(data.metrics).slice(0, 3).map(([key, value]: [string, any]) => (
-                    <div key={key}>
-                      <span className="text-gray-500">{key}:</span>
-                      <span className="ml-1 font-mono text-cyan-400">
-                        {typeof value === 'number' ? 
-                          (key.includes('percentage') || key.includes('_percentage') ? 
-                            `${value.toFixed(1)}%` : value.toLocaleString()) 
-                          : value}
-                      </span>
-                    </div>
-                  ))}
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">EITHER</div>
+                  <div className="text-lg font-bold text-purple-400">
+                    {loggingData.combined_compliance.either_platform.percentage.toFixed(1)}%
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">NEITHER</div>
+                  <div className="text-lg font-bold text-pink-400">
+                    {loggingData.combined_compliance.neither_platform.percentage.toFixed(1)}%
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
-        ))}
-      </div>
 
-      {/* Action Items based on real data */}
-      <div className="mt-8 grid grid-cols-3 gap-4">
-        <div className="glass-panel rounded-xl p-4 border-red-500/30">
-          <h3 className="text-sm font-bold text-red-400 mb-2">IMMEDIATE ACTION</h3>
-          <p className="text-xs text-gray-300">
-            {Object.values(complianceData).find((d: any) => d.status === 'CRITICAL' || d.status === 'NON_COMPLIANT') ? 
-              `Critical compliance failure in ${criticalFrameworks} frameworks` : 
-              'Monitor compliance metrics'}
-          </p>
-        </div>
-        <div className="glass-panel rounded-xl p-4 border-yellow-500/30">
-          <h3 className="text-sm font-bold text-yellow-400 mb-2">PRIORITY GAPS</h3>
-          <p className="text-xs text-gray-300">
-            {totalGaps} total gaps identified across {Object.keys(complianceData).length} frameworks
-          </p>
-        </div>
-        <div className="glass-panel rounded-xl p-4 border-cyan-500/30">
-          <h3 className="text-sm font-bold text-cyan-400 mb-2">TARGET SCORE</h3>
-          <p className="text-xs text-gray-300">
-            {(80 - overallGSOScore).toFixed(1)}% improvement needed to reach compliance target
-          </p>
+          {/* Wave Visualization */}
+          <div className="glass-panel rounded-xl p-3">
+            <h3 className="text-sm font-bold text-cyan-400 mb-2">COMPLIANCE SIGNAL</h3>
+            <canvas ref={waveRef} className="w-full h-24" />
+          </div>
+
+          {/* Status Matrix */}
+          <div className="glass-panel rounded-xl p-3">
+            <h3 className="text-sm font-bold text-purple-400 mb-2">STATUS BREAKDOWN</h3>
+            <canvas ref={matrixRef} className="w-full h-32" />
+          </div>
+
+          {/* Key Stats */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="glass-panel rounded-xl p-3">
+              <Activity className="w-4 h-4 text-cyan-400 mb-2" />
+              <div className="text-2xl font-bold text-white">
+                {loggingData.total_hosts.toLocaleString()}
+              </div>
+              <div className="text-xs text-cyan-400">TOTAL HOSTS</div>
+            </div>
+            <div className="glass-panel rounded-xl p-3">
+              <AlertCircle className="w-4 h-4 text-purple-400 mb-2" />
+              <div className="text-2xl font-bold text-white">
+                {loggingData.combined_compliance.neither_platform.host_count.toLocaleString()}
+              </div>
+              <div className="text-xs text-purple-400">NOT LOGGING</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
