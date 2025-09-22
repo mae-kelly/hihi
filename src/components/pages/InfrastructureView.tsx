@@ -2,42 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Server, Cloud, Database, Network, Shield, AlertTriangle, TrendingDown, Activity, Cpu, HardDrive, Wifi, Lock, Layers, Globe, Zap, Box } from 'lucide-react';
 import * as THREE from 'three';
 
-interface InfrastructureData {
-  infrastructure_matrix: Record<string, number>;
-  detailed_data: Array<{
-    type: string;
-    frequency: number;
-    percentage: number;
-    threat_level: string;
-  }>;
-  regional_analysis: Record<string, Record<string, number>>;
-  business_unit_analysis: Record<string, Record<string, number>>;
-  total_types: number;
-  modernization_analysis: {
-    modernization_score: number;
-    modernization_percentage: number;
-    legacy_systems: Array<any>;
-    cloud_adoption: Array<any>;
-  };
-}
-
 const InfrastructureView: React.FC = () => {
-  const [infrastructureData, setInfrastructureData] = useState<InfrastructureData | null>(null);
+  const [infrastructureData, setInfrastructureData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, number>>({});
+  const [selectedType, setSelectedType] = useState<string | null>(null);
   const layersRef = useRef<HTMLDivElement>(null);
-  const neuralRef = useRef<HTMLCanvasElement>(null);
+  const networkRef = useRef<HTMLCanvasElement>(null);
 
-  // Fetch real data from Python backend
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         const response = await fetch('http://localhost:5000/api/infrastructure_type');
         if (!response.ok) throw new Error('Failed to fetch infrastructure data');
-        const result = await response.json();
-        setInfrastructureData(result);
+        const data = await response.json();
+        setInfrastructureData(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
@@ -74,53 +54,38 @@ const InfrastructureView: React.FC = () => {
     renderer.setPixelRatio(window.devicePixelRatio);
     layersRef.current.appendChild(renderer.domElement);
 
-    const layers: THREE.Mesh[] = [];
     const platforms: THREE.Group[] = [];
     
     // Create layers based on real infrastructure data
-    infrastructureData.detailed_data.slice(0, 4).forEach((infra, index) => {
+    infrastructureData.detailed_data.slice(0, 5).forEach((infra: any, index: number) => {
       const platformGroup = new THREE.Group();
       
-      const hexRadius = 60 - index * 10;
-      const hexShape = new THREE.Shape();
-      for (let i = 0; i < 6; i++) {
-        const angle = (i / 6) * Math.PI * 2;
-        const x = Math.cos(angle) * hexRadius;
-        const z = Math.sin(angle) * hexRadius;
-        if (i === 0) hexShape.moveTo(x, z);
-        else hexShape.lineTo(x, z);
-      }
-      hexShape.closePath();
+      const radius = 60 - index * 10;
+      const height = 8 - index;
       
-      const extrudeSettings = {
-        depth: 8,
-        bevelEnabled: true,
-        bevelSegments: 2,
-        steps: 2,
-        bevelSize: 1,
-        bevelThickness: 1
-      };
-      
-      const hexGeometry = new THREE.ExtrudeGeometry(hexShape, extrudeSettings);
-      const hexMaterial = new THREE.MeshPhongMaterial({
-        color: infra.threat_level === 'CRITICAL' ? 0xff00ff : infra.threat_level === 'HIGH' ? 0xc084fc : 0x00ffff,
+      // Create platform based on percentage
+      const geometry = new THREE.CylinderGeometry(radius, radius, height, 32);
+      const material = new THREE.MeshPhongMaterial({
+        color: infra.threat_level === 'CRITICAL' ? 0xff00ff : 
+               infra.threat_level === 'HIGH' ? 0xc084fc : 
+               infra.threat_level === 'MEDIUM' ? 0x00ffff : 
+               0x00ff88,
         transparent: true,
         opacity: 0.7,
         emissive: infra.threat_level === 'CRITICAL' ? 0xff00ff : 0x00ffff,
         emissiveIntensity: 0.2,
       });
       
-      const hexMesh = new THREE.Mesh(hexGeometry, hexMaterial);
-      hexMesh.rotation.x = Math.PI / 2;
-      hexMesh.position.y = index * 30;
-      platformGroup.add(hexMesh);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.y = index * 25;
+      platformGroup.add(mesh);
       
-      // Add nodes representing assets
+      // Add nodes representing assets (scaled by frequency)
       const nodeCount = Math.min(20, Math.floor(infra.frequency / 1000));
       for (let i = 0; i < nodeCount; i++) {
         const angle = (i / nodeCount) * Math.PI * 2;
-        const radius = hexRadius * 0.7;
-        const nodeGeometry = new THREE.BoxGeometry(4, 8, 4);
+        const nodeRadius = radius * 0.7;
+        const nodeGeometry = new THREE.BoxGeometry(4, 6, 4);
         const nodeMaterial = new THREE.MeshPhongMaterial({
           color: infra.percentage < 30 ? 0xff00ff : 0x00ffff,
           emissive: infra.percentage < 30 ? 0xff00ff : 0x00ffff,
@@ -128,9 +93,9 @@ const InfrastructureView: React.FC = () => {
         });
         const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
         node.position.set(
-          Math.cos(angle) * radius,
-          index * 30 + 8,
-          Math.sin(angle) * radius
+          Math.cos(angle) * nodeRadius,
+          index * 25 + height,
+          Math.sin(angle) * nodeRadius
         );
         platformGroup.add(node);
       }
@@ -138,6 +103,22 @@ const InfrastructureView: React.FC = () => {
       scene.add(platformGroup);
       platforms.push(platformGroup);
     });
+
+    // Add connecting lines between layers
+    for (let i = 0; i < platforms.length - 1; i++) {
+      const points = [
+        new THREE.Vector3(0, i * 25, 0),
+        new THREE.Vector3(0, (i + 1) * 25, 0)
+      ];
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+      const lineMaterial = new THREE.LineBasicMaterial({ 
+        color: 0x00ffff, 
+        transparent: true, 
+        opacity: 0.3 
+      });
+      const line = new THREE.Line(lineGeometry, lineMaterial);
+      scene.add(line);
+    }
 
     // Lighting
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -160,7 +141,7 @@ const InfrastructureView: React.FC = () => {
       camera.position.x = Math.cos(time) * 180;
       camera.position.z = Math.sin(time) * 180;
       camera.position.y = 100 + Math.sin(time * 2) * 30;
-      camera.lookAt(0, 45, 0);
+      camera.lookAt(0, 30, 0);
       
       renderer.render(scene, camera);
     };
@@ -176,9 +157,9 @@ const InfrastructureView: React.FC = () => {
     };
   }, [infrastructureData]);
 
-  // Neural Network Canvas with real data
+  // Network visualization with real data
   useEffect(() => {
-    const canvas = neuralRef.current;
+    const canvas = networkRef.current;
     if (!canvas || !infrastructureData) return;
 
     const ctx = canvas.getContext('2d');
@@ -187,7 +168,7 @@ const InfrastructureView: React.FC = () => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
-    const nodes = infrastructureData.detailed_data.slice(0, 6).map((infra, i) => ({
+    const nodes = infrastructureData.detailed_data.slice(0, 6).map((infra: any, i: number) => ({
       x: canvas.width / 2 + Math.cos(i * Math.PI * 2 / 6) * 80,
       y: canvas.height / 2 + Math.sin(i * Math.PI * 2 / 6) * 80,
       type: infra.type,
@@ -236,7 +217,7 @@ const InfrastructureView: React.FC = () => {
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(node.type.substring(0, 10), node.x, node.y - size - 10);
+        ctx.fillText(node.type.substring(0, 15), node.x, node.y - size - 10);
         ctx.font = '9px monospace';
         ctx.fillText(`${node.data.percentage.toFixed(1)}%`, node.x, node.y + size + 15);
       });
@@ -245,20 +226,6 @@ const InfrastructureView: React.FC = () => {
     };
 
     animate();
-  }, [infrastructureData]);
-
-  // Animate metrics
-  useEffect(() => {
-    if (infrastructureData) {
-      infrastructureData.detailed_data.forEach((infra, index) => {
-        setTimeout(() => {
-          setAnimatedMetrics(prev => ({
-            ...prev,
-            [infra.type]: infra.percentage
-          }));
-        }, index * 200);
-      });
-    }
   }, [infrastructureData]);
 
   if (loading) {
@@ -284,7 +251,7 @@ const InfrastructureView: React.FC = () => {
     );
   }
 
-  const totalAssets = Object.values(infrastructureData.infrastructure_matrix).reduce((sum, count) => sum + count, 0);
+  const totalAssets = Object.values(infrastructureData.infrastructure_matrix).reduce((sum: number, count: any) => sum + count, 0);
 
   return (
     <div className="p-3 h-screen bg-black overflow-hidden flex flex-col">
@@ -295,7 +262,7 @@ const InfrastructureView: React.FC = () => {
             <AlertTriangle className="w-4 h-4 text-purple-400 animate-pulse" />
             <span className="text-purple-400 font-bold text-xs">MODERNIZATION ALERT:</span>
             <span className="text-white text-xs">
-              Only {infrastructureData.modernization_analysis.modernization_percentage.toFixed(1)}% modernized
+              Only {infrastructureData.modernization_analysis.modernization_percentage.toFixed(1)}% cloud adoption - {infrastructureData.modernization_analysis.legacy_systems.length} legacy systems detected
             </span>
           </div>
         </div>
@@ -303,13 +270,16 @@ const InfrastructureView: React.FC = () => {
 
       {/* Summary Stats from Real Data */}
       <div className="grid grid-cols-6 gap-2 mb-3">
-        {infrastructureData.detailed_data.slice(0, 5).map((infra) => (
+        {infrastructureData.detailed_data.slice(0, 5).map((infra: any) => (
           <div key={infra.type} className="bg-black/50 rounded-lg border border-white/10 p-2 hover:border-blue-500/50 transition-all">
             <Server className="w-4 h-4 mb-1" style={{ 
-              color: infra.threat_level === 'CRITICAL' ? '#ff00ff' : '#00ffff' 
+              color: infra.threat_level === 'CRITICAL' ? '#ff00ff' : 
+                     infra.threat_level === 'HIGH' ? '#c084fc' :
+                     infra.threat_level === 'MEDIUM' ? '#00ffff' :
+                     '#00ff88'
             }} />
             <div className="text-lg font-bold text-white">{infra.percentage.toFixed(1)}%</div>
-            <div className="text-[10px] text-white/60">{infra.type}</div>
+            <div className="text-[10px] text-white/60 truncate">{infra.type}</div>
           </div>
         ))}
         <div className="bg-black/50 rounded-lg border border-purple-500/30 p-2">
@@ -326,47 +296,58 @@ const InfrastructureView: React.FC = () => {
           <div className="p-2 border-b border-blue-500/20">
             <h3 className="text-[10px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1">
               <Layers className="w-3 h-3" />
-              Infrastructure Stack (Real Data)
+              Infrastructure Stack - {totalAssets.toLocaleString()} Assets
             </h3>
           </div>
           <div ref={layersRef} className="w-full h-[240px]" />
         </div>
 
-        {/* Neural Network */}
+        {/* Network Visualization */}
         <div className="bg-black border border-purple-500/30 rounded-lg overflow-hidden">
           <div className="p-2 border-b border-purple-500/20">
             <h3 className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
-              <Cpu className="w-3 h-3" />
+              <Network className="w-3 h-3" />
               Infrastructure Network
             </h3>
           </div>
-          <canvas ref={neuralRef} className="w-full h-[240px]" />
+          <canvas ref={networkRef} className="w-full h-[240px]" />
         </div>
       </div>
 
       {/* Infrastructure Grid from Real Data */}
       <div className="grid grid-cols-4 gap-2">
-        {infrastructureData.detailed_data.slice(0, 4).map((infra) => (
-          <div key={infra.type} className="bg-black/50 rounded-lg border p-2"
-               style={{
-                 borderColor: infra.threat_level === 'CRITICAL' ? 'rgba(255, 0, 255, 0.3)' : 
-                             infra.threat_level === 'HIGH' ? 'rgba(168, 85, 247, 0.3)' : 
-                             'rgba(0, 212, 255, 0.3)'
-               }}>
+        {infrastructureData.detailed_data.slice(0, 8).map((infra: any) => (
+          <div 
+            key={infra.type} 
+            className="bg-black/50 rounded-lg border p-2 cursor-pointer hover:bg-gray-900/30 transition-all"
+            style={{
+              borderColor: infra.threat_level === 'CRITICAL' ? 'rgba(255, 0, 255, 0.3)' : 
+                          infra.threat_level === 'HIGH' ? 'rgba(168, 85, 247, 0.3)' : 
+                          infra.threat_level === 'MEDIUM' ? 'rgba(0, 212, 255, 0.3)' :
+                          'rgba(0, 255, 136, 0.3)'
+            }}
+            onClick={() => setSelectedType(infra.type)}
+          >
             {/* Header */}
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1">
                 <Server className="w-4 h-4" style={{ 
-                  color: infra.threat_level === 'CRITICAL' ? '#ff00ff' : '#00ffff' 
+                  color: infra.threat_level === 'CRITICAL' ? '#ff00ff' : 
+                         infra.threat_level === 'HIGH' ? '#c084fc' :
+                         infra.threat_level === 'MEDIUM' ? '#00ffff' :
+                         '#00ff88'
                 }} />
                 <div>
-                  <h3 className="text-sm font-bold text-white">{infra.type}</h3>
+                  <h3 className="text-sm font-bold text-white truncate">{infra.type}</h3>
                   <p className="text-[9px] text-white/60">{infra.frequency.toLocaleString()} assets</p>
                 </div>
               </div>
               <div className="text-right">
                 <div className="text-sm font-bold" style={{
-                  color: infra.threat_level === 'CRITICAL' ? '#ff00ff' : '#00ffff'
+                  color: infra.threat_level === 'CRITICAL' ? '#ff00ff' : 
+                         infra.threat_level === 'HIGH' ? '#c084fc' :
+                         infra.threat_level === 'MEDIUM' ? '#00ffff' :
+                         '#00ff88'
                 }}>
                   {infra.percentage.toFixed(1)}%
                 </div>
@@ -380,21 +361,23 @@ const InfrastructureView: React.FC = () => {
                 <div 
                   className="h-full rounded-full transition-all duration-1000"
                   style={{ 
-                    width: `${animatedMetrics[infra.type] || 0}%`,
+                    width: `${infra.percentage}%`,
                     background: infra.threat_level === 'CRITICAL' ? 
                       'linear-gradient(90deg, #ff00ff, #ff00ffdd)' :
-                      'linear-gradient(90deg, #00ffff, #00ffffdd)'
+                      infra.threat_level === 'HIGH' ?
+                      'linear-gradient(90deg, #c084fc, #c084fcdd)' :
+                      infra.threat_level === 'MEDIUM' ?
+                      'linear-gradient(90deg, #00ffff, #00ffffdd)' :
+                      'linear-gradient(90deg, #00ff88, #00ff88dd)'
                   }}
                 />
               </div>
             </div>
 
-            {/* Regional Distribution */}
-            {infrastructureData.regional_analysis && (
-              <div className="text-[8px] text-gray-400">
-                Regions: {Object.keys(infrastructureData.regional_analysis).length}
-              </div>
-            )}
+            {/* Percentage of total */}
+            <div className="text-[8px] text-gray-400">
+              {((infra.frequency / totalAssets) * 100).toFixed(2)}% of total infrastructure
+            </div>
           </div>
         ))}
       </div>

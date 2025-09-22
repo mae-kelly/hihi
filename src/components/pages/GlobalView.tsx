@@ -2,176 +2,57 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Globe, Database, Server, Cloud, Shield, Activity, Zap, Wifi, Eye, AlertTriangle, TrendingDown, Satellite, Radio, Radar } from 'lucide-react';
 import * as THREE from 'three';
 
-interface GlobalData {
-  total_assets: number;
-  splunk_forwarding: number;
-  qso_enabled: number;
-  cmdb_present: number;
-  edr_covered: number;
-  tanium_managed: number;
-  dlp_covered: number;
-  csoc_coverage: number;
-  splunk_coverage: number;
-  cmdb_coverage: number;
-  edr_coverage: number;
-  critical_gaps: number;
-}
-
-interface RegionalData {
-  region_s: string;
-  country_s: string;
-  total_assets: number;
-  visible_assets: number;
-  cmdb_assets: number;
-  edr_assets: number;
-  visibility_percentage: number;
-  cmdb_coverage: number;
-  edr_coverage: number;
-  visibility_gap: number;
-}
-
 const GlobalView: React.FC = () => {
-  const [selectedPlatform, setSelectedPlatform] = useState<'csoc' | 'splunk' | 'cmdb'>('csoc');
-  const [globalData, setGlobalData] = useState<GlobalData | null>(null);
-  const [regionalData, setRegionalData] = useState<RegionalData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+  const [globalData, setGlobalData] = useState<any>(null);
+  const [selectedPlatform, setSelectedPlatform] = useState<'overview' | 'regional' | 'infrastructure'>('overview');
   const globeRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const frameRef = useRef<number>(0);
-  const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
 
-  // Fetch real data from Python backend
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
-        // Fetch global overview
-        const globalResponse = await fetch('http://localhost:5000/api/global-view');
-        if (!globalResponse.ok) throw new Error('Failed to fetch global data');
-        const globalResult = await globalResponse.json();
-        setGlobalData(globalResult);
+        const endpoints = [
+          '/api/database_status',
+          '/api/cmdb_presence',
+          '/api/tanium_coverage',
+          '/api/region_metrics',
+          '/api/infrastructure_type'
+        ];
 
-        // Fetch regional breakdown
-        const regionalResponse = await fetch('http://localhost:5000/api/regional-view');
-        if (!regionalResponse.ok) throw new Error('Failed to fetch regional data');
-        const regionalResult = await regionalResponse.json();
-        setRegionalData(regionalResult);
+        const responses = await Promise.all(
+          endpoints.map(endpoint => 
+            fetch(`http://localhost:5000${endpoint}`).then(res => res.json())
+          )
+        );
 
+        setGlobalData({
+          status: responses[0],
+          cmdb: responses[1],
+          tanium: responses[2],
+          regional: responses[3],
+          infrastructure: responses[4]
+        });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        setError(err instanceof Error ? err.message : 'Failed to fetch data');
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Calculate current platform data
-  const currentData = React.useMemo(() => {
-    if (!globalData) return null;
-
-    const baseData = {
-      totalAssets: globalData.total_assets,
-      missing: 0,
-      color: '#00ffff',
-      glowColor: '#00ffff',
-      status: 'UNKNOWN',
-      trend: 0,
-    };
-
-    switch (selectedPlatform) {
-      case 'csoc':
-        return {
-          ...baseData,
-          covered: globalData.splunk_forwarding + globalData.qso_enabled, // Combined CSOC coverage
-          percentage: globalData.csoc_coverage,
-          missing: globalData.critical_gaps,
-          status: globalData.csoc_coverage < 20 ? 'CRITICAL' : globalData.csoc_coverage < 50 ? 'WARNING' : 'GOOD',
-          color: globalData.csoc_coverage < 20 ? '#ff00ff' : globalData.csoc_coverage < 50 ? '#c084fc' : '#00ffff'
-        };
-      
-      case 'splunk':
-        return {
-          ...baseData,
-          covered: globalData.splunk_forwarding,
-          percentage: globalData.splunk_coverage,
-          missing: globalData.total_assets - globalData.splunk_forwarding,
-          status: globalData.splunk_coverage < 50 ? 'WARNING' : 'GOOD',
-          color: globalData.splunk_coverage < 50 ? '#c084fc' : '#00ffff'
-        };
-      
-      case 'cmdb':
-        return {
-          ...baseData,
-          covered: globalData.cmdb_present,
-          percentage: globalData.cmdb_coverage,
-          missing: globalData.total_assets - globalData.cmdb_present,
-          status: globalData.cmdb_coverage < 80 ? 'WARNING' : 'GOOD',
-          color: globalData.cmdb_coverage < 80 ? '#c084fc' : '#00ff88'
-        };
-      
-      default:
-        return baseData;
-    }
-  }, [globalData, selectedPlatform]);
-
-  // Group regional data by region for better visualization
-  const regionSummary = React.useMemo(() => {
-    const regions: Record<string, {
-      name: string;
-      totalAssets: number;
-      coverage: number;
-      status: string;
-      countries: number;
-    }> = {};
-
-    regionalData.forEach(item => {
-      if (!regions[item.region_s]) {
-        regions[item.region_s] = {
-          name: item.region_s,
-          totalAssets: 0,
-          coverage: 0,
-          status: 'unknown',
-          countries: 0
-        };
-      }
-      
-      regions[item.region_s].totalAssets += item.total_assets;
-      regions[item.region_s].countries += 1;
-    });
-
-    // Calculate average coverage per region
-    Object.keys(regions).forEach(regionKey => {
-      const regionCountries = regionalData.filter(item => item.region_s === regionKey);
-      const totalAssets = regionCountries.reduce((sum, country) => sum + country.total_assets, 0);
-      const weightedCoverage = regionCountries.reduce((sum, country) => 
-        sum + (country.visibility_percentage * country.total_assets), 0
-      );
-      
-      regions[regionKey].coverage = totalAssets > 0 ? weightedCoverage / totalAssets : 0;
-      regions[regionKey].status = regions[regionKey].coverage < 30 ? 'critical' : 
-                                 regions[regionKey].coverage < 60 ? 'warning' : 'secure';
-    });
-
-    return Object.values(regions);
-  }, [regionalData]);
-
-  // 3D Globe Setup with Real Data
+  // 3D Globe visualization with real data
   useEffect(() => {
     if (!globeRef.current || !globalData) return;
 
-    // Scene setup
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x000000, 0.00025);
-    sceneRef.current = scene;
 
-    // Camera
     const camera = new THREE.PerspectiveCamera(
       45,
       globeRef.current.clientWidth / globeRef.current.clientHeight,
@@ -180,24 +61,20 @@ const GlobalView: React.FC = () => {
     );
     camera.position.set(0, 0, 250);
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ 
       antialias: true, 
-      alpha: true,
-      powerPreference: "high-performance"
+      alpha: true 
     });
     renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     globeRef.current.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
 
-    // Globe
+    // Globe based on real coverage
+    const coverage = globalData.cmdb?.registration_rate || 0;
     const globeGeometry = new THREE.SphereGeometry(80, 64, 64);
     const globeMaterial = new THREE.MeshPhongMaterial({
-      color: 0x001122,
-      emissive: currentData?.color || 0x00ffff,
+      color: coverage < 50 ? 0xff00ff : coverage < 80 ? 0xc084fc : 0x00ffff,
+      emissive: coverage < 50 ? 0xff00ff : 0x00ffff,
       emissiveIntensity: 0.1,
       wireframe: false,
       transparent: true,
@@ -206,100 +83,37 @@ const GlobalView: React.FC = () => {
     const globe = new THREE.Mesh(globeGeometry, globeMaterial);
     scene.add(globe);
 
-    // Wireframe overlay
-    const wireframeGeometry = new THREE.SphereGeometry(81, 32, 32);
-    const wireframeMaterial = new THREE.MeshBasicMaterial({
-      color: currentData?.color || 0x00ffff,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.3,
-    });
-    const wireframe = new THREE.Mesh(wireframeGeometry, wireframeMaterial);
-    scene.add(wireframe);
+    // Add regional indicators from real data
+    if (globalData.regional?.regional_analytics) {
+      Object.entries(globalData.regional.regional_analytics).forEach(([region, data]: [string, any], index) => {
+        const phi = (90 - (index * 30 - 30)) * (Math.PI / 180);
+        const theta = (index * 60) * (Math.PI / 180);
+        const radius = 85;
+        
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.cos(phi);
+        const z = radius * Math.sin(phi) * Math.sin(theta);
 
-    // Add atmosphere glow
-    const atmosphereGeometry = new THREE.SphereGeometry(85, 32, 32);
-    const atmosphereMaterial = new THREE.ShaderMaterial({
-      vertexShader: `
-        varying vec3 vNormal;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vNormal;
-        void main() {
-          float intensity = pow(0.7 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
-          gl_FragColor = vec4(${currentData?.color === '#00ffff' ? '0.0, 1.0, 1.0' : currentData?.color === '#c084fc' ? '0.75, 0.52, 0.99' : '0.0, 1.0, 0.53'}, 1.0) * intensity;
-        }
-      `,
-      blending: THREE.AdditiveBlending,
-      side: THREE.BackSide,
-      transparent: true,
-    });
-    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
-    scene.add(atmosphere);
-
-    // Regional data points with REAL coordinates and coverage
-    const regionCoordinates: Record<string, { lat: number; lon: number }> = {
-      'North America': { lat: 45, lon: -100 },
-      'Europe': { lat: 55, lon: 10 },
-      'Asia Pacific': { lat: 25, lon: 120 },
-      'Latin America': { lat: -15, lon: -60 },
-      'Middle East': { lat: 25, lon: 45 },
-      'Africa': { lat: 0, lon: 20 },
-    };
-
-    regionSummary.forEach(region => {
-      const coords = regionCoordinates[region.name];
-      if (!coords) return;
-
-      const phi = (90 - coords.lat) * (Math.PI / 180);
-      const theta = (coords.lon + 180) * (Math.PI / 180);
-      
-      const x = 80 * Math.sin(phi) * Math.cos(theta);
-      const y = 80 * Math.cos(phi);
-      const z = 80 * Math.sin(phi) * Math.sin(theta);
-
-      // Create beacon based on real coverage data
-      const beaconGeometry = new THREE.ConeGeometry(3, 10, 4);
-      const beaconMaterial = new THREE.MeshPhongMaterial({
-        color: region.status === 'critical' ? 0xff00ff : 
-               region.status === 'warning' ? 0xffaa00 : 
-               0x00ff88,
-        emissive: region.status === 'critical' ? 0xff00ff : 
-                  region.status === 'warning' ? 0xffaa00 : 
-                  0x00ff88,
-        emissiveIntensity: 0.5,
+        const beaconGeometry = new THREE.ConeGeometry(3, 10, 4);
+        const beaconMaterial = new THREE.MeshPhongMaterial({
+          color: data.security_score < 50 ? 0xff00ff : 0x00ffff,
+          emissive: data.security_score < 50 ? 0xff00ff : 0x00ffff,
+          emissiveIntensity: 0.5,
+        });
+        const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
+        beacon.position.set(x, y, z);
+        beacon.lookAt(0, 0, 0);
+        scene.add(beacon);
       });
-      const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
-      beacon.position.set(x, y, z);
-      beacon.lookAt(0, 0, 0);
-      beacon.userData = { region: region.name, coverage: region.coverage, assets: region.totalAssets };
-      scene.add(beacon);
+    }
 
-      // Pulse ring based on coverage intensity
-      const ringGeometry = new THREE.RingGeometry(5, 7, 32);
-      const ringMaterial = new THREE.MeshBasicMaterial({
-        color: beaconMaterial.color,
-        transparent: true,
-        opacity: region.coverage / 100,
-        side: THREE.DoubleSide,
-      });
-      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-      ring.position.set(x * 1.1, y * 1.1, z * 1.1);
-      ring.lookAt(0, 0, 0);
-      scene.add(ring);
-    });
-
-    // Particle system for data flow - intensity based on real metrics
+    // Particles based on total assets
+    const particleCount = Math.min(2000, globalData.status?.row_count / 100 || 500);
     const particlesGeometry = new THREE.BufferGeometry();
-    const particlesCount = Math.min(1500, Math.max(500, globalData.total_assets / 100));
-    const positions = new Float32Array(particlesCount * 3);
-    const colors = new Float32Array(particlesCount * 3);
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
 
-    for (let i = 0; i < particlesCount * 3; i += 3) {
+    for (let i = 0; i < particleCount * 3; i += 3) {
       const radius = 90 + Math.random() * 40;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.random() * Math.PI;
@@ -308,21 +122,19 @@ const GlobalView: React.FC = () => {
       positions[i + 1] = radius * Math.cos(phi);
       positions[i + 2] = radius * Math.sin(phi) * Math.sin(theta);
       
-      // Color based on current platform and coverage
-      const color = new THREE.Color(currentData?.color || '#00ffff');
-      colors[i] = color.r;
-      colors[i + 1] = color.g;
-      colors[i + 2] = color.b;
+      colors[i] = coverage < 50 ? 1 : 0;
+      colors[i + 1] = coverage < 50 ? 0 : 1;
+      colors[i + 2] = coverage < 50 ? 1 : 1;
     }
 
     particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const particlesMaterial = new THREE.PointsMaterial({
-      size: currentData?.percentage < 50 ? 0.5 : 1,
+      size: 1,
       vertexColors: true,
       transparent: true,
-      opacity: Math.max(0.3, (currentData?.percentage || 50) / 100),
+      opacity: 0.6,
       blending: THREE.AdditiveBlending,
     });
 
@@ -338,32 +150,15 @@ const GlobalView: React.FC = () => {
     scene.add(pointLight);
 
     // Animation loop
+    let frameId: number;
     const animate = () => {
-      frameRef.current = requestAnimationFrame(animate);
-      
-      // Rotate globe
+      frameId = requestAnimationFrame(animate);
       globe.rotation.y += 0.002;
-      wireframe.rotation.y += 0.002;
-      atmosphere.rotation.y += 0.001;
+      particles.rotation.y -= 0.001;
       
-      // Animate particles based on real coverage
-      particles.rotation.y -= 0.001 * ((currentData?.percentage || 50) / 50);
-      
-      // Pulse beacons based on real status
-      scene.children.forEach(child => {
-        if (child instanceof THREE.Mesh && child.geometry instanceof THREE.RingGeometry) {
-          const pulseSpeed = child.material.opacity < 0.5 ? 4 : 2; // Faster pulse for low coverage
-          child.scale.x = 1 + Math.sin(Date.now() * 0.002 * pulseSpeed) * 0.2;
-          child.scale.y = 1 + Math.sin(Date.now() * 0.002 * pulseSpeed) * 0.2;
-          child.material.opacity = Math.max(0.2, 0.5 - Math.sin(Date.now() * 0.002 * pulseSpeed) * 0.3);
-        }
-      });
-      
-      // Camera orbit
       const time = Date.now() * 0.0005;
-      camera.position.x = Math.sin(time) * 250 * zoomLevel;
-      camera.position.z = Math.cos(time) * 250 * zoomLevel;
-      camera.position.y = Math.sin(time * 0.5) * 50;
+      camera.position.x = Math.sin(time) * 250;
+      camera.position.z = Math.cos(time) * 250;
       camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
@@ -371,32 +166,22 @@ const GlobalView: React.FC = () => {
 
     animate();
 
-    // Handle resize
-    const handleResize = () => {
-      if (!globeRef.current) return;
-      camera.aspect = globeRef.current.clientWidth / globeRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
-    };
-    window.addEventListener('resize', handleResize);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (frameId) cancelAnimationFrame(frameId);
       if (globeRef.current && renderer.domElement) {
         globeRef.current.removeChild(renderer.domElement);
       }
       renderer.dispose();
     };
-  }, [globalData, currentData, zoomLevel, regionSummary]);
+  }, [globalData]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-32 w-32 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-xl font-bold text-cyan-400">LOADING REAL DATA</div>
-          <div className="text-sm text-gray-400">Querying Universal CMDB...</div>
+          <div className="mt-4 text-xl font-bold text-cyan-400">LOADING DATABASE</div>
+          <div className="text-sm text-gray-400">Connecting to Universal CMDB...</div>
         </div>
       </div>
     );
@@ -407,9 +192,9 @@ const GlobalView: React.FC = () => {
       <div className="flex items-center justify-center h-full">
         <div className="text-center glass-panel rounded-xl p-8">
           <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <div className="text-xl font-bold text-red-400 mb-2">API CONNECTION ERROR</div>
-          <div className="text-sm text-gray-400 mb-4">{error}</div>
-          <div className="text-xs text-gray-500">Make sure Python backend is running on port 5000</div>
+          <div className="text-xl font-bold text-red-400 mb-2">CONNECTION ERROR</div>
+          <div className="text-sm text-gray-400">{error}</div>
+          <div className="text-xs text-gray-500 mt-2">Make sure Python backend is running on port 5000</div>
         </div>
       </div>
     );
@@ -418,57 +203,36 @@ const GlobalView: React.FC = () => {
   return (
     <div className="p-4 h-full bg-black flex flex-col">
       {/* Critical Alert based on real data */}
-      {currentData && currentData.percentage < 50 && (
+      {globalData?.cmdb?.registration_rate < 50 && (
         <div className="mb-3 bg-black border border-red-500/30 rounded-lg p-2 flex-shrink-0">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse" />
-            <div>
-              <span className="text-red-400 font-bold text-sm">CRITICAL VISIBILITY BREACH:</span>
-              <span className="text-white ml-2 text-sm">
-                Coverage at {currentData.percentage.toFixed(1)}% - {currentData.missing.toLocaleString()} nodes compromised
-              </span>
-            </div>
+            <span className="text-red-400 font-bold text-sm">CRITICAL COVERAGE:</span>
+            <span className="text-white ml-2 text-sm">
+              CMDB at {globalData.cmdb.registration_rate.toFixed(1)}% - {globalData.cmdb.status_breakdown.not_registered.toLocaleString()} assets unregistered
+            </span>
           </div>
         </div>
       )}
 
       {/* Platform Selector */}
       <div className="flex gap-2 mb-3 flex-shrink-0">
-        {(['csoc', 'splunk', 'cmdb'] as const).map(platform => {
-          const platformData = globalData ? {
-            csoc: { coverage: globalData.csoc_coverage, color: '#00ffff' },
-            splunk: { coverage: globalData.splunk_coverage, color: '#c084fc' },
-            cmdb: { coverage: globalData.cmdb_coverage, color: '#00ff88' }
-          }[platform] : null;
-
-          return (
-            <button
-              key={platform}
-              onClick={() => setSelectedPlatform(platform)}
-              className={`px-4 py-2 rounded-lg font-bold uppercase tracking-wider transition-all text-sm ${
-                selectedPlatform === platform
-                  ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20'
-                  : 'bg-gray-900/50 hover:bg-gray-800/50'
-              }`}
-              style={{
-                border: selectedPlatform === platform 
-                  ? `2px solid ${platformData?.color || '#00ffff'}` 
-                  : '2px solid transparent'
-              }}
-            >
-              <span style={{ 
-                color: selectedPlatform === platform ? platformData?.color || '#00ffff' : '#ffffff60'
-              }}>
-                {platform.toUpperCase()}
-                {platformData && (
-                  <span className="ml-2 text-xs">
-                    {platformData.coverage.toFixed(1)}%
-                  </span>
-                )}
-              </span>
-            </button>
-          );
-        })}
+        {['overview', 'regional', 'infrastructure'].map(platform => (
+          <button
+            key={platform}
+            onClick={() => setSelectedPlatform(platform as any)}
+            className={`px-4 py-2 rounded-lg font-bold uppercase tracking-wider transition-all text-sm ${
+              selectedPlatform === platform
+                ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20'
+                : 'bg-gray-900/50 hover:bg-gray-800/50'
+            }`}
+            style={{
+              border: selectedPlatform === platform ? '2px solid #00ffff' : '2px solid transparent'
+            }}
+          >
+            {platform}
+          </button>
+        ))}
       </div>
 
       <div className="flex-1 grid grid-cols-12 gap-3 min-h-0">
@@ -476,134 +240,201 @@ const GlobalView: React.FC = () => {
         <div className="col-span-8">
           <div className="bg-black border border-cyan-500/30 rounded-xl overflow-hidden h-full">
             <div className="absolute top-2 left-2 z-10 text-cyan-400 text-xs font-mono space-y-0.5">
-              <div>REAL-TIME VIEW: ACTIVE</div>
-              <div>ASSETS: {globalData?.total_assets.toLocaleString()}</div>
-              <div>PLATFORM: {selectedPlatform.toUpperCase()}</div>
+              <div>UNIVERSAL CMDB ACTIVE</div>
+              <div>ASSETS: {globalData?.status?.row_count?.toLocaleString() || '0'}</div>
+              <div>CMDB: {globalData?.cmdb?.registration_rate?.toFixed(1) || '0'}%</div>
+              <div>TANIUM: {globalData?.tanium?.coverage_percentage?.toFixed(1) || '0'}%</div>
             </div>
-            
-            <div className="absolute top-2 right-2 z-10 space-y-1">
-              <button 
-                onClick={() => setZoomLevel(Math.max(0.5, zoomLevel - 0.2))}
-                className="block p-1 bg-cyan-500/20 border border-cyan-500/50 rounded hover:bg-cyan-500/30"
-              >
-                <Zap className="w-3 h-3 text-cyan-400" />
-              </button>
-              <button 
-                onClick={() => setZoomLevel(Math.min(2, zoomLevel + 0.2))}
-                className="block p-1 bg-cyan-500/20 border border-cyan-500/50 rounded hover:bg-cyan-500/30"
-              >
-                <Satellite className="w-3 h-3 text-cyan-400" />
-              </button>
-            </div>
-
             <div ref={globeRef} className="w-full h-full" />
           </div>
         </div>
 
-        {/* Metrics Panel */}
+        {/* Real Metrics Panel */}
         <div className="col-span-4 space-y-3">
-          {/* Coverage Meter */}
+          {/* Coverage Meters from Real Data */}
           <div className="bg-black border border-purple-500/30 rounded-xl p-3">
-            <div className="text-center">
-              <div className="relative inline-block">
-                <svg className="w-32 h-32 transform -rotate-90">
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="58"
-                    stroke="rgba(255,255,255,0.1)"
-                    strokeWidth="6"
-                    fill="none"
-                  />
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="58"
-                    stroke={currentData?.color || '#00ffff'}
-                    strokeWidth="6"
-                    fill="none"
-                    strokeDasharray={`${2 * Math.PI * 58}`}
-                    strokeDashoffset={`${2 * Math.PI * 58 * (1 - (currentData?.percentage || 0) / 100)}`}
-                    className="transition-all duration-1000"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div>
-                    <div className="text-3xl font-black text-white">
-                      {currentData?.percentage.toFixed(1) || '0'}%
-                    </div>
-                    <div className="text-xs text-white/60 uppercase">
-                      {selectedPlatform} Coverage
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className={`mt-2 px-2 py-1 inline-block rounded-full text-xs font-bold ${
-                currentData?.status === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/50' :
-                currentData?.status === 'WARNING' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' :
-                'bg-green-500/20 text-green-400 border border-green-500/50'
-              }`}>
-                {currentData?.status || 'UNKNOWN'}
-              </div>
-            </div>
-          </div>
-
-          {/* Regional Status */}
-          <div className="bg-black border border-purple-500/30 rounded-xl p-3 flex-1">
-            <h3 className="text-xs font-bold text-purple-400 mb-2 uppercase tracking-wider flex items-center gap-1">
-              <Radar className="w-3 h-3" />
-              Regional Status (Real Data)
-            </h3>
+            <h3 className="text-xs font-bold text-purple-400 mb-2 uppercase">System Coverage</h3>
             
-            <div className="space-y-1.5 text-xs max-h-64 overflow-y-auto">
-              {regionSummary.map((region, index) => (
+            {/* CMDB Coverage */}
+            <div className="mb-3">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-cyan-400">CMDB Registration</span>
+                <span className="font-mono text-cyan-400">
+                  {globalData?.cmdb?.registration_rate?.toFixed(1) || '0'}%
+                </span>
+              </div>
+              <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
                 <div 
-                  key={index}
-                  className="flex items-center justify-between p-2 bg-black/50 rounded border border-white/10 hover:border-cyan-500/50 transition-all"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                      region.status === 'critical' ? 'bg-red-400' :
-                      region.status === 'warning' ? 'bg-yellow-400' :
-                      'bg-green-400'
-                    }`} />
-                    <span className="text-white font-medium">{region.name}</span>
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-sm font-bold ${
-                      region.coverage < 30 ? 'text-red-400' :
-                      region.coverage < 60 ? 'text-yellow-400' :
-                      'text-green-400'
-                    }`}>
-                      {region.coverage.toFixed(1)}%
-                    </div>
-                    <div className="text-[9px] text-gray-400">
-                      {(region.totalAssets / 1000).toFixed(0)}K assets
-                    </div>
-                  </div>
-                </div>
-              ))}
+                  className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-cyan-400 to-blue-400"
+                  style={{ width: `${globalData?.cmdb?.registration_rate || 0}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-400 mt-1">
+                {globalData?.cmdb?.cmdb_registered?.toLocaleString() || '0'} / {globalData?.cmdb?.total_assets?.toLocaleString() || '0'} assets
+              </div>
+            </div>
+
+            {/* Tanium Coverage */}
+            <div className="mb-3">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-purple-400">Tanium Deployment</span>
+                <span className="font-mono text-purple-400">
+                  {globalData?.tanium?.coverage_percentage?.toFixed(1) || '0'}%
+                </span>
+              </div>
+              <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
+                <div 
+                  className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-purple-400 to-pink-400"
+                  style={{ width: `${globalData?.tanium?.coverage_percentage || 0}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-400 mt-1">
+                {globalData?.tanium?.tanium_deployed?.toLocaleString() || '0'} / {globalData?.tanium?.total_assets?.toLocaleString() || '0'} assets
+              </div>
+            </div>
+
+            {/* Compliance Status */}
+            <div className={`mt-2 px-2 py-1 inline-block rounded-full text-xs font-bold ${
+              globalData?.cmdb?.compliance_analysis?.compliance_status === 'COMPLIANT' 
+                ? 'bg-green-500/20 text-green-400 border border-green-500/50'
+                : globalData?.cmdb?.compliance_analysis?.compliance_status === 'PARTIAL_COMPLIANCE'
+                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
+                : 'bg-red-500/20 text-red-400 border border-red-500/50'
+            }`}>
+              {globalData?.cmdb?.compliance_analysis?.compliance_status || 'UNKNOWN'}
             </div>
           </div>
 
-          {/* Key Metrics */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-black border border-cyan-500/30 rounded-lg p-2">
-              <Eye className="w-4 h-4 text-cyan-400 mb-1" />
-              <div className="text-lg font-bold text-cyan-400">
-                {currentData ? (currentData.covered / 1000).toFixed(1) + 'K' : '0K'}
+          {/* Regional Distribution from Real Data */}
+          {selectedPlatform === 'regional' && globalData?.regional && (
+            <div className="bg-black border border-purple-500/30 rounded-xl p-3 flex-1">
+              <h3 className="text-xs font-bold text-purple-400 mb-2 uppercase tracking-wider flex items-center gap-1">
+                <Radar className="w-3 h-3" />
+                Regional Distribution
+              </h3>
+              
+              <div className="space-y-1.5 text-xs max-h-64 overflow-y-auto">
+                {Object.entries(globalData.regional.regional_analytics || {}).map(([region, data]: [string, any]) => (
+                  <div 
+                    key={region}
+                    className="flex items-center justify-between p-2 bg-black/50 rounded border border-white/10 hover:border-cyan-500/50 transition-all"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                        data.security_score < 50 ? 'bg-red-400' :
+                        data.security_score < 75 ? 'bg-yellow-400' :
+                        'bg-green-400'
+                      }`} />
+                      <span className="text-white font-medium capitalize">{region}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-sm font-bold ${
+                        data.security_score < 50 ? 'text-red-400' :
+                        data.security_score < 75 ? 'text-yellow-400' :
+                        'text-green-400'
+                      }`}>
+                        {data.security_score.toFixed(1)}%
+                      </div>
+                      <div className="text-[9px] text-gray-400">
+                        {data.count.toLocaleString()} assets
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="text-xs text-white/60">Monitored</div>
+
+              {globalData.regional.threat_assessment && (
+                <div className="mt-2 pt-2 border-t border-gray-700">
+                  <div className="text-[10px] text-red-400">
+                    Highest Risk: {globalData.regional.threat_assessment.highest_risk_region}
+                  </div>
+                  <div className="text-[10px] text-green-400">
+                    Most Secure: {globalData.regional.threat_assessment.most_secure_region}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="bg-black border border-red-500/30 rounded-lg p-2">
-              <Shield className="w-4 h-4 text-red-400 mb-1" />
-              <div className="text-lg font-bold text-red-400">
-                {currentData ? (currentData.missing / 1000).toFixed(1) + 'K' : '0K'}
+          )}
+
+          {/* Infrastructure Types from Real Data */}
+          {selectedPlatform === 'infrastructure' && globalData?.infrastructure && (
+            <div className="bg-black border border-purple-500/30 rounded-xl p-3 flex-1">
+              <h3 className="text-xs font-bold text-purple-400 mb-2 uppercase tracking-wider flex items-center gap-1">
+                <Server className="w-3 h-3" />
+                Infrastructure Types
+              </h3>
+              
+              <div className="space-y-1.5 text-xs max-h-64 overflow-y-auto">
+                {globalData.infrastructure.detailed_data?.slice(0, 10).map((infra: any) => (
+                  <div 
+                    key={infra.type}
+                    className="flex items-center justify-between p-2 bg-black/50 rounded border border-white/10"
+                  >
+                    <span className="text-white font-medium">{infra.type}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-bold ${
+                        infra.threat_level === 'CRITICAL' ? 'text-red-400' :
+                        infra.threat_level === 'HIGH' ? 'text-orange-400' :
+                        infra.threat_level === 'MEDIUM' ? 'text-yellow-400' :
+                        'text-green-400'
+                      }`}>
+                        {infra.percentage.toFixed(1)}%
+                      </span>
+                      <span className="text-[9px] text-gray-400">
+                        ({infra.frequency.toLocaleString()})
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="text-xs text-white/60">Vulnerable</div>
+
+              {globalData.infrastructure.modernization_analysis && (
+                <div className="mt-2 pt-2 border-t border-gray-700">
+                  <div className="text-[10px] text-cyan-400">
+                    Cloud Adoption: {globalData.infrastructure.modernization_analysis.modernization_percentage.toFixed(1)}%
+                  </div>
+                  <div className="text-[10px] text-purple-400">
+                    Legacy Systems: {globalData.infrastructure.modernization_analysis.legacy_systems?.length || 0}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Key Metrics Summary */}
+          {selectedPlatform === 'overview' && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-black border border-cyan-500/30 rounded-lg p-2">
+                <Database className="w-4 h-4 text-cyan-400 mb-1" />
+                <div className="text-lg font-bold text-cyan-400">
+                  {(globalData?.status?.row_count / 1000).toFixed(1)}K
+                </div>
+                <div className="text-xs text-white/60">Total Assets</div>
+              </div>
+              <div className="bg-black border border-purple-500/30 rounded-lg p-2">
+                <Shield className="w-4 h-4 text-purple-400 mb-1" />
+                <div className="text-lg font-bold text-purple-400">
+                  {globalData?.infrastructure?.total_types || 0}
+                </div>
+                <div className="text-xs text-white/60">Infra Types</div>
+              </div>
+              <div className="bg-black border border-green-500/30 rounded-lg p-2">
+                <Eye className="w-4 h-4 text-green-400 mb-1" />
+                <div className="text-lg font-bold text-green-400">
+                  {globalData?.regional?.total_coverage ? (globalData.regional.total_coverage / 1000).toFixed(1) + 'K' : '0'}
+                </div>
+                <div className="text-xs text-white/60">Monitored</div>
+              </div>
+              <div className="bg-black border border-red-500/30 rounded-lg p-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 mb-1" />
+                <div className="text-lg font-bold text-red-400">
+                  {globalData?.tanium?.deployment_gaps?.total_unprotected_assets ? 
+                    (globalData.tanium.deployment_gaps.total_unprotected_assets / 1000).toFixed(1) + 'K' : '0'}
+                </div>
+                <div className="text-xs text-white/60">Unprotected</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
