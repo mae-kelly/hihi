@@ -1,41 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Globe, Database, Server, Cloud, Shield, Activity, Zap, Wifi, Eye, AlertTriangle, TrendingDown, Satellite, Radio, Radar } from 'lucide-react';
+import { Globe, AlertTriangle, Eye, TrendingDown, Shield, Activity, Database, Zap } from 'lucide-react';
 import * as THREE from 'three';
 
 const GlobalView: React.FC = () => {
+  const [globalData, setGlobalData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [globalData, setGlobalData] = useState<any>(null);
-  const [selectedPlatform, setSelectedPlatform] = useState<'overview' | 'regional' | 'infrastructure'>('overview');
   const globeRef = useRef<HTMLDivElement>(null);
+  const visibilityRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const endpoints = [
-          '/api/database_status',
-          '/api/cmdb_presence',
-          '/api/tanium_coverage',
-          '/api/region_metrics',
-          '/api/infrastructure_type'
-        ];
-
-        const responses = await Promise.all(
-          endpoints.map(endpoint => 
-            fetch(`http://localhost:5000${endpoint}`).then(res => res.json())
-          )
-        );
-
-        setGlobalData({
-          status: responses[0],
-          cmdb: responses[1],
-          tanium: responses[2],
-          regional: responses[3],
-          infrastructure: responses[4]
-        });
+        const response = await fetch('http://localhost:5000/api/global_visibility');
+        if (!response.ok) throw new Error('Failed to fetch global visibility data');
+        const data = await response.json();
+        setGlobalData(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch data');
+        setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
         setLoading(false);
       }
@@ -46,12 +29,12 @@ const GlobalView: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // 3D Globe visualization with real data
+  // 3D Globe showing visibility coverage
   useEffect(() => {
     if (!globeRef.current || !globalData) return;
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x000000, 0.00025);
+    scene.fog = new THREE.FogExp2(0x000000, 0.001);
 
     const camera = new THREE.PerspectiveCamera(
       45,
@@ -59,7 +42,7 @@ const GlobalView: React.FC = () => {
       0.1,
       1000
     );
-    camera.position.set(0, 0, 250);
+    camera.position.set(0, 0, 300);
 
     const renderer = new THREE.WebGLRenderer({ 
       antialias: true, 
@@ -69,12 +52,12 @@ const GlobalView: React.FC = () => {
     renderer.setPixelRatio(window.devicePixelRatio);
     globeRef.current.appendChild(renderer.domElement);
 
-    // Globe based on real coverage
-    const coverage = globalData.cmdb?.registration_rate || 0;
-    const globeGeometry = new THREE.SphereGeometry(80, 64, 64);
+    // Globe with visibility-based coloring
+    const visibility = globalData.global_visibility_percentage;
+    const globeGeometry = new THREE.IcosahedronGeometry(100, 4);
     const globeMaterial = new THREE.MeshPhongMaterial({
-      color: coverage < 50 ? 0xff00ff : coverage < 80 ? 0xc084fc : 0x00ffff,
-      emissive: coverage < 50 ? 0xff00ff : 0x00ffff,
+      color: visibility < 50 ? 0xa855f7 : 0x00d4ff,
+      emissive: visibility < 50 ? 0xa855f7 : 0x00d4ff,
       emissiveIntensity: 0.1,
       wireframe: false,
       transparent: true,
@@ -83,82 +66,65 @@ const GlobalView: React.FC = () => {
     const globe = new THREE.Mesh(globeGeometry, globeMaterial);
     scene.add(globe);
 
-    // Add regional indicators from real data
-    if (globalData.regional?.regional_analytics) {
-      Object.entries(globalData.regional.regional_analytics).forEach(([region, data]: [string, any], index) => {
-        const phi = (90 - (index * 30 - 30)) * (Math.PI / 180);
-        const theta = (index * 60) * (Math.PI / 180);
-        const radius = 85;
-        
-        const x = radius * Math.sin(phi) * Math.cos(theta);
-        const y = radius * Math.cos(phi);
-        const z = radius * Math.sin(phi) * Math.sin(theta);
+    // Visible nodes
+    const visibleCount = Math.floor((visibility / 100) * 50);
+    for (let i = 0; i < visibleCount; i++) {
+      const phi = Math.acos(2 * Math.random() - 1);
+      const theta = 2 * Math.PI * Math.random();
+      const radius = 102;
+      
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.sin(phi) * Math.sin(theta);
+      const z = radius * Math.cos(phi);
 
-        const beaconGeometry = new THREE.ConeGeometry(3, 10, 4);
-        const beaconMaterial = new THREE.MeshPhongMaterial({
-          color: data.security_score < 50 ? 0xff00ff : 0x00ffff,
-          emissive: data.security_score < 50 ? 0xff00ff : 0x00ffff,
-          emissiveIntensity: 0.5,
-        });
-        const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
-        beacon.position.set(x, y, z);
-        beacon.lookAt(0, 0, 0);
-        scene.add(beacon);
+      const nodeGeometry = new THREE.SphereGeometry(2, 8, 8);
+      const nodeMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00d4ff,
+        emissive: 0x00d4ff
       });
+      const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+      node.position.set(x, y, z);
+      scene.add(node);
     }
 
-    // Particles based on total assets
-    const particleCount = Math.min(2000, globalData.status?.row_count / 100 || 500);
-    const particlesGeometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
+    // Invisible nodes (threats)
+    const invisibleCount = Math.floor(((100 - visibility) / 100) * 30);
+    for (let i = 0; i < invisibleCount; i++) {
+      const phi = Math.acos(2 * Math.random() - 1);
+      const theta = 2 * Math.PI * Math.random();
+      const radius = 105;
+      
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.sin(phi) * Math.sin(theta);
+      const z = radius * Math.cos(phi);
 
-    for (let i = 0; i < particleCount * 3; i += 3) {
-      const radius = 90 + Math.random() * 40;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.random() * Math.PI;
-      
-      positions[i] = radius * Math.sin(phi) * Math.cos(theta);
-      positions[i + 1] = radius * Math.cos(phi);
-      positions[i + 2] = radius * Math.sin(phi) * Math.sin(theta);
-      
-      colors[i] = coverage < 50 ? 1 : 0;
-      colors[i + 1] = coverage < 50 ? 0 : 1;
-      colors[i + 2] = coverage < 50 ? 1 : 1;
+      const nodeGeometry = new THREE.BoxGeometry(3, 3, 3);
+      const nodeMaterial = new THREE.MeshBasicMaterial({
+        color: 0xa855f7,
+        emissive: 0xa855f7
+      });
+      const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+      node.position.set(x, y, z);
+      scene.add(node);
     }
-
-    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    const particlesMaterial = new THREE.PointsMaterial({
-      size: 1,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending,
-    });
-
-    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
-    scene.add(particles);
 
     // Lighting
     const ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
 
     const pointLight = new THREE.PointLight(0xffffff, 1, 1000);
-    pointLight.position.set(100, 100, 100);
+    pointLight.position.set(200, 200, 200);
     scene.add(pointLight);
 
-    // Animation loop
+    // Animation
     let frameId: number;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       globe.rotation.y += 0.002;
-      particles.rotation.y -= 0.001;
       
       const time = Date.now() * 0.0005;
-      camera.position.x = Math.sin(time) * 250;
-      camera.position.z = Math.cos(time) * 250;
+      camera.position.x = Math.sin(time) * 300;
+      camera.position.z = Math.cos(time) * 300;
       camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
@@ -175,13 +141,73 @@ const GlobalView: React.FC = () => {
     };
   }, [globalData]);
 
+  // Visibility gauge animation
+  useEffect(() => {
+    const canvas = visibilityRef.current;
+    if (!canvas || !globalData) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    let currentAngle = -Math.PI;
+    const targetAngle = -Math.PI + (globalData.global_visibility_percentage / 100) * Math.PI;
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height - 20;
+      const radius = Math.min(canvas.width, canvas.height) * 0.4;
+
+      // Draw arc background
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 30;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
+      ctx.stroke();
+
+      // Draw visibility arc
+      if (currentAngle < targetAngle) {
+        currentAngle += 0.02;
+      }
+      
+      const gradient = ctx.createLinearGradient(centerX - radius, centerY, centerX + radius, centerY);
+      gradient.addColorStop(0, globalData.global_visibility_percentage < 50 ? '#a855f7' : '#00d4ff');
+      gradient.addColorStop(1, globalData.global_visibility_percentage < 50 ? '#a855f7' : '#00d4ff');
+      
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 30;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, Math.PI, currentAngle);
+      ctx.stroke();
+
+      // Draw percentage text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 48px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${globalData.global_visibility_percentage.toFixed(1)}%`, centerX, centerY - 20);
+      
+      ctx.font = '14px monospace';
+      ctx.fillStyle = globalData.global_visibility_percentage < 50 ? '#a855f7' : '#00d4ff';
+      ctx.fillText('GLOBAL VISIBILITY', centerX, centerY + 10);
+
+      if (currentAngle < targetAngle) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    animate();
+  }, [globalData]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-32 w-32 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-xl font-bold text-cyan-400">LOADING DATABASE</div>
-          <div className="text-sm text-gray-400">Connecting to Universal CMDB...</div>
+          <div className="mt-4 text-xl font-bold text-cyan-400">LOADING GLOBAL VISIBILITY</div>
         </div>
       </div>
     );
@@ -191,250 +217,164 @@ const GlobalView: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center glass-panel rounded-xl p-8">
-          <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <div className="text-xl font-bold text-red-400 mb-2">CONNECTION ERROR</div>
-          <div className="text-sm text-gray-400">{error || 'No data available'}</div>
-          <div className="text-xs text-gray-500 mt-2">Make sure Python backend is running on port 5000</div>
+          <AlertTriangle className="w-16 h-16 text-purple-400 mx-auto mb-4" />
+          <div className="text-xl font-bold text-purple-400 mb-2">DATA LOAD ERROR</div>
+          <div className="text-sm text-white">{error || 'No data available'}</div>
         </div>
       </div>
     );
   }
 
+  const isHealthy = globalData.global_visibility_percentage >= 80;
+  const isWarning = globalData.global_visibility_percentage >= 50 && globalData.global_visibility_percentage < 80;
+  const isCritical = globalData.global_visibility_percentage < 50;
+
   return (
-    <div className="p-4 h-full bg-black flex flex-col">
-      {/* Critical Alert based on real data */}
-      {globalData?.cmdb?.registration_rate < 50 && (
-        <div className="mb-3 bg-black border border-red-500/30 rounded-lg p-2 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse" />
+    <div className="p-6 h-full bg-black flex flex-col">
+      {/* Critical Alert Bar */}
+      {isCritical && (
+        <div className="mb-4 bg-black border-2 border-purple-500 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-purple-400 animate-pulse" />
             <div>
-              <span className="text-red-400 font-bold text-sm">CRITICAL COVERAGE:</span>
-              <span className="text-white ml-2 text-sm">
-                CMDB at {globalData.cmdb.registration_rate.toFixed(1)}% - {globalData.cmdb.status_breakdown.not_registered.toLocaleString()} assets unregistered
+              <span className="text-purple-400 font-bold text-lg">CRITICAL VISIBILITY FAILURE</span>
+              <span className="text-white ml-4">
+                Only {globalData.global_visibility_percentage.toFixed(1)}% of {globalData.total_hosts.toLocaleString()} hosts visible
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Platform Selector */}
-      <div className="flex gap-2 mb-3 flex-shrink-0">
-        {['overview', 'regional', 'infrastructure'].map(platform => (
-          <button
-            key={platform}
-            onClick={() => setSelectedPlatform(platform as any)}
-            className={`px-4 py-2 rounded-lg font-bold uppercase tracking-wider transition-all text-sm ${
-              selectedPlatform === platform
-                ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20'
-                : 'bg-gray-900/50 hover:bg-gray-800/50'
-            }`}
-            style={{ border: selectedPlatform === platform ? '2px solid #00ffff' : '2px solid transparent' }}
-          >
-            {platform}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1 grid grid-cols-12 gap-3 min-h-0">
-        {/* 3D Globe Container */}
-        <div className="col-span-8">
-          <div className="bg-black border border-cyan-500/30 rounded-xl overflow-hidden h-full">
-            <div className="absolute top-2 left-2 z-10 text-cyan-400 text-xs font-mono space-y-0.5">
-              <div>UNIVERSAL CMDB ACTIVE</div>
-              <div>ASSETS: {globalData?.status?.row_count?.toLocaleString() || '0'}</div>
-              <div>CMDB: {globalData?.cmdb?.registration_rate?.toFixed(1) || '0'}%</div>
-              <div>TANIUM: {globalData?.tanium?.coverage_percentage?.toFixed(1) || '0'}%</div>
+      {/* Main Grid */}
+      <div className="flex-1 grid grid-cols-12 gap-4">
+        {/* Left - 3D Globe */}
+        <div className="col-span-7">
+          <div className="h-full bg-black border border-white/10 rounded-xl overflow-hidden">
+            <div className="p-4 border-b border-white/10">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Globe className="w-5 h-5 text-cyan-400" />
+                GLOBAL HOST VISIBILITY MAP
+              </h3>
             </div>
-            <div ref={globeRef} className="w-full h-full" />
+            <div ref={globeRef} className="w-full" style={{ height: 'calc(100% - 60px)' }} />
           </div>
         </div>
 
-        {/* Real Metrics Panel */}
-        <div className="col-span-4 space-y-3">
-          {/* Coverage Meters from Real Data */}
-          <div className="bg-black border border-purple-500/30 rounded-xl p-3">
-            <h3 className="text-xs font-bold text-purple-400 mb-2 uppercase">System Coverage</h3>
-            
-            {/* CMDB Coverage */}
-            <div className="mb-3">
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-cyan-400">CMDB Registration</span>
-                <span className="font-mono text-cyan-400">
-                  {globalData?.cmdb?.registration_rate?.toFixed(1) || '0'}%
-                </span>
-              </div>
-              <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
-                <div 
-                  className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-cyan-400 to-blue-400"
-                  style={{ width: `${globalData?.cmdb?.registration_rate || 0}%` }}
-                />
-              </div>
-              <div className="text-xs text-gray-400 mt-1">
-                {globalData?.cmdb?.cmdb_registered?.toLocaleString() || '0'} / {globalData?.cmdb?.total_assets?.toLocaleString() || '0'} assets
-              </div>
-            </div>
+        {/* Right - Metrics and Gauge */}
+        <div className="col-span-5 space-y-4">
+          {/* Visibility Gauge */}
+          <div className="bg-black border border-white/10 rounded-xl p-4">
+            <canvas ref={visibilityRef} className="w-full h-48" />
+          </div>
 
-            {/* Tanium Coverage */}
-            <div className="mb-3">
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-purple-400">Tanium Deployment</span>
-                <span className="font-mono text-purple-400">
-                  {globalData?.tanium?.coverage_percentage?.toFixed(1) || '0'}%
-                </span>
-              </div>
-              <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
-                <div 
-                  className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-purple-400 to-pink-400"
-                  style={{ width: `${globalData?.tanium?.coverage_percentage || 0}%` }}
-                />
-              </div>
-              <div className="text-xs text-gray-400 mt-1">
-                {globalData?.tanium?.tanium_deployed?.toLocaleString() || '0'} / {globalData?.tanium?.total_assets?.toLocaleString() || '0'} assets
-              </div>
+          {/* Key Metrics */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-black border border-cyan-400/30 rounded-xl p-4">
+              <Eye className="w-6 h-6 text-cyan-400 mb-2" />
+              <div className="text-3xl font-bold text-white">{globalData.visible_hosts.toLocaleString()}</div>
+              <div className="text-sm text-cyan-400">VISIBLE HOSTS</div>
+              <div className="text-xs text-white/60 mt-1">Can see logs</div>
             </div>
-
-            {/* Compliance Status */}
-            <div className={`mt-2 px-2 py-1 inline-block rounded-full text-xs font-bold ${
-              globalData?.cmdb?.compliance_analysis?.compliance_status === 'COMPLIANT' 
-                ? 'bg-green-500/20 text-green-400 border border-green-500/50'
-                : globalData?.cmdb?.compliance_analysis?.compliance_status === 'PARTIAL_COMPLIANCE'
-                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
-                : 'bg-red-500/20 text-red-400 border border-red-500/50'
-            }`}>
-              {globalData?.cmdb?.compliance_analysis?.compliance_status || 'UNKNOWN'}
+            <div className="bg-black border border-purple-400/30 rounded-xl p-4">
+              <TrendingDown className="w-6 h-6 text-purple-400 mb-2" />
+              <div className="text-3xl font-bold text-white">{globalData.invisible_hosts.toLocaleString()}</div>
+              <div className="text-sm text-purple-400">INVISIBLE HOSTS</div>
+              <div className="text-xs text-white/60 mt-1">No visibility</div>
             </div>
           </div>
 
-          {/* Regional Distribution from Real Data */}
-          {selectedPlatform === 'regional' && globalData?.regional && (
-            <div className="bg-black border border-purple-500/30 rounded-xl p-3 flex-1">
-              <h3 className="text-xs font-bold text-purple-400 mb-2 uppercase tracking-wider flex items-center gap-1">
-                <Radar className="w-3 h-3" />
-                Regional Distribution
-              </h3>
-              
-              <div className="space-y-1.5 text-xs max-h-64 overflow-y-auto">
-                {Object.entries(globalData.regional.regional_analytics || {}).map(([region, data]: [string, any]) => (
+          {/* Platform Breakdown */}
+          <div className="bg-black border border-white/10 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-white mb-4">PLATFORM VISIBILITY</h3>
+            
+            <div className="space-y-3">
+              {/* Splunk */}
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-cyan-400">SPLUNK</span>
+                  <span className="text-white font-mono">{globalData.splunk_visibility_percentage.toFixed(1)}%</span>
+                </div>
+                <div className="h-3 bg-white/10 rounded-full overflow-hidden">
                   <div 
-                    key={region}
-                    className="flex items-center justify-between p-2 bg-black/50 rounded border border-white/10 hover:border-cyan-500/50 transition-all"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                        data.security_score < 50 ? 'bg-red-400' :
-                        data.security_score < 75 ? 'bg-yellow-400' :
-                        'bg-green-400'
-                      }`} />
-                      <span className="text-white font-medium capitalize">{region}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-sm font-bold ${
-                        data.security_score < 50 ? 'text-red-400' :
-                        data.security_score < 75 ? 'text-yellow-400' :
-                        'text-green-400'
-                      }`}>
-                        {data.security_score.toFixed(1)}%
-                      </div>
-                      <div className="text-[9px] text-gray-400">
-                        {data.count.toLocaleString()} assets
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                    className="h-full bg-cyan-400 rounded-full transition-all duration-1000"
+                    style={{ width: `${globalData.splunk_visibility_percentage}%` }}
+                  />
+                </div>
               </div>
 
-              {globalData.regional.threat_assessment && (
-                <div className="mt-2 pt-2 border-t border-gray-700">
-                  <div className="text-[10px] text-red-400">
-                    Highest Risk: {globalData.regional.threat_assessment.highest_risk_region}
-                  </div>
-                  <div className="text-[10px] text-green-400">
-                    Most Secure: {globalData.regional.threat_assessment.most_secure_region}
-                  </div>
+              {/* Chronicle */}
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-purple-400">CHRONICLE</span>
+                  <span className="text-white font-mono">{globalData.chronicle_visibility_percentage.toFixed(1)}%</span>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Infrastructure Types from Real Data */}
-          {selectedPlatform === 'infrastructure' && globalData?.infrastructure && (
-            <div className="bg-black border border-purple-500/30 rounded-xl p-3 flex-1">
-              <h3 className="text-xs font-bold text-purple-400 mb-2 uppercase tracking-wider flex items-center gap-1">
-                <Server className="w-3 h-3" />
-                Infrastructure Types
-              </h3>
-              
-              <div className="space-y-1.5 text-xs max-h-64 overflow-y-auto">
-                {globalData.infrastructure.detailed_data?.slice(0, 10).map((infra: any) => (
+                <div className="h-3 bg-white/10 rounded-full overflow-hidden">
                   <div 
-                    key={infra.type}
-                    className="flex items-center justify-between p-2 bg-black/50 rounded border border-white/10"
-                  >
-                    <span className="text-white font-medium">{infra.type}</span>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm font-bold ${
-                        infra.threat_level === 'CRITICAL' ? 'text-red-400' :
-                        infra.threat_level === 'HIGH' ? 'text-orange-400' :
-                        infra.threat_level === 'MEDIUM' ? 'text-yellow-400' :
-                        'text-green-400'
-                      }`}>
-                        {infra.percentage.toFixed(1)}%
-                      </span>
-                      <span className="text-[9px] text-gray-400">
-                        ({infra.frequency.toLocaleString()})
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                    className="h-full bg-purple-400 rounded-full transition-all duration-1000"
+                    style={{ width: `${globalData.chronicle_visibility_percentage}%` }}
+                  />
+                </div>
               </div>
 
-              {globalData.infrastructure.modernization_analysis && (
-                <div className="mt-2 pt-2 border-t border-gray-700">
-                  <div className="text-[10px] text-cyan-400">
-                    Cloud Adoption: {globalData.infrastructure.modernization_analysis.modernization_percentage.toFixed(1)}%
-                  </div>
-                  <div className="text-[10px] text-purple-400">
-                    Legacy Systems: {globalData.infrastructure.modernization_analysis.legacy_systems?.length || 0}
-                  </div>
+              {/* Combined */}
+              <div className="pt-2 border-t border-white/10">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-white font-bold">COMBINED VISIBILITY</span>
+                  <span className="text-white font-mono font-bold">{globalData.global_visibility_percentage.toFixed(1)}%</span>
                 </div>
-              )}
+                <div className="h-4 bg-white/10 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full rounded-full transition-all duration-1000"
+                    style={{ 
+                      width: `${globalData.global_visibility_percentage}%`,
+                      background: globalData.global_visibility_percentage < 50 ? '#a855f7' : '#00d4ff'
+                    }}
+                  />
+                </div>
+              </div>
             </div>
-          )}
+          </div>
 
-          {/* Key Metrics Summary */}
-          {selectedPlatform === 'overview' && (
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-black border border-cyan-500/30 rounded-lg p-2">
-                <Database className="w-4 h-4 text-cyan-400 mb-1" />
-                <div className="text-lg font-bold text-cyan-400">
-                  {(globalData?.status?.row_count / 1000).toFixed(1)}K
+          {/* Status Indicator */}
+          <div className={`bg-black border-2 rounded-xl p-4 ${
+            isCritical ? 'border-purple-500' : 
+            isWarning ? 'border-yellow-500' : 
+            'border-cyan-500'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className={`text-lg font-bold ${
+                  isCritical ? 'text-purple-400' : 
+                  isWarning ? 'text-yellow-400' : 
+                  'text-cyan-400'
+                }`}>
+                  {globalData.status}
                 </div>
-                <div className="text-xs text-white/60">Total Assets</div>
-              </div>
-              <div className="bg-black border border-purple-500/30 rounded-lg p-2">
-                <Shield className="w-4 h-4 text-purple-400 mb-1" />
-                <div className="text-lg font-bold text-purple-400">
-                  {globalData?.infrastructure?.total_types || 0}
+                <div className="text-xs text-white/60">
+                  {isCritical ? 'Immediate action required' : 
+                   isWarning ? 'Improvement needed' : 
+                   'Meeting visibility targets'}
                 </div>
-                <div className="text-xs text-white/60">Infra Types</div>
               </div>
-              <div className="bg-black border border-green-500/30 rounded-lg p-2">
-                <Eye className="w-4 h-4 text-green-400 mb-1" />
-                <div className="text-lg font-bold text-green-400">
-                  {globalData?.regional?.total_coverage ? (globalData.regional.total_coverage / 1000).toFixed(1) + 'K' : '0'}
-                </div>
-                <div className="text-xs text-white/60">Monitored</div>
-              </div>
-              <div className="bg-black border border-red-500/30 rounded-lg p-2">
-                <AlertTriangle className="w-4 h-4 text-red-400 mb-1" />
-                <div className="text-lg font-bold text-red-400">
-                  {globalData?.tanium?.deployment_gaps?.total_unprotected_assets ? 
-                    (globalData.tanium.deployment_gaps.total_unprotected_assets / 1000).toFixed(1) + 'K' : '0'}
-                </div>
-                <div className="text-xs text-white/60">Unprotected</div>
-              </div>
+              <Shield className={`w-8 h-8 ${
+                isCritical ? 'text-purple-400' : 
+                isWarning ? 'text-yellow-400' : 
+                'text-cyan-400'
+              }`} />
             </div>
-          )}
+          </div>
+
+          {/* Gap Analysis */}
+          <div className="bg-black border border-white/10 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-white mb-2">VISIBILITY GAP</h3>
+            <div className="text-3xl font-bold text-purple-400">
+              {globalData.visibility_gap_percentage.toFixed(1)}%
+            </div>
+            <div className="text-xs text-white/60">
+              {globalData.invisible_hosts.toLocaleString()} hosts need logging configuration
+            </div>
+          </div>
         </div>
       </div>
     </div>

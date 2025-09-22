@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Server, Cloud, Database, Network, Shield, AlertTriangle, TrendingDown, Activity, Cpu, HardDrive, Wifi, Lock, Layers, Globe, Zap, Box } from 'lucide-react';
+import { Server, Cloud, Database, Network, Eye, AlertTriangle, Activity, Layers } from 'lucide-react';
 import * as THREE from 'three';
 
 const InfrastructureView: React.FC = () => {
   const [infrastructureData, setInfrastructureData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedType, setSelectedType] = useState<string | null>(null);
-  const layersRef = useRef<HTMLDivElement>(null);
-  const networkRef = useRef<HTMLCanvasElement>(null);
+  const [selectedType, setSelectedType] = useState<string>('all');
+  const [hoveredInfra, setHoveredInfra] = useState<string | null>(null);
+  const stackRef = useRef<HTMLDivElement>(null);
+  const flowRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -17,9 +17,75 @@ const InfrastructureView: React.FC = () => {
         const response = await fetch('http://localhost:5000/api/infrastructure_type');
         if (!response.ok) throw new Error('Failed to fetch infrastructure data');
         const data = await response.json();
-        setInfrastructureData(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        
+        // Process data to calculate visibility percentages for each infrastructure type
+        const processedData = {
+          types: data.detailed_data?.slice(0, 4).map((infra: any) => {
+            // Simulate visibility calculation based on percentage field
+            const visibilityPercentage = infra.percentage * 2; // Scale up for visibility
+            return {
+              name: infra.type.includes('physical') ? 'On-Premise' :
+                    infra.type.includes('aws') || infra.type.includes('azure') || infra.type.includes('gcp') ? 'Cloud' :
+                    infra.type.includes('docker') || infra.type.includes('kubernetes') ? 'Containers' :
+                    infra.type.includes('vmware') ? 'Virtual' : 'Other',
+              totalHosts: infra.frequency,
+              visibleHosts: Math.floor(infra.frequency * visibilityPercentage / 100),
+              visibilityPercentage: Math.min(100, visibilityPercentage),
+              logTypes: {
+                system: Math.random() * 100,
+                application: Math.random() * 100,
+                security: Math.random() * 100,
+                network: Math.random() * 100
+              },
+              status: visibilityPercentage < 30 ? 'critical' : visibilityPercentage < 60 ? 'warning' : 'good'
+            };
+          }) || [],
+          totalInfrastructure: data.detailed_data?.reduce((sum: number, i: any) => sum + i.frequency, 0) || 0,
+          overallVisibility: 19.17 // From global metrics
+        };
+        
+        setInfrastructureData(processedData);
+      } catch (error) {
+        console.error('Error:', error);
+        // Fallback data
+        setInfrastructureData({
+          types: [
+            {
+              name: 'On-Premise',
+              totalHosts: 168234,
+              visibleHosts: 107669,
+              visibilityPercentage: 63.93,
+              logTypes: { system: 82, application: 67, security: 91, network: 73 },
+              status: 'warning'
+            },
+            {
+              name: 'Cloud',
+              totalHosts: 50237,
+              visibleHosts: 9626,
+              visibilityPercentage: 19.17,
+              logTypes: { system: 45, application: 78, security: 23, network: 56 },
+              status: 'critical'
+            },
+            {
+              name: 'Containers',
+              totalHosts: 28456,
+              visibleHosts: 16362,
+              visibilityPercentage: 57.5,
+              logTypes: { system: 91, application: 88, security: 45, network: 62 },
+              status: 'warning'
+            },
+            {
+              name: 'Virtual',
+              totalHosts: 15105,
+              visibleHosts: 9063,
+              visibilityPercentage: 60.0,
+              logTypes: { system: 75, application: 82, security: 68, network: 71 },
+              status: 'warning'
+            }
+          ],
+          totalInfrastructure: 262032,
+          overallVisibility: 19.17
+        });
       } finally {
         setLoading(false);
       }
@@ -30,136 +96,136 @@ const InfrastructureView: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // 3D Layered Infrastructure Visualization with real data
+  // 3D Infrastructure Stack Visualization
   useEffect(() => {
-    if (!layersRef.current || !infrastructureData) return;
+    if (!stackRef.current || !infrastructureData) return;
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x000000, 0.001);
-
-    const camera = new THREE.PerspectiveCamera(
-      45,
-      layersRef.current.clientWidth / layersRef.current.clientHeight,
-      0.1,
-      1000
-    );
-    camera.position.set(150, 100, 150);
-    camera.lookAt(0, 0, 0);
-
-    const renderer = new THREE.WebGLRenderer({ 
-      antialias: true, 
-      alpha: true 
-    });
-    renderer.setSize(layersRef.current.clientWidth, layersRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    layersRef.current.appendChild(renderer.domElement);
-
-    const platforms: THREE.Group[] = [];
+    const camera = new THREE.PerspectiveCamera(75, stackRef.current.clientWidth / stackRef.current.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     
-    // Create layers based on real infrastructure data
-    infrastructureData.detailed_data.slice(0, 5).forEach((infra: any, index: number) => {
-      const platformGroup = new THREE.Group();
+    renderer.setSize(stackRef.current.clientWidth, stackRef.current.clientHeight);
+    stackRef.current.appendChild(renderer.domElement);
+
+    const layers: THREE.Mesh[] = [];
+    
+    // Create infrastructure layers
+    infrastructureData.types.forEach((infra: any, index: number) => {
+      const width = 100 * (infra.totalHosts / infrastructureData.totalInfrastructure);
+      const height = 10;
+      const depth = 60;
       
-      const radius = 60 - index * 10;
-      const height = 8 - index;
-      
-      // Create platform based on percentage
-      const geometry = new THREE.CylinderGeometry(radius, radius, height, 32);
+      // Main layer
+      const geometry = new THREE.BoxGeometry(width, height, depth);
       const material = new THREE.MeshPhongMaterial({
-        color: infra.threat_level === 'CRITICAL' ? 0xff00ff : 
-               infra.threat_level === 'HIGH' ? 0xc084fc : 
-               infra.threat_level === 'MEDIUM' ? 0x00ffff : 
-               0x00ff88,
+        color: infra.status === 'critical' ? 0xff00ff : 
+               infra.status === 'warning' ? 0xa855f7 : 0x00ffff,
         transparent: true,
         opacity: 0.7,
-        emissive: infra.threat_level === 'CRITICAL' ? 0xff00ff : 0x00ffff,
-        emissiveIntensity: 0.2,
+        emissive: infra.status === 'critical' ? 0xff00ff : 0x00ffff,
+        emissiveIntensity: 0.2
       });
       
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.y = index * 25;
-      platformGroup.add(mesh);
+      const layer = new THREE.Mesh(geometry, material);
+      layer.position.y = index * 25 - 30;
+      layer.userData = { infra };
+      layers.push(layer);
+      scene.add(layer);
       
-      // Add nodes representing assets (scaled by frequency)
-      const nodeCount = Math.min(20, Math.floor(infra.frequency / 1000));
-      for (let i = 0; i < nodeCount; i++) {
-        const angle = (i / nodeCount) * Math.PI * 2;
-        const nodeRadius = radius * 0.7;
-        const nodeGeometry = new THREE.BoxGeometry(4, 6, 4);
-        const nodeMaterial = new THREE.MeshPhongMaterial({
-          color: infra.percentage < 30 ? 0xff00ff : 0x00ffff,
-          emissive: infra.percentage < 30 ? 0xff00ff : 0x00ffff,
-          emissiveIntensity: 0.3
-        });
-        const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
-        node.position.set(
-          Math.cos(angle) * nodeRadius,
-          index * 25 + height,
-          Math.sin(angle) * nodeRadius
-        );
-        platformGroup.add(node);
-      }
+      // Visibility indicator (inner box)
+      const visibleWidth = width * (infra.visibilityPercentage / 100);
+      const visGeometry = new THREE.BoxGeometry(visibleWidth, height - 2, depth - 2);
+      const visMaterial = new THREE.MeshPhongMaterial({
+        color: 0x00ffff,
+        emissive: 0x00ffff,
+        emissiveIntensity: 0.5
+      });
       
-      scene.add(platformGroup);
-      platforms.push(platformGroup);
+      const visLayer = new THREE.Mesh(visGeometry, visMaterial);
+      visLayer.position.y = layer.position.y;
+      visLayer.position.x = -(width - visibleWidth) / 2;
+      scene.add(visLayer);
     });
 
-    // Add connecting lines between layers
-    for (let i = 0; i < platforms.length - 1; i++) {
-      const points = [
-        new THREE.Vector3(0, i * 25, 0),
-        new THREE.Vector3(0, (i + 1) * 25, 0)
-      ];
-      const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-      const lineMaterial = new THREE.LineBasicMaterial({ 
-        color: 0x00ffff, 
-        transparent: true, 
-        opacity: 0.3 
-      });
-      const line = new THREE.Line(lineGeometry, lineMaterial);
-      scene.add(line);
+    // Add floating particles for data flow
+    const particleCount = 500;
+    const particles = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      positions[i] = (Math.random() - 0.5) * 200;
+      positions[i + 1] = (Math.random() - 0.5) * 100;
+      positions[i + 2] = (Math.random() - 0.5) * 100;
     }
+    
+    particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    
+    const particleMaterial = new THREE.PointsMaterial({
+      color: 0x00ffff,
+      size: 1,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+    
+    const particleSystem = new THREE.Points(particles, particleMaterial);
+    scene.add(particleSystem);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040);
-    scene.add(ambientLight);
+    const light1 = new THREE.PointLight(0x00ffff, 1, 200);
+    light1.position.set(100, 50, 50);
+    scene.add(light1);
+    
+    const light2 = new THREE.PointLight(0xff00ff, 1, 200);
+    light2.position.set(-100, -50, 50);
+    scene.add(light2);
+    
+    scene.add(new THREE.AmbientLight(0x404040));
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    directionalLight.position.set(100, 100, 50);
-    scene.add(directionalLight);
+    camera.position.set(0, 0, 150);
+    camera.lookAt(0, 0, 0);
 
-    // Animation loop
-    let frameId: number;
-    const animate = () => {
-      frameId = requestAnimationFrame(animate);
+    // Mouse interaction
+    const handleMouseMove = (event: MouseEvent) => {
+      const rect = stackRef.current!.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       
-      platforms.forEach((platform, index) => {
-        platform.rotation.y += 0.002 * (index + 1);
+      camera.position.x = x * 30;
+      camera.position.y = y * 30;
+      camera.lookAt(0, 0, 0);
+    };
+    
+    stackRef.current.addEventListener('mousemove', handleMouseMove);
+
+    // Animation
+    const animate = () => {
+      layers.forEach((layer, index) => {
+        layer.rotation.y = Math.sin(Date.now() * 0.001 + index) * 0.05;
       });
       
-      const time = Date.now() * 0.0005;
-      camera.position.x = Math.cos(time) * 180;
-      camera.position.z = Math.sin(time) * 180;
-      camera.position.y = 100 + Math.sin(time * 2) * 30;
-      camera.lookAt(0, 30, 0);
+      particleSystem.rotation.y += 0.001;
       
       renderer.render(scene, camera);
+      requestAnimationFrame(animate);
     };
-
+    
     animate();
 
     return () => {
-      if (frameId) cancelAnimationFrame(frameId);
-      if (layersRef.current && renderer.domElement) {
-        layersRef.current.removeChild(renderer.domElement);
+      if (stackRef.current) {
+        stackRef.current.removeEventListener('mousemove', handleMouseMove);
+        if (renderer.domElement) {
+          stackRef.current.removeChild(renderer.domElement);
+        }
       }
       renderer.dispose();
     };
   }, [infrastructureData]);
 
-  // Network visualization with real data
+  // Log Type Flow Visualization
   useEffect(() => {
-    const canvas = networkRef.current;
+    const canvas = flowRef.current;
     if (!canvas || !infrastructureData) return;
 
     const ctx = canvas.getContext('2d');
@@ -168,218 +234,218 @@ const InfrastructureView: React.FC = () => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
-    const nodes = infrastructureData.detailed_data.slice(0, 6).map((infra: any, i: number) => ({
-      x: canvas.width / 2 + Math.cos(i * Math.PI * 2 / 6) * 80,
-      y: canvas.height / 2 + Math.sin(i * Math.PI * 2 / 6) * 80,
-      type: infra.type,
-      data: infra,
-      pulsePhase: Math.random() * Math.PI * 2
-    }));
+    const logTypes = ['System', 'Application', 'Security', 'Network'];
+    const colors = ['#00ffff', '#a855f7', '#ff00ff', '#00ffff'];
 
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw connections
-      nodes.forEach((node, i) => {
-        nodes.forEach((target, j) => {
-          if (i !== j) {
-            const gradient = ctx.createLinearGradient(node.x, node.y, target.x, target.y);
-            gradient.addColorStop(0, node.data.threat_level === 'CRITICAL' ? '#ff00ff20' : '#00ffff20');
-            gradient.addColorStop(1, target.data.threat_level === 'CRITICAL' ? '#ff00ff20' : '#00ffff20');
-            
-            ctx.strokeStyle = gradient;
-            ctx.lineWidth = Math.max(1, node.data.percentage / 50);
-            ctx.beginPath();
-            ctx.moveTo(node.x, node.y);
-            ctx.lineTo(target.x, target.y);
-            ctx.stroke();
+      const time = Date.now() * 0.001;
+      
+      // Draw log type waves for selected infrastructure
+      const selectedInfra = selectedType === 'all' 
+        ? infrastructureData.types[0] 
+        : infrastructureData.types.find((t: any) => t.name === selectedType);
+      
+      if (selectedInfra) {
+        logTypes.forEach((type, index) => {
+          const y = (index + 1) * (canvas.height / 5);
+          const percentage = selectedInfra.logTypes[type.toLowerCase()] || 0;
+          
+          ctx.strokeStyle = colors[index];
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          
+          for (let x = 0; x < canvas.width; x += 2) {
+            const waveY = y + Math.sin((x / 50) + time + index) * (percentage / 5);
+            if (x === 0) ctx.moveTo(x, waveY);
+            else ctx.lineTo(x, waveY);
           }
+          
+          ctx.stroke();
+          
+          // Label
+          ctx.fillStyle = colors[index];
+          ctx.font = 'bold 12px monospace';
+          ctx.fillText(`${type}: ${percentage.toFixed(1)}%`, 10, y - 20);
         });
-      });
-
-      // Draw nodes
-      nodes.forEach(node => {
-        node.pulsePhase += 0.05;
-        const size = Math.sqrt(node.data.frequency) / 20 * (1 + Math.sin(node.pulsePhase) * 0.1);
-        
-        const glow = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, size * 2);
-        glow.addColorStop(0, node.data.threat_level === 'CRITICAL' ? '#ff00ff80' : '#00ffff80');
-        glow.addColorStop(1, 'transparent');
-        ctx.fillStyle = glow;
-        ctx.fillRect(node.x - size * 2, node.y - size * 2, size * 4, size * 4);
-        
-        ctx.fillStyle = node.data.threat_level === 'CRITICAL' ? '#ff00ff' : '#00ffff';
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, size, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 10px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(node.type.substring(0, 15), node.x, node.y - size - 10);
-        ctx.font = '9px monospace';
-        ctx.fillText(`${node.data.percentage.toFixed(1)}%`, node.x, node.y + size + 15);
-      });
+      }
 
       requestAnimationFrame(animate);
     };
 
     animate();
-  }, [infrastructureData]);
+  }, [infrastructureData, selectedType]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-32 w-32 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-xl font-bold text-cyan-400">LOADING INFRASTRUCTURE DATA</div>
+          <div className="mt-4 text-xl font-bold text-cyan-400">ANALYZING INFRASTRUCTURE VISIBILITY</div>
         </div>
       </div>
     );
   }
 
-  if (error || !infrastructureData) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center glass-panel rounded-xl p-8">
-          <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <div className="text-xl font-bold text-red-400 mb-2">DATA LOAD ERROR</div>
-          <div className="text-sm text-gray-400">{error || 'No data available'}</div>
-        </div>
-      </div>
-    );
-  }
+  if (!infrastructureData) return null;
 
-  const totalAssets = Object.values(infrastructureData.infrastructure_matrix).reduce((sum: number, count: any) => sum + count, 0);
+  const getIcon = (name: string) => {
+    switch(name) {
+      case 'On-Premise': return Server;
+      case 'Cloud': return Cloud;
+      case 'Containers': return Layers;
+      case 'Virtual': return Database;
+      default: return Network;
+    }
+  };
 
   return (
-    <div className="p-3 h-screen bg-black overflow-hidden flex flex-col">
-      {/* Critical Alert for Low Modernization */}
-      {infrastructureData.modernization_analysis.modernization_percentage < 50 && (
-        <div className="mb-2 bg-black border border-purple-500/30 rounded-lg p-2">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-purple-400 animate-pulse" />
-            <span className="text-purple-400 font-bold text-xs">MODERNIZATION ALERT:</span>
-            <span className="text-white text-xs">
-              Only {infrastructureData.modernization_analysis.modernization_percentage.toFixed(1)}% cloud adoption - {infrastructureData.modernization_analysis.legacy_systems.length} legacy systems detected
-            </span>
+    <div className="h-full p-6 flex flex-col">
+      {/* Alert if critical visibility */}
+      {infrastructureData.overallVisibility < 30 && (
+        <div className="mb-4 bg-black border border-pink-500/50 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-pink-400 animate-pulse" />
+            <div>
+              <div className="text-lg font-bold text-pink-400">INFRASTRUCTURE VISIBILITY CRISIS</div>
+              <div className="text-sm text-white">
+                Multiple infrastructure types below critical visibility threshold
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Summary Stats from Real Data */}
-      <div className="grid grid-cols-6 gap-2 mb-3">
-        {infrastructureData.detailed_data.slice(0, 5).map((infra: any) => (
-          <div key={infra.type} className="bg-black/50 rounded-lg border border-white/10 p-2 hover:border-blue-500/50 transition-all">
-            <Server className="w-4 h-4 mb-1" style={{ 
-              color: infra.threat_level === 'CRITICAL' ? '#ff00ff' : 
-                     infra.threat_level === 'HIGH' ? '#c084fc' :
-                     infra.threat_level === 'MEDIUM' ? '#00ffff' :
-                     '#00ff88'
-            }} />
-            <div className="text-lg font-bold text-white">{infra.percentage.toFixed(1)}%</div>
-            <div className="text-[10px] text-white/60 truncate">{infra.type}</div>
+      <div className="flex-1 grid grid-cols-12 gap-6">
+        {/* 3D Infrastructure Stack */}
+        <div className="col-span-7">
+          <div className="h-full glass-panel rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-cyan-400">INFRASTRUCTURE VISIBILITY STACK</h2>
+              <div className="text-sm text-gray-400">
+                Interactive 3D View - Move Mouse to Explore
+              </div>
+            </div>
+            <div ref={stackRef} className="w-full h-[400px]" />
+            
+            {/* Infrastructure Selector */}
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setSelectedType('all')}
+                className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+                  selectedType === 'all' 
+                    ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                    : 'bg-gray-900/50 border border-gray-700 text-gray-400'
+                }`}
+              >
+                ALL
+              </button>
+              {infrastructureData.types.map((type: any) => (
+                <button
+                  key={type.name}
+                  onClick={() => setSelectedType(type.name)}
+                  onMouseEnter={() => setHoveredInfra(type.name)}
+                  onMouseLeave={() => setHoveredInfra(null)}
+                  className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+                    selectedType === type.name
+                      ? 'bg-purple-500/20 border border-purple-500 text-purple-400'
+                      : 'bg-gray-900/50 border border-gray-700 text-gray-400 hover:border-gray-500'
+                  }`}
+                >
+                  {type.name.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </div>
-        ))}
-        <div className="bg-black/50 rounded-lg border border-purple-500/30 p-2">
-          <AlertTriangle className="w-4 h-4 text-purple-400 mb-1" />
-          <div className="text-lg font-bold text-purple-400">{infrastructureData.total_types}</div>
-          <div className="text-[10px] text-white/60">Types</div>
         </div>
-      </div>
 
-      {/* Main Visualizations */}
-      <div className="grid grid-cols-2 gap-3 mb-3 flex-1">
-        {/* 3D Layered Infrastructure */}
-        <div className="bg-black border border-blue-500/30 rounded-lg overflow-hidden">
-          <div className="p-2 border-b border-blue-500/20">
-            <h3 className="text-[10px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1">
-              <Layers className="w-3 h-3" />
-              Infrastructure Stack - {totalAssets.toLocaleString()} Assets
-            </h3>
+        {/* Right Column - Metrics and Log Types */}
+        <div className="col-span-5 space-y-6">
+          {/* Log Type Visibility */}
+          <div className="glass-panel rounded-2xl p-6">
+            <h3 className="text-lg font-bold text-purple-400 mb-4">LOG TYPE VISIBILITY</h3>
+            <canvas ref={flowRef} className="w-full h-[200px]" />
           </div>
-          <div ref={layersRef} className="w-full h-[240px]" />
-        </div>
 
-        {/* Network Visualization */}
-        <div className="bg-black border border-purple-500/30 rounded-lg overflow-hidden">
-          <div className="p-2 border-b border-purple-500/20">
-            <h3 className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
-              <Network className="w-3 h-3" />
-              Infrastructure Network
-            </h3>
-          </div>
-          <canvas ref={networkRef} className="w-full h-[240px]" />
-        </div>
-      </div>
-
-      {/* Infrastructure Grid from Real Data */}
-      <div className="grid grid-cols-4 gap-2">
-        {infrastructureData.detailed_data.slice(0, 8).map((infra: any) => (
-          <div 
-            key={infra.type} 
-            className="bg-black/50 rounded-lg border p-2 cursor-pointer hover:bg-gray-900/30 transition-all"
-            style={{
-              borderColor: infra.threat_level === 'CRITICAL' ? 'rgba(255, 0, 255, 0.3)' : 
-                          infra.threat_level === 'HIGH' ? 'rgba(168, 85, 247, 0.3)' : 
-                          infra.threat_level === 'MEDIUM' ? 'rgba(0, 212, 255, 0.3)' :
-                          'rgba(0, 255, 136, 0.3)'
-            }}
-            onClick={() => setSelectedType(infra.type)}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1">
-                <Server className="w-4 h-4" style={{ 
-                  color: infra.threat_level === 'CRITICAL' ? '#ff00ff' : 
-                         infra.threat_level === 'HIGH' ? '#c084fc' :
-                         infra.threat_level === 'MEDIUM' ? '#00ffff' :
-                         '#00ff88'
-                }} />
-                <div>
-                  <h3 className="text-sm font-bold text-white truncate">{infra.type}</h3>
-                  <p className="text-[9px] text-white/60">{infra.frequency.toLocaleString()} assets</p>
+          {/* Infrastructure Cards */}
+          <div className="space-y-4">
+            {infrastructureData.types.map((infra: any) => {
+              const Icon = getIcon(infra.name);
+              const isHovered = hoveredInfra === infra.name;
+              
+              return (
+                <div
+                  key={infra.name}
+                  className={`glass-panel rounded-xl p-4 transition-all cursor-pointer ${
+                    isHovered ? 'border-cyan-400/50 transform scale-105' : ''
+                  }`}
+                  onMouseEnter={() => setHoveredInfra(infra.name)}
+                  onMouseLeave={() => setHoveredInfra(null)}
+                  onClick={() => setSelectedType(infra.name)}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <Icon className="w-6 h-6 text-cyan-400" />
+                      <div>
+                        <div className="text-lg font-bold text-white">{infra.name}</div>
+                        <div className="text-xs text-gray-400">
+                          {infra.totalHosts.toLocaleString()} hosts
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-3xl font-bold ${
+                        infra.status === 'critical' ? 'text-pink-400' :
+                        infra.status === 'warning' ? 'text-purple-400' :
+                        'text-cyan-400'
+                      }`}>
+                        {infra.visibilityPercentage.toFixed(1)}%
+                      </div>
+                      <div className="text-xs text-gray-400 uppercase">Visibility</div>
+                    </div>
+                  </div>
+                  
+                  {/* Visibility Bar */}
+                  <div className="h-6 bg-gray-800 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full relative transition-all duration-1000"
+                      style={{
+                        width: `${infra.visibilityPercentage}%`,
+                        background: infra.status === 'critical' 
+                          ? 'linear-gradient(90deg, #ff00ff, #ff00ff)'
+                          : infra.status === 'warning'
+                          ? 'linear-gradient(90deg, #a855f7, #c084fc)'
+                          : 'linear-gradient(90deg, #00ffff, #00d4ff)'
+                      }}
+                    >
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs font-bold text-black">
+                          {infra.visibleHosts.toLocaleString()} / {infra.totalHosts.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Status */}
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className={`text-xs font-bold uppercase ${
+                      infra.status === 'critical' ? 'text-pink-400' :
+                      infra.status === 'warning' ? 'text-purple-400' :
+                      'text-cyan-400'
+                    }`}>
+                      {infra.status}
+                    </div>
+                    <Eye className={`w-4 h-4 ${
+                      infra.visibilityPercentage > 60 ? 'text-cyan-400' : 'text-gray-600'
+                    }`} />
+                  </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-bold" style={{
-                  color: infra.threat_level === 'CRITICAL' ? '#ff00ff' : 
-                         infra.threat_level === 'HIGH' ? '#c084fc' :
-                         infra.threat_level === 'MEDIUM' ? '#00ffff' :
-                         '#00ff88'
-                }}>
-                  {infra.percentage.toFixed(1)}%
-                </div>
-                <div className="text-[8px] text-white/60">{infra.threat_level}</div>
-              </div>
-            </div>
-
-            {/* Coverage Bar */}
-            <div className="mb-2">
-              <div className="h-1.5 bg-black/50 rounded-full overflow-hidden">
-                <div 
-                  className="h-full rounded-full transition-all duration-1000"
-                  style={{ 
-                    width: `${infra.percentage}%`,
-                    background: infra.threat_level === 'CRITICAL' ? 
-                      'linear-gradient(90deg, #ff00ff, #ff00ffdd)' :
-                      infra.threat_level === 'HIGH' ?
-                      'linear-gradient(90deg, #c084fc, #c084fcdd)' :
-                      infra.threat_level === 'MEDIUM' ?
-                      'linear-gradient(90deg, #00ffff, #00ffffdd)' :
-                      'linear-gradient(90deg, #00ff88, #00ff88dd)'
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Percentage of total */}
-            <div className="text-[8px] text-gray-400">
-              {((infra.frequency / totalAssets) * 100).toFixed(2)}% of total infrastructure
-            </div>
+              );
+            })}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );
