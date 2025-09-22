@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, BarChart3, Database, Globe, Activity, Settings, Network, FileSearch, Layers, Eye, Cpu, Lock, Zap, Hexagon, Triangle, Server, Cloud } from 'lucide-react';
-import { useGlobalView } from '@/hooks/useVisibilityData';
 
 interface NavigationProps {
   currentPage: string;
@@ -10,9 +9,41 @@ interface NavigationProps {
 const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [pulseAnimation, setPulseAnimation] = useState<Record<string, boolean>>({});
-  
-  // Get real data for navigation status
-  const { data: globalData, loading } = useGlobalView();
+  const [statusData, setStatusData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch real status data from Flask API
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const [cmdbResponse, taniumResponse, statusResponse] = await Promise.all([
+          fetch('http://localhost:5000/api/cmdb_presence'),
+          fetch('http://localhost:5000/api/tanium_coverage'),
+          fetch('http://localhost:5000/api/database_status')
+        ]);
+
+        const cmdb = await cmdbResponse.json();
+        const tanium = await taniumResponse.json();
+        const status = await statusResponse.json();
+
+        setStatusData({
+          cmdb: cmdb.registration_rate?.toFixed(1) + '%' || '0%',
+          tanium: tanium.coverage_percentage?.toFixed(1) + '%' || '0%',
+          total: status.row_count || 0,
+          isLive: cmdb.registration_rate > 0,
+          isCritical: cmdb.registration_rate < 50
+        });
+        setLoading(false);
+      } catch (error) {
+        console.error('Failed to fetch status:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const navItems = [
     { id: 'dashboard', label: 'DASHBOARD', icon: BarChart3, color: '#00d4ff' },
@@ -27,11 +58,10 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
     { id: 'logging-standards', label: 'STANDARDS', icon: Activity, color: '#a855f7' },
   ];
 
-  // Simulate data updates for critical items
+  // Pulse critical items when coverage is low
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (globalData && globalData.splunk_coverage < 50) {
-        // Pulse critical navigation items when coverage is low
+    if (statusData?.isCritical) {
+      const interval = setInterval(() => {
         const criticalItems = ['dashboard', 'global-view', 'security-coverage'];
         const randomItem = criticalItems[Math.floor(Math.random() * criticalItems.length)];
         setPulseAnimation(prev => ({ ...prev, [randomItem]: true }));
@@ -39,30 +69,11 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
         setTimeout(() => {
           setPulseAnimation(prev => ({ ...prev, [randomItem]: false }));
         }, 1000);
-      }
-    }, 3000);
+      }, 3000);
 
-    return () => clearInterval(interval);
-  }, [globalData]);
-
-  // Calculate real-time status indicators
-  const getRealTimeStatus = () => {
-    if (loading || !globalData) {
-      return {
-        cmdb: 'Loading...',
-        splunk: 'Loading...',
-        chronicle: 'Loading...'
-      };
+      return () => clearInterval(interval);
     }
-
-    return {
-      cmdb: globalData.cmdb_coverage?.toFixed(1) + '%' || '0%',
-      splunk: globalData.splunk_coverage?.toFixed(1) + '%' || '0%',
-      chronicle: globalData.edr_coverage?.toFixed(1) + '%' || '0%'
-    };
-  };
-
-  const status = getRealTimeStatus();
+  }, [statusData]);
 
   return (
     <nav className="fixed left-0 top-0 h-full w-64 z-40">
@@ -89,7 +100,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
           </div>
         </div>
 
-        {/* Navigation items - scrollable if needed */}
+        {/* Navigation items */}
         <div className="overflow-y-auto" style={{ height: 'calc(100% - 200px)' }}>
           <div className="p-3 space-y-1">
             {navItems.map((item) => {
@@ -167,7 +178,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
           </div>
         </div>
 
-        {/* Platform Status - Fixed at bottom with Real Data */}
+        {/* Platform Status with Real Data */}
         <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-white/10 bg-black/95">
           <div className="bg-black/50 rounded-lg p-3 border border-white/10">
             <div className="space-y-2">
@@ -176,15 +187,15 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
                 <div className="flex items-center gap-1">
                   <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
                     loading ? 'bg-yellow-400' : 
-                    globalData && globalData.splunk_coverage > 80 ? 'bg-green-400' :
-                    globalData && globalData.splunk_coverage > 50 ? 'bg-yellow-400' :
-                    'bg-red-400'
+                    statusData?.isLive ? (statusData?.isCritical ? 'bg-red-400' : 'bg-green-400') :
+                    'bg-gray-400'
                   }`} />
                   <span className={`text-xs ${
                     loading ? 'text-yellow-400' :
-                    globalData && globalData.splunk_coverage > 50 ? 'text-green-400' : 'text-red-400'
+                    statusData?.isLive ? (statusData?.isCritical ? 'text-red-400' : 'text-green-400') : 
+                    'text-gray-400'
                   }`}>
-                    {loading ? 'SYNC' : globalData && globalData.splunk_coverage > 50 ? 'LIVE' : 'ALERT'}
+                    {loading ? 'SYNC' : statusData?.isLive ? (statusData?.isCritical ? 'ALERT' : 'LIVE') : 'OFFLINE'}
                   </span>
                 </div>
               </div>
@@ -192,28 +203,31 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
               <div className="space-y-1 text-xs">
                 <div className="flex justify-between">
                   <span className="text-white/40">CMDB</span>
-                  <span className={`${loading ? 'text-gray-400' : 'text-blue-400'}`}>
-                    {status.cmdb}
+                  <span className={`${
+                    loading ? 'text-gray-400' : 
+                    parseFloat(statusData?.cmdb || '0') < 50 ? 'text-red-400' : 'text-blue-400'
+                  }`}>
+                    {loading ? '...' : statusData?.cmdb || '0%'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-white/40">SPLUNK</span>
+                  <span className="text-white/40">TANIUM</span>
                   <span className={`${
                     loading ? 'text-gray-400' :
-                    globalData && globalData.splunk_coverage > 50 ? 'text-green-400' : 'text-red-400'
+                    parseFloat(statusData?.tanium || '0') < 50 ? 'text-red-400' : 'text-green-400'
                   }`}>
-                    {status.splunk}
+                    {loading ? '...' : statusData?.tanium || '0%'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-white/40">EDR</span>
-                  <span className={`${loading ? 'text-gray-400' : 'text-purple-400'}`}>
-                    {status.chronicle}
+                  <span className="text-white/40">ASSETS</span>
+                  <span className="text-purple-400">
+                    {loading ? '...' : statusData?.total?.toLocaleString() || '0'}
                   </span>
                 </div>
               </div>
 
-              {globalData && globalData.splunk_coverage < 50 && (
+              {!loading && statusData?.isCritical && (
                 <div className="mt-2 p-1.5 bg-red-500/10 border border-red-500/30 rounded">
                   <div className="text-[10px] text-red-400 font-bold">CRITICAL ALERT</div>
                   <div className="text-[9px] text-red-400">Coverage below threshold</div>
