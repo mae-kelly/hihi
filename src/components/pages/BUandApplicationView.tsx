@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Building, Layers, Eye, AlertTriangle, Activity, Users, Briefcase, Target, Database } from 'lucide-react';
+import { Building, Users, Eye, AlertTriangle, Activity, Briefcase, Target, Database } from 'lucide-react';
 import * as THREE from 'three';
 
 const BUandApplicationView: React.FC = () => {
   const [businessData, setBusinessData] = useState<any>(null);
+  const [cioData, setCioData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedView, setSelectedView] = useState<'bu' | 'cio' | 'apm' | 'class'>('bu');
+  const [selectedView, setSelectedView] = useState<'bu' | 'cio'>('bu');
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const hierarchyRef = useRef<HTMLDivElement>(null);
   const sankeyRef = useRef<HTMLCanvasElement>(null);
@@ -20,20 +21,77 @@ const BUandApplicationView: React.FC = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/business_unit_visibility');
-        if (!response.ok) throw new Error('Failed to fetch business data');
-        const data = await response.json();
-        setBusinessData(data);
+        const [buResponse, cioResponse] = await Promise.all([
+          fetch('http://localhost:5000/api/business_unit_metrics'),
+          fetch('http://localhost:5000/api/cio_metrics')
+        ]);
+
+        if (!buResponse.ok || !cioResponse.ok) {
+          throw new Error('Failed to fetch data');
+        }
+
+        const buData = await buResponse.json();
+        const cioDataRaw = await cioResponse.json();
+
+        // Transform business unit data
+        const businessUnitBreakdown = Object.entries(buData.business_intelligence || {}).map(([name, count]: [string, any]) => {
+          const analytics = buData.bu_security_analysis?.[name];
+          return {
+            business_unit: name,
+            total_hosts: count,
+            percentage: ((count / (buData.organizational_analytics?.total_assets || 1)) * 100),
+            visibility_percentage: analytics?.security_score || 0,
+            status: analytics?.security_status === 'VULNERABLE' ? 'CRITICAL' :
+                   analytics?.security_status === 'AT_RISK' ? 'WARNING' : 'GOOD',
+            visible_hosts: Math.floor((analytics?.security_score || 0) * count / 100),
+            regions: analytics?.regions || [],
+            infrastructure_types: analytics?.infrastructure_types || []
+          };
+        }).sort((a, b) => b.total_hosts - a.total_hosts);
+
+        // Transform CIO data
+        const cioBreakdown = Object.entries(cioDataRaw.operative_intelligence || {}).map(([name, count]: [string, any]) => {
+          const analytics = cioDataRaw.leadership_analysis?.[name];
+          const percentage = ((count / (cioDataRaw.governance_analytics?.total_assets_under_management || 1)) * 100);
+          
+          return {
+            cio: name,
+            total_hosts: count,
+            percentage: percentage,
+            visibility_percentage: Math.min(100, (analytics?.span_of_control || 0) * 10), // Convert span to percentage
+            status: percentage > 20 ? 'CRITICAL' : percentage > 10 ? 'WARNING' : 'GOOD',
+            visible_hosts: count,
+            business_units: analytics?.business_unit_list || [],
+            regions: analytics?.region_list || [],
+            leadership_tier: analytics?.leadership_tier || 'MANAGER'
+          };
+        }).sort((a, b) => b.total_hosts - a.total_hosts);
+
+        setBusinessData({
+          business_unit_breakdown: businessUnitBreakdown,
+          total_assets: buData.organizational_analytics?.total_assets || 0,
+          security_leaders: buData.organizational_analytics?.security_leaders || [],
+          vulnerable_units: buData.organizational_analytics?.vulnerable_units || []
+        });
+
+        setCioData({
+          cio_breakdown: cioBreakdown,
+          total_assets: cioDataRaw.governance_analytics?.total_assets_under_management || 0,
+          executive_summary: cioDataRaw.executive_summary || {}
+        });
+
       } catch (error) {
         console.error('Error:', error);
-        // Fallback data
         setBusinessData({
           business_unit_breakdown: [],
+          total_assets: 0,
+          security_leaders: [],
+          vulnerable_units: []
+        });
+        setCioData({
           cio_breakdown: [],
-          apm_breakdown: [],
-          application_class_breakdown: [],
-          worst_visibility_bu: null,
-          best_visibility_bu: null
+          total_assets: 0,
+          executive_summary: {}
         });
       } finally {
         setLoading(false);
@@ -47,7 +105,7 @@ const BUandApplicationView: React.FC = () => {
 
   // 3D Organizational Hierarchy Visualization
   useEffect(() => {
-    if (!hierarchyRef.current || !businessData || loading) return;
+    if (!hierarchyRef.current || !businessData || !cioData || loading) return;
 
     // Clean up previous scene
     if (rendererRef.current) {
@@ -84,18 +142,9 @@ const BUandApplicationView: React.FC = () => {
     
     // Get data based on selected view
     const getData = () => {
-      switch (selectedView) {
-        case 'bu':
-          return businessData.business_unit_breakdown || [];
-        case 'cio':
-          return businessData.cio_breakdown || [];
-        case 'apm':
-          return businessData.apm_breakdown || [];
-        case 'class':
-          return businessData.application_class_breakdown || [];
-        default:
-          return [];
-      }
+      return selectedView === 'bu' 
+        ? businessData.business_unit_breakdown || []
+        : cioData.cio_breakdown || [];
     };
     
     const viewData = getData();
@@ -114,7 +163,7 @@ const BUandApplicationView: React.FC = () => {
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
     scene.add(core);
     
-    // Create nodes for each business unit/CIO/APM/class
+    // Create nodes for each business unit/CIO
     viewData.slice(0, 20).forEach((item: any, index: number) => {
       const angle = (index / Math.min(viewData.length, 20)) * Math.PI * 2;
       const radius = 60;
@@ -261,12 +310,12 @@ const BUandApplicationView: React.FC = () => {
         }
       }
     };
-  }, [businessData, selectedView, loading]);
+  }, [businessData, cioData, selectedView, loading]);
 
   // Sankey Diagram for visibility flow
   useEffect(() => {
     const canvas = sankeyRef.current;
-    if (!canvas || !businessData) return;
+    if (!canvas || !businessData || !cioData) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -279,16 +328,14 @@ const BUandApplicationView: React.FC = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const viewData = selectedView === 'bu' ? businessData.business_unit_breakdown :
-                      selectedView === 'cio' ? businessData.cio_breakdown :
-                      selectedView === 'apm' ? businessData.apm_breakdown :
-                      businessData.application_class_breakdown || [];
+                      cioData.cio_breakdown || [];
 
       const time = Date.now() * 0.001;
       const flowHeight = canvas.height / Math.min(viewData.length || 1, 10);
       
       viewData.slice(0, 10).forEach((item: any, index: number) => {
         const y = index * flowHeight + flowHeight / 2;
-        const flowWidth = (canvas.width * 0.7) * (item.visibility_percentage / 100);
+        const flowWidth = (canvas.width * 0.7) * (item.percentage / 100);
         
         ctx.strokeStyle = item.status === 'CRITICAL' ? '#a855f7' :
                          item.status === 'WARNING' ? '#ffaa00' : '#00d4ff';
@@ -307,14 +354,14 @@ const BUandApplicationView: React.FC = () => {
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
         ctx.fillText(
-          `${(item.business_unit || item.cio || item.apm || item.application_class || '').substring(0, 20)}`,
+          `${(item.business_unit || item.cio || '').substring(0, 20)}`,
           5,
           y - flowHeight / 4
         );
         
         // Percentage
         ctx.fillStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
-        ctx.fillText(`${item.visibility_percentage?.toFixed(1)}%`, flowWidth + 10, y);
+        ctx.fillText(`${item.percentage?.toFixed(1)}%`, flowWidth + 10, y);
       });
 
       sankeyFrameRef.current = requestAnimationFrame(animate);
@@ -325,12 +372,12 @@ const BUandApplicationView: React.FC = () => {
     return () => {
       if (sankeyFrameRef.current) cancelAnimationFrame(sankeyFrameRef.current);
     };
-  }, [businessData, selectedView]);
+  }, [businessData, cioData, selectedView]);
 
   // Bubble Chart
   useEffect(() => {
     const canvas = bubbleRef.current;
-    if (!canvas || !businessData) return;
+    if (!canvas || !businessData || !cioData) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -339,14 +386,12 @@ const BUandApplicationView: React.FC = () => {
     canvas.height = canvas.offsetHeight;
 
     const viewData = selectedView === 'bu' ? businessData.business_unit_breakdown :
-                    selectedView === 'cio' ? businessData.cio_breakdown :
-                    selectedView === 'apm' ? businessData.apm_breakdown :
-                    businessData.application_class_breakdown || [];
+                    cioData.cio_breakdown || [];
 
     const bubbles = viewData.slice(0, 10).map((item: any, index: number) => ({
       x: Math.random() * (canvas.width - 100) + 50,
       y: Math.random() * (canvas.height - 100) + 50,
-      radius: Math.max(20, Math.sqrt(item.total_hosts) / 10),
+      radius: Math.max(20, Math.sqrt(item.total_hosts) / 50),
       vx: (Math.random() - 0.5) * 0.5,
       vy: (Math.random() - 0.5) * 0.5,
       data: item
@@ -394,7 +439,7 @@ const BUandApplicationView: React.FC = () => {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(
-          `${bubble.data.visibility_percentage?.toFixed(0)}%`,
+          `${bubble.data.percentage?.toFixed(0)}%`,
           bubble.x,
           bubble.y
         );
@@ -408,7 +453,7 @@ const BUandApplicationView: React.FC = () => {
     return () => {
       if (bubbleFrameRef.current) cancelAnimationFrame(bubbleFrameRef.current);
     };
-  }, [businessData, selectedView]);
+  }, [businessData, cioData, selectedView]);
 
   if (loading) {
     return (
@@ -421,11 +466,8 @@ const BUandApplicationView: React.FC = () => {
     );
   }
 
-  const currentData = selectedView === 'bu' ? businessData?.business_unit_breakdown :
-                     selectedView === 'cio' ? businessData?.cio_breakdown :
-                     selectedView === 'apm' ? businessData?.apm_breakdown :
-                     businessData?.application_class_breakdown || [];
-
+  const currentData = selectedView === 'bu' ? businessData?.business_unit_breakdown : cioData?.cio_breakdown || [];
+  const totalAssets = selectedView === 'bu' ? businessData?.total_assets : cioData?.total_assets || 0;
   const avgVisibility = currentData.length > 0
     ? currentData.reduce((sum: number, item: any) => sum + (item.visibility_percentage || 0), 0) / currentData.length
     : 0;
@@ -439,7 +481,7 @@ const BUandApplicationView: React.FC = () => {
             <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
             <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
             <span className="text-white text-sm">
-              Business visibility at {avgVisibility.toFixed(1)}% - {criticalCount} critical units
+              {selectedView === 'bu' ? 'Business unit' : 'CIO'} visibility at {avgVisibility.toFixed(1)}% - {criticalCount} critical {selectedView === 'bu' ? 'units' : 'leaders'}
             </span>
           </div>
         </div>
@@ -452,25 +494,28 @@ const BUandApplicationView: React.FC = () => {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-cyan-400">ORGANIZATIONAL VISIBILITY</h2>
               <div className="flex gap-2">
-                {[
-                  { key: 'bu', label: 'BUSINESS UNIT', icon: Building },
-                  { key: 'cio', label: 'CIO', icon: Users },
-                  { key: 'apm', label: 'APM', icon: Briefcase },
-                  { key: 'class', label: 'APP CLASS', icon: Layers }
-                ].map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    onClick={() => setSelectedView(key as any)}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1 ${
-                      selectedView === key
-                        ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
-                        : 'bg-gray-900/50 border border-gray-700 text-gray-400 hover:border-gray-500'
-                    }`}
-                  >
-                    <Icon className="w-3 h-3" />
-                    {label}
-                  </button>
-                ))}
+                <button
+                  onClick={() => setSelectedView('bu')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1 ${
+                    selectedView === 'bu'
+                      ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                      : 'bg-gray-900/50 border border-gray-700 text-gray-400 hover:border-gray-500'
+                  }`}
+                >
+                  <Building className="w-3 h-3" />
+                  BUSINESS UNITS
+                </button>
+                <button
+                  onClick={() => setSelectedView('cio')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1 ${
+                    selectedView === 'cio'
+                      ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                      : 'bg-gray-900/50 border border-gray-700 text-gray-400 hover:border-gray-500'
+                  }`}
+                >
+                  <Users className="w-3 h-3" />
+                  CIO
+                </button>
               </div>
             </div>
             
@@ -480,6 +525,26 @@ const BUandApplicationView: React.FC = () => {
 
         {/* Right Column */}
         <div className="col-span-5 space-y-3">
+          {/* Summary Stats */}
+          <div className="glass-panel rounded-xl p-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-3xl font-bold">
+                  <span className={avgVisibility < 30 ? 'text-purple-400' : avgVisibility < 60 ? 'text-yellow-400' : 'text-cyan-400'}>
+                    {avgVisibility.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="text-xs text-gray-400 uppercase">Avg Coverage</div>
+              </div>
+              <div>
+                <div className="text-3xl font-bold text-white">
+                  {currentData.length}
+                </div>
+                <div className="text-xs text-gray-400 uppercase">Total</div>
+              </div>
+            </div>
+          </div>
+
           {/* Visibility Flow */}
           <div className="glass-panel rounded-xl p-3">
             <h3 className="text-sm font-bold text-purple-400 mb-2">VISIBILITY FLOW</h3>
@@ -495,7 +560,7 @@ const BUandApplicationView: React.FC = () => {
           {/* Detail Cards */}
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {currentData.slice(0, 10).map((item: any, index: number) => {
-              const name = item.business_unit || item.cio || item.apm || item.application_class || 'Unknown';
+              const name = item.business_unit || item.cio || 'Unknown';
               
               return (
                 <div
@@ -511,7 +576,7 @@ const BUandApplicationView: React.FC = () => {
                         {name}
                       </div>
                       <div className="text-xs text-gray-400">
-                        {item.total_hosts?.toLocaleString() || 0} hosts
+                        {item.total_hosts?.toLocaleString() || 0} hosts ({item.percentage?.toFixed(1)}% of total)
                       </div>
                     </div>
                     <div className="text-right">
@@ -550,31 +615,26 @@ const BUandApplicationView: React.FC = () => {
                       {item.status || 'UNKNOWN'}
                     </span>
                   </div>
+
+                  {/* Additional info for selected item */}
+                  {selectedItem === name && (
+                    <div className="mt-2 pt-2 border-t border-white/10 text-xs">
+                      {selectedView === 'bu' ? (
+                        <div>
+                          <div className="text-gray-400">Regions: {(item.regions || []).slice(0, 3).join(', ')}</div>
+                          <div className="text-gray-400">Infra Types: {(item.infrastructure_types || []).slice(0, 2).join(', ')}</div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="text-gray-400">Tier: {item.leadership_tier}</div>
+                          <div className="text-gray-400">BUs: {(item.business_units || []).slice(0, 2).join(', ')}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
-          </div>
-
-          {/* Summary Stats */}
-          <div className="glass-panel rounded-xl p-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="text-xs text-gray-400">AVG VISIBILITY</div>
-                <div className={`text-2xl font-bold ${
-                  avgVisibility < 30 ? 'text-purple-400' :
-                  avgVisibility < 60 ? 'text-yellow-400' :
-                  'text-cyan-400'
-                }`}>
-                  {avgVisibility.toFixed(1)}%
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400">TOTAL</div>
-                <div className="text-2xl font-bold text-white">
-                  {currentData.length}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

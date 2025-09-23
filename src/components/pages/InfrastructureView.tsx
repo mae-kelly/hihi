@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { Server, Cloud, Database, Monitor, AlertTriangle, Eye, Activity } from 'lucide-react';
 
 const InfrastructureView = () => {
-  const [infrastructureData, setInfrastructureData] = useState(null);
+  const [infrastructureData, setInfrastructureData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedType, setSelectedType] = useState(null);
-  const [hoveredInfra, setHoveredInfra] = useState(null);
-  const stackRef = useRef(null);
+  const [selectedType, setSelectedType] = useState<any>(null);
+  const [hoveredInfra, setHoveredInfra] = useState<any>(null);
+  const stackRef = useRef<HTMLDivElement>(null);
   const [viewAngle, setViewAngle] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
 
@@ -15,7 +15,7 @@ const InfrastructureView = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/infrastructure_type');
+        const response = await fetch('http://localhost:5000/api/infrastructure_type_metrics');
         if (!response.ok) throw new Error('Failed to fetch infrastructure data');
         const data = await response.json();
         setInfrastructureData(data);
@@ -24,11 +24,20 @@ const InfrastructureView = () => {
         setInfrastructureData({
           infrastructure_matrix: {},
           detailed_data: [],
+          regional_analysis: {},
+          business_unit_analysis: {},
+          total_types: 0,
           modernization_analysis: {
             modernization_score: 0,
             modernization_percentage: 0,
-            legacy_systems: [],
-            cloud_adoption: []
+            legacy_systems: 0,
+            cloud_adoption: 0
+          },
+          distribution: {
+            top_5: [],
+            total_instances: 0,
+            diversity_score: 0,
+            concentration_risk: 0
           }
         });
       } finally {
@@ -67,12 +76,12 @@ const InfrastructureView = () => {
     stackRef.current.appendChild(renderer.domElement);
 
     const infrastructureTypes = infrastructureData.detailed_data || [];
-    const maxHosts = Math.max(...infrastructureTypes.map(t => t.frequency), 1);
+    const maxHosts = Math.max(...infrastructureTypes.map((t: any) => t.frequency), 1);
     
-    const layers = [];
-    const clickableObjects = [];
+    const layers: THREE.Group[] = [];
+    const clickableObjects: THREE.Mesh[] = [];
     
-    infrastructureTypes.forEach((infra, index) => {
+    infrastructureTypes.forEach((infra: any, index: number) => {
       const layerGroup = new THREE.Group();
       
       // Calculate size based on frequency (number of hosts)
@@ -177,7 +186,7 @@ const InfrastructureView = () => {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-    const handleClick = (event) => {
+    const handleClick = (event: MouseEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -190,7 +199,7 @@ const InfrastructureView = () => {
       }
     };
 
-    const handleMouseMove = (event) => {
+    const handleMouseMove = (event: MouseEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -210,7 +219,7 @@ const InfrastructureView = () => {
     renderer.domElement.addEventListener('click', handleClick);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
 
-    let frameId;
+    let frameId: number;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       
@@ -258,7 +267,7 @@ const InfrastructureView = () => {
 
   if (!infrastructureData) return null;
 
-  const criticalInfra = infrastructureData.detailed_data?.filter(item => item.threat_level === 'CRITICAL') || [];
+  const criticalInfra = infrastructureData.detailed_data?.filter((item: any) => item.threat_level === 'CRITICAL') || [];
   const modernizationScore = infrastructureData.modernization_analysis?.modernization_score || 0;
 
   return (
@@ -285,7 +294,7 @@ const InfrastructureView = () => {
                   <Server className="w-5 h-5 text-cyan-400" />
                   INFRASTRUCTURE TYPE DISTRIBUTION
                 </h3>
-                <div className="text-xs text-gray-400">Host visibility by infrastructure type</div>
+                <div className="text-xs text-gray-400">Host counts by infrastructure type</div>
               </div>
               <div className="flex gap-2">
                 <button 
@@ -319,8 +328,8 @@ const InfrastructureView = () => {
               <div className="absolute bottom-8 left-8 bg-black/90 border border-cyan-400/50 rounded-lg p-3 backdrop-blur-xl">
                 <div className="text-sm font-bold text-cyan-400">{hoveredInfra.type}</div>
                 <div className="text-xs text-white/80 mt-1">
-                  <div>Host Count: {hoveredInfra.frequency.toLocaleString()}</div>
-                  <div>Percentage: {hoveredInfra.percentage.toFixed(1)}%</div>
+                  <div>Host Count: {hoveredInfra.frequency?.toLocaleString()}</div>
+                  <div>Percentage: {hoveredInfra.percentage?.toFixed(1)}%</div>
                   <div>Threat Level: {hoveredInfra.threat_level}</div>
                 </div>
               </div>
@@ -363,13 +372,13 @@ const InfrastructureView = () => {
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
                 <div className="text-cyan-400 font-bold">
-                  {infrastructureData.modernization_analysis?.cloud_adoption?.length || 0}
+                  {infrastructureData.modernization_analysis?.cloud_adoption || 0}
                 </div>
                 <div className="text-gray-400">Cloud Types</div>
               </div>
               <div>
                 <div className="text-purple-400 font-bold">
-                  {infrastructureData.modernization_analysis?.legacy_systems?.length || 0}
+                  {infrastructureData.modernization_analysis?.legacy_systems || 0}
                 </div>
                 <div className="text-gray-400">Legacy Types</div>
               </div>
@@ -385,7 +394,7 @@ const InfrastructureView = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-2xl font-bold text-white">
-                  {infrastructureData.detailed_data?.length || 0}
+                  {infrastructureData.total_types || 0}
                 </div>
                 <div className="text-xs text-gray-400">TOTAL TYPES</div>
               </div>
@@ -396,22 +405,37 @@ const InfrastructureView = () => {
                 <div className="text-xs text-gray-400">CRITICAL</div>
               </div>
             </div>
+
+            <div className="mt-3 space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Total Instances</span>
+                <span className="text-white">{infrastructureData.distribution?.total_instances?.toLocaleString() || 0}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Diversity Score</span>
+                <span className="text-cyan-400">{infrastructureData.distribution?.diversity_score || 0}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-400">Concentration Risk</span>
+                <span className="text-purple-400">{infrastructureData.distribution?.concentration_risk?.toFixed(1) || 0}%</span>
+              </div>
+            </div>
           </div>
 
           {selectedType && (
             <div className="bg-black/80 border border-cyan-400/30 rounded-xl p-4 backdrop-blur-xl">
               <div className="flex items-center gap-2 mb-3">
                 <Eye className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-sm font-bold text-cyan-400">{selectedType.type.toUpperCase()}</h3>
+                <h3 className="text-sm font-bold text-cyan-400">{selectedType.type?.toUpperCase()}</h3>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-xs text-white/60">HOST COUNT</span>
-                  <span className="text-sm font-bold text-white">{selectedType.frequency.toLocaleString()}</span>
+                  <span className="text-sm font-bold text-white">{selectedType.frequency?.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-white/60">PERCENTAGE</span>
-                  <span className="text-sm font-bold text-white">{selectedType.percentage.toFixed(1)}%</span>
+                  <span className="text-sm font-bold text-white">{selectedType.percentage?.toFixed(1)}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-white/60">THREAT LEVEL</span>
@@ -432,7 +456,7 @@ const InfrastructureView = () => {
           <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl flex-1">
             <h3 className="text-sm font-bold text-white/60 mb-3">INFRASTRUCTURE BREAKDOWN</h3>
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {infrastructureData.detailed_data?.slice(0, 10).map((infra, index) => (
+              {infrastructureData.detailed_data?.slice(0, 10).map((infra: any, index: number) => (
                 <div key={index} className="bg-gray-900/30 rounded p-2 cursor-pointer hover:bg-gray-800/50 transition-all"
                      onClick={() => setSelectedType(infra)}>
                   <div className="flex justify-between items-center">
@@ -441,7 +465,7 @@ const InfrastructureView = () => {
                         {infra.type}
                       </div>
                       <div className="text-xs text-gray-400">
-                        {infra.frequency.toLocaleString()} hosts
+                        {infra.frequency?.toLocaleString()} hosts
                       </div>
                     </div>
                     <div className="text-right">
@@ -451,7 +475,7 @@ const InfrastructureView = () => {
                         infra.threat_level === 'MEDIUM' ? 'text-yellow-400' :
                         'text-cyan-400'
                       }`}>
-                        {infra.percentage.toFixed(1)}%
+                        {infra.percentage?.toFixed(1)}%
                       </div>
                       <div className={`text-xs font-bold ${
                         infra.threat_level === 'CRITICAL' ? 'text-pink-400' :

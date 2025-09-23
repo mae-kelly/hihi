@@ -3,66 +3,99 @@ import { Globe, Shield, Database, Network, Server, Cloud, Activity, Lock, Eye, L
 import * as THREE from 'three';
 
 const DomainVisibility: React.FC = () => {
+  const [domainData, setDomainData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
   const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, number>>({});
   const networkRef = useRef<HTMLDivElement>(null);
   const constellationRef = useRef<HTMLCanvasElement>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
-  // Domain visibility data
-  const domainData = {
-    'External': {
-      totalAssets: 45678,
-      visibility: 78.9,
-      gaps: 9654,
-      status: 'active',
-      color: '#00ffff',
-      domains: [
-        { name: 'api.company.com', visibility: 92.3, assets: 5234, risk: 'low' },
-        { name: 'portal.company.com', visibility: 85.7, assets: 8901, risk: 'medium' },
-        { name: 'cdn.company.com', visibility: 95.1, assets: 3456, risk: 'low' },
-        { name: 'services.company.com', visibility: 67.4, assets: 12345, risk: 'high' },
-        { name: 'mobile.company.com', visibility: 71.2, assets: 7890, risk: 'medium' }
-      ],
-      connections: 234,
-      dataFlow: '2.4TB/day'
-    },
-    'Internal': {
-      totalAssets: 89012,
-      visibility: 45.2,
-      gaps: 49093,
-      status: 'critical',
-      color: '#ff00ff',
-      domains: [
-        { name: 'intranet.local', visibility: 52.1, assets: 23456, risk: 'high' },
-        { name: 'database.internal', visibility: 38.9, assets: 34567, risk: 'critical' },
-        { name: 'admin.internal', visibility: 41.3, assets: 12345, risk: 'critical' },
-        { name: 'dev.internal', visibility: 67.8, assets: 8901, risk: 'medium' },
-        { name: 'staging.internal', visibility: 55.4, assets: 9743, risk: 'high' }
-      ],
-      connections: 567,
-      dataFlow: '5.8TB/day'
-    },
-    'Cloud': {
-      totalAssets: 67234,
-      visibility: 62.3,
-      gaps: 25322,
-      status: 'warning',
-      color: '#c084fc',
-      domains: [
-        { name: 'aws.cloud', visibility: 71.2, assets: 23456, risk: 'medium' },
-        { name: 'azure.cloud', visibility: 68.9, assets: 19012, risk: 'medium' },
-        { name: 'gcp.cloud', visibility: 58.3, assets: 15678, risk: 'high' },
-        { name: 'kubernetes.cloud', visibility: 45.7, assets: 9088, risk: 'critical' }
-      ],
-      connections: 412,
-      dataFlow: '3.9TB/day'
-    }
-  };
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('http://localhost:5000/api/domain_metrics');
+        if (!response.ok) throw new Error('Failed to fetch domain data');
+        const data = await response.json();
+
+        // Transform the domain metrics data
+        const domainAnalysis = data.domain_analysis || {};
+        const domainDetails = data.domain_details || {};
+        const totalAssets = data.total_analyzed || 1;
+
+        // Create domain breakdown similar to original structure
+        const transformedData = {
+          'TDC': {
+            totalAssets: domainDetails.tdc?.count || 0,
+            visibility: domainDetails.tdc?.percentage || 0,
+            gaps: Math.floor((domainDetails.tdc?.count || 0) * (1 - (domainDetails.tdc?.percentage || 0) / 100)),
+            status: (domainDetails.tdc?.percentage || 0) > 70 ? 'active' : (domainDetails.tdc?.percentage || 0) > 40 ? 'warning' : 'critical',
+            color: '#00ffff',
+            domains: [
+              { name: 'tdc.internal', visibility: domainDetails.tdc?.percentage || 0, assets: domainDetails.tdc?.count || 0, risk: (domainDetails.tdc?.percentage || 0) > 70 ? 'low' : 'medium' }
+            ],
+            connections: Math.floor((domainDetails.tdc?.count || 0) / 100),
+            dataFlow: `${((domainDetails.tdc?.count || 0) / 1000).toFixed(1)}MB/day`
+          },
+          'FEAD': {
+            totalAssets: domainDetails.fead?.count || 0,
+            visibility: domainDetails.fead?.percentage || 0,
+            gaps: Math.floor((domainDetails.fead?.count || 0) * (1 - (domainDetails.fead?.percentage || 0) / 100)),
+            status: (domainDetails.fead?.percentage || 0) > 70 ? 'active' : (domainDetails.fead?.percentage || 0) > 40 ? 'warning' : 'critical',
+            color: '#ff00ff',
+            domains: [
+              { name: 'fead.internal', visibility: domainDetails.fead?.percentage || 0, assets: domainDetails.fead?.count || 0, risk: (domainDetails.fead?.percentage || 0) > 70 ? 'low' : 'medium' }
+            ],
+            connections: Math.floor((domainDetails.fead?.count || 0) / 100),
+            dataFlow: `${((domainDetails.fead?.count || 0) / 1000).toFixed(1)}MB/day`
+          },
+          'Other': {
+            totalAssets: domainDetails.other?.count || 0,
+            visibility: domainDetails.other?.percentage || 0,
+            gaps: Math.floor((domainDetails.other?.count || 0) * (1 - (domainDetails.other?.percentage || 0) / 100)),
+            status: (domainDetails.other?.percentage || 0) > 70 ? 'active' : (domainDetails.other?.percentage || 0) > 40 ? 'warning' : 'critical',
+            color: '#c084fc',
+            domains: [
+              { name: 'other.domains', visibility: domainDetails.other?.percentage || 0, assets: domainDetails.other?.count || 0, risk: (domainDetails.other?.percentage || 0) > 70 ? 'low' : 'medium' }
+            ],
+            connections: Math.floor((domainDetails.other?.count || 0) / 100),
+            dataFlow: `${((domainDetails.other?.count || 0) / 1000).toFixed(1)}MB/day`
+          }
+        };
+
+        setDomainData({
+          domainBreakdown: transformedData,
+          totalAssets: totalAssets,
+          warfareIntelligence: data.warfare_intelligence || {},
+          domainDistribution: data.domain_distribution || {}
+        });
+
+      } catch (error) {
+        console.error('Error:', error);
+        setDomainData({
+          domainBreakdown: {
+            'TDC': { totalAssets: 0, visibility: 0, gaps: 0, status: 'critical', color: '#00ffff', domains: [], connections: 0, dataFlow: '0MB/day' },
+            'FEAD': { totalAssets: 0, visibility: 0, gaps: 0, status: 'critical', color: '#ff00ff', domains: [], connections: 0, dataFlow: '0MB/day' },
+            'Other': { totalAssets: 0, visibility: 0, gaps: 0, status: 'critical', color: '#c084fc', domains: [], connections: 0, dataFlow: '0MB/day' }
+          },
+          totalAssets: 0,
+          warfareIntelligence: {},
+          domainDistribution: {}
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // 3D Network Visualization
   useEffect(() => {
-    if (!networkRef.current) return;
+    if (!networkRef.current || !domainData) return;
 
     // Scene setup
     const scene = new THREE.Scene();
@@ -105,19 +138,19 @@ const DomainVisibility: React.FC = () => {
     scene.add(hub);
 
     // Create domain clusters
-    Object.entries(domainData).forEach(([domainType, data], typeIndex) => {
+    Object.entries(domainData.domainBreakdown || {}).forEach(([domainType, data], typeIndex) => {
       const angleOffset = (typeIndex / 3) * Math.PI * 2;
       const radius = 60;
       
-      data.domains.forEach((domain, index) => {
+      data.domains.forEach((domain: any, index: number) => {
         const angle = angleOffset + (index / data.domains.length) * (Math.PI * 2 / 3);
         const x = Math.cos(angle) * radius;
         const z = Math.sin(angle) * radius;
         const y = (Math.random() - 0.5) * 30;
         
         // Domain node
-        const nodeSize = Math.sqrt(domain.assets) / 60;
-        const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
+        const nodeSize = Math.sqrt(domain.assets || 1) / 60;
+        const nodeGeometry = new THREE.SphereGeometry(Math.max(5, nodeSize), 16, 16);
         const nodeColor = domain.risk === 'critical' ? 0xff00ff : 
                          domain.risk === 'high' ? 0xc084fc :
                          domain.risk === 'medium' ? 0x00ffff :
@@ -291,12 +324,12 @@ const DomainVisibility: React.FC = () => {
       }
       renderer.dispose();
     };
-  }, [selectedDomain]);
+  }, [domainData, selectedDomain]);
 
   // Constellation Map Canvas
   useEffect(() => {
     const canvas = constellationRef.current;
-    if (!canvas) return;
+    if (!canvas || !domainData) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -309,7 +342,7 @@ const DomainVisibility: React.FC = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Draw constellation connections
-      Object.entries(domainData).forEach(([domainType, data], typeIndex) => {
+      Object.entries(domainData.domainBreakdown || {}).forEach(([domainType, data], typeIndex) => {
         const centerX = (typeIndex + 1) * (canvas.width / 4);
         const centerY = canvas.height / 2;
         
@@ -322,7 +355,7 @@ const DomainVisibility: React.FC = () => {
         ctx.fillRect(centerX - 20, centerY - 20, 40, 40);
         
         // Draw domain points
-        data.domains.forEach((domain, index) => {
+        data.domains.forEach((domain: any, index: number) => {
           const angle = (index / data.domains.length) * Math.PI * 2;
           const radius = 35 + domain.visibility * 0.3;
           const x = centerX + Math.cos(angle) * radius;
@@ -354,18 +387,20 @@ const DomainVisibility: React.FC = () => {
         // Metrics
         ctx.font = '9px monospace';
         ctx.fillStyle = data.color;
-        ctx.fillText(`${data.visibility}%`, centerX, centerY + 55);
+        ctx.fillText(`${data.visibility.toFixed(1)}%`, centerX, centerY + 55);
       });
 
       requestAnimationFrame(animate);
     };
 
     animate();
-  }, []);
+  }, [domainData]);
 
   // Animate metrics
   useEffect(() => {
-    Object.entries(domainData).forEach(([domain, data], index) => {
+    if (!domainData?.domainBreakdown) return;
+    
+    Object.entries(domainData.domainBreakdown).forEach(([domain, data], index) => {
       setTimeout(() => {
         setAnimatedMetrics(prev => ({
           ...prev,
@@ -373,14 +408,32 @@ const DomainVisibility: React.FC = () => {
         }));
       }, index * 200);
     });
-  }, []);
+  }, [domainData]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
+          <div className="mt-4 text-lg font-bold text-cyan-400">ANALYZING DOMAIN VISIBILITY</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!domainData?.domainBreakdown) return null;
+
+  const totalAssets = domainData.totalAssets || 0;
+  const domainBreakdown = domainData.domainBreakdown;
+  const totalGaps = Object.values(domainBreakdown).reduce((sum: number, domain: any) => sum + (domain.gaps || 0), 0);
+  const avgVisibility = Object.values(domainBreakdown).reduce((sum: number, domain: any) => sum + (domain.visibility || 0), 0) / Object.keys(domainBreakdown).length;
 
   return (
     <div className="p-4 h-screen bg-black overflow-hidden flex flex-col">
       {/* Domain Selector and Stats */}
       <div className="flex justify-between items-center mb-3">
         <div className="flex gap-2">
-          {['all', 'External', 'Internal', 'Cloud'].map(domain => (
+          {['all', 'TDC', 'FEAD', 'Other'].map(domain => (
             <button
               key={domain}
               onClick={() => setSelectedDomain(domain)}
@@ -403,19 +456,19 @@ const DomainVisibility: React.FC = () => {
         </div>
         <div className="flex gap-3">
           <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
-            <div className="text-lg font-bold text-white">201K</div>
+            <div className="text-lg font-bold text-white">{totalAssets.toLocaleString()}</div>
             <div className="text-[9px] text-gray-400">Total Assets</div>
           </div>
           <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
-            <div className="text-lg font-bold text-pink-400">84K</div>
-            <div className="text-[9px] text-gray-400">Gaps</div>
+            <div className="text-lg font-bold text-pink-400">{totalGaps.toLocaleString()}</div>
+            <div className="text-[9px] text-gray-400">Visibility Gaps</div>
           </div>
           <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
-            <div className="text-lg font-bold text-blue-400">62.1%</div>
+            <div className="text-lg font-bold text-blue-400">{avgVisibility.toFixed(1)}%</div>
             <div className="text-[9px] text-gray-400">Avg Visibility</div>
           </div>
           <div className="bg-gray-900/30 rounded-lg px-3 py-1.5 border border-gray-800">
-            <div className="text-lg font-bold text-purple-400">1,213</div>
+            <div className="text-lg font-bold text-purple-400">{Object.values(domainBreakdown).reduce((sum: number, domain: any) => sum + (domain.connections || 0), 0)}</div>
             <div className="text-[9px] text-gray-400">Connections</div>
           </div>
         </div>
@@ -466,83 +519,89 @@ const DomainVisibility: React.FC = () => {
                     <th className="text-left py-1.5 px-2 text-[10px] font-semibold text-gray-400">Domain</th>
                     <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Assets</th>
                     <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Visibility</th>
+                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">% of Total</th>
                     <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Gaps</th>
                     <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Status</th>
-                    <th className="text-center py-1.5 px-2 text-[10px] font-semibold text-gray-400">Flow</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(domainData).map(([domain, data]) => (
-                    <React.Fragment key={domain}>
-                      <tr className="border-b border-gray-800 hover:bg-gray-900/30 transition-colors">
-                        <td className="py-1.5 px-2 text-white font-medium">{domain}</td>
-                        <td className="py-1.5 px-2 text-center font-mono text-gray-300 text-[10px]">
-                          {(data.totalAssets/1000).toFixed(1)}K
-                        </td>
-                        <td className="py-1.5 px-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <span className={`font-mono font-bold text-[10px] ${
-                              data.visibility < 50 ? 'text-pink-400' : 
-                              data.visibility < 80 ? 'text-purple-400' : 
-                              'text-blue-400'
-                            }`}>
-                              {animatedMetrics[domain]?.toFixed(1) || 0}%
-                            </span>
-                            <div className="w-12 h-1.5 bg-gray-900 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full transition-all duration-500 bg-gradient-to-r from-blue-400 to-purple-400"
-                                style={{ width: `${animatedMetrics[domain] || 0}%` }}
-                              />
+                  {Object.entries(domainBreakdown).map(([domain, data]) => {
+                    const percentageOfTotal = totalAssets > 0 ? (data.totalAssets / totalAssets) * 100 : 0;
+                    
+                    return (
+                      <React.Fragment key={domain}>
+                        <tr className="border-b border-gray-800 hover:bg-gray-900/30 transition-colors">
+                          <td className="py-1.5 px-2 text-white font-medium">{domain}</td>
+                          <td className="py-1.5 px-2 text-center font-mono text-gray-300 text-[10px]">
+                            {(data.totalAssets/1000).toFixed(1)}K
+                          </td>
+                          <td className="py-1.5 px-2 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <span className={`font-mono font-bold text-[10px] ${
+                                data.visibility < 50 ? 'text-pink-400' : 
+                                data.visibility < 80 ? 'text-purple-400' : 
+                                'text-blue-400'
+                              }`}>
+                                {animatedMetrics[domain]?.toFixed(1) || 0}%
+                              </span>
+                              <div className="w-12 h-1.5 bg-gray-900 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full transition-all duration-500 bg-gradient-to-r from-blue-400 to-purple-400"
+                                  style={{ width: `${animatedMetrics[domain] || 0}%` }}
+                                />
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-1.5 px-2 text-center font-mono text-pink-400 text-[10px]">
-                          {(data.gaps/1000).toFixed(1)}K
-                        </td>
-                        <td className="py-1.5 px-2 text-center">
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                            data.status === 'critical' ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50' :
-                            data.status === 'warning' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50' :
-                            'bg-blue-500/20 text-blue-400 border border-blue-500/50'
-                          }`}>
-                            {data.status.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="py-1.5 px-2 text-center font-mono text-purple-400 text-[10px]">
-                          {data.dataFlow}
-                        </td>
-                      </tr>
-                      {/* Subdomain rows */}
-                      {selectedDomain === domain && data.domains.slice(0, 2).map(subdomain => (
-                        <tr key={subdomain.name} className="border-b border-gray-900 bg-gray-900/20 text-[9px]">
-                          <td className="py-1 px-4 text-gray-400">↳ {subdomain.name}</td>
-                          <td className="py-1 px-2 text-center font-mono text-gray-500">
-                            {(subdomain.assets/1000).toFixed(1)}K
                           </td>
-                          <td className="py-1 px-2 text-center">
-                            <span className={`font-mono ${
-                              subdomain.visibility < 50 ? 'text-pink-400' : 
-                              subdomain.visibility < 80 ? 'text-purple-400' : 
-                              'text-blue-400'
+                          <td className="py-1.5 px-2 text-center font-mono text-cyan-400 text-[10px]">
+                            {percentageOfTotal.toFixed(1)}%
+                          </td>
+                          <td className="py-1.5 px-2 text-center font-mono text-pink-400 text-[10px]">
+                            {(data.gaps/1000).toFixed(1)}K
+                          </td>
+                          <td className="py-1.5 px-2 text-center">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                              data.status === 'critical' ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50' :
+                              data.status === 'warning' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50' :
+                              'bg-blue-500/20 text-blue-400 border border-blue-500/50'
                             }`}>
-                              {subdomain.visibility}%
+                              {data.status.toUpperCase()}
                             </span>
                           </td>
-                          <td className="py-1 px-2 text-center text-gray-500">-</td>
-                          <td className="py-1 px-2 text-center">
-                            <span className={`text-[8px] ${
-                              subdomain.risk === 'critical' ? 'text-pink-400' :
-                              subdomain.risk === 'high' ? 'text-purple-400' :
-                              'text-blue-400'
-                            }`}>
-                              {subdomain.risk}
-                            </span>
-                          </td>
-                          <td className="py-1 px-2 text-center text-gray-500">-</td>
                         </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
+                        {/* Subdomain rows */}
+                        {selectedDomain === domain && data.domains.slice(0, 2).map((subdomain: any) => (
+                          <tr key={subdomain.name} className="border-b border-gray-900 bg-gray-900/20 text-[9px]">
+                            <td className="py-1 px-4 text-gray-400">↳ {subdomain.name}</td>
+                            <td className="py-1 px-2 text-center font-mono text-gray-500">
+                              {(subdomain.assets/1000).toFixed(1)}K
+                            </td>
+                            <td className="py-1 px-2 text-center">
+                              <span className={`font-mono ${
+                                subdomain.visibility < 50 ? 'text-pink-400' : 
+                                subdomain.visibility < 80 ? 'text-purple-400' : 
+                                'text-blue-400'
+                              }`}>
+                                {subdomain.visibility.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="py-1 px-2 text-center text-gray-500">
+                              {((subdomain.assets / totalAssets) * 100).toFixed(1)}%
+                            </td>
+                            <td className="py-1 px-2 text-center text-gray-500">-</td>
+                            <td className="py-1 px-2 text-center">
+                              <span className={`text-[8px] ${
+                                subdomain.risk === 'critical' ? 'text-pink-400' :
+                                subdomain.risk === 'high' ? 'text-purple-400' :
+                                'text-blue-400'
+                              }`}>
+                                {subdomain.risk}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

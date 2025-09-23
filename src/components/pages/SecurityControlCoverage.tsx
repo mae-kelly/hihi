@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { Shield, Server, Activity, AlertTriangle, Eye, Database, CheckCircle, XCircle } from 'lucide-react';
 
 const SecurityControlCoverage = () => {
   const [securityData, setSecurityData] = useState(null);
+  const [cmdbData, setCmdbData] = useState(null);
   const [loading, setLoading] = useState(true);
   const fortressRef = useRef(null);
   const rendererRef = useRef(null);
@@ -14,18 +16,64 @@ const SecurityControlCoverage = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/security_control_coverage');
-        if (!response.ok) throw new Error('Failed to fetch');
-        const data = await response.json();
-        setSecurityData(data);
+        const [taniumResponse, cmdbResponse] = await Promise.all([
+          fetch('http://localhost:5000/api/tanium_coverage'),
+          fetch('http://localhost:5000/api/cmdb_presence')
+        ]);
+
+        if (!taniumResponse.ok || !cmdbResponse.ok) {
+          throw new Error('Failed to fetch security data');
+        }
+
+        const taniumData = await taniumResponse.json();
+        const cmdbDataRaw = await cmdbResponse.json();
+
+        // Transform Tanium data
+        const transformedTaniumData = {
+          coverage_percentage: taniumData.coverage_percentage || 0,
+          deployed_hosts: taniumData.tanium_deployed || 0,
+          total_hosts: taniumData.total_assets || 0,
+          status: taniumData.deployment_analysis?.coverage_status || 'CRITICAL',
+          regional_coverage: taniumData.regional_coverage || {},
+          infrastructure_coverage: taniumData.infrastructure_coverage || {},
+          business_unit_coverage: taniumData.business_unit_coverage || {},
+          deployment_gaps: taniumData.deployment_gaps || {}
+        };
+
+        // Transform CMDB data 
+        const transformedCmdbData = {
+          coverage_percentage: cmdbDataRaw.registration_rate || 0,
+          registered_hosts: cmdbDataRaw.cmdb_registered || 0,
+          total_hosts: cmdbDataRaw.total_assets || 0,
+          status: cmdbDataRaw.compliance_analysis?.compliance_status || 'CRITICAL',
+          regional_compliance: cmdbDataRaw.regional_compliance || {},
+          infrastructure_compliance: cmdbDataRaw.infrastructure_compliance || {},
+          business_unit_compliance: cmdbDataRaw.business_unit_compliance || {}
+        };
+
+        setSecurityData(transformedTaniumData);
+        setCmdbData(transformedCmdbData);
+
       } catch (error) {
         console.error('Error:', error);
         setSecurityData({
+          coverage_percentage: 0,
+          deployed_hosts: 0,
           total_hosts: 0,
-          edr_coverage: { coverage_percentage: 0, protected_hosts: 0, status: 'CRITICAL' },
-          tanium_coverage: { coverage_percentage: 0, managed_hosts: 0, status: 'CRITICAL' },
-          dlp_coverage: { coverage_percentage: 0, protected_hosts: 0, status: 'CRITICAL' },
-          all_controls_coverage: { coverage_percentage: 0, fully_protected_hosts: 0, status: 'CRITICAL' }
+          status: 'CRITICAL',
+          regional_coverage: {},
+          infrastructure_coverage: {},
+          business_unit_coverage: {},
+          deployment_gaps: {}
+        });
+        setCmdbData({
+          coverage_percentage: 0,
+          registered_hosts: 0,
+          total_hosts: 0,
+          status: 'CRITICAL',
+          regional_compliance: {},
+          infrastructure_compliance: {},
+          business_unit_compliance: {}
         });
       } finally {
         setLoading(false);
@@ -39,7 +87,7 @@ const SecurityControlCoverage = () => {
 
   // 3D Security Fortress
   useEffect(() => {
-    if (!fortressRef.current || !securityData || loading) return;
+    if (!fortressRef.current || !securityData || !cmdbData || loading) return;
 
     if (rendererRef.current) {
       rendererRef.current.dispose();
@@ -84,11 +132,28 @@ const SecurityControlCoverage = () => {
     const platform = new THREE.Mesh(platformGeometry, platformMaterial);
     fortressGroup.add(platform);
 
-    // Three security layers
+    // Two security layers (Tanium and CMDB)
     const controls = [
-      { name: 'EDR', data: securityData.edr_coverage, height: 40, radius: 55, yPos: 25 },
-      { name: 'Tanium', data: securityData.tanium_coverage, height: 35, radius: 45, yPos: 55 },
-      { name: 'DLP', data: securityData.dlp_coverage, height: 30, radius: 35, yPos: 80 }
+      { 
+        name: 'Tanium', 
+        data: {
+          coverage_percentage: securityData.coverage_percentage,
+          protected_hosts: securityData.deployed_hosts
+        }, 
+        height: 40, 
+        radius: 55, 
+        yPos: 25 
+      },
+      { 
+        name: 'CMDB', 
+        data: {
+          coverage_percentage: cmdbData.coverage_percentage,
+          protected_hosts: cmdbData.registered_hosts
+        }, 
+        height: 35, 
+        radius: 45, 
+        yPos: 55 
+      }
     ];
 
     controls.forEach(control => {
@@ -148,25 +213,25 @@ const SecurityControlCoverage = () => {
       fortressGroup.add(ring);
     });
 
-    // Central core (all controls coverage)
-    const allCoverage = securityData.all_controls_coverage?.coverage_percentage || 0;
+    // Central core (combined coverage)
+    const combinedCoverage = (securityData.coverage_percentage + cmdbData.coverage_percentage) / 2;
     const coreGeometry = new THREE.SphereGeometry(15, 32, 32);
     const coreMaterial = new THREE.MeshPhongMaterial({
-      color: allCoverage > 50 ? 0x00d4ff : 0xa855f7,
-      emissive: allCoverage > 50 ? 0x00d4ff : 0xa855f7,
+      color: combinedCoverage > 50 ? 0x00d4ff : 0xa855f7,
+      emissive: combinedCoverage > 50 ? 0x00d4ff : 0xa855f7,
       emissiveIntensity: 0.3,
       transparent: true,
       opacity: 0.9
     });
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
-    core.position.y = 110;
+    core.position.y = 90;
     fortressGroup.add(core);
 
     scene.add(fortressGroup);
 
     // Threat particles (unprotected hosts)
-    const unprotectedCount = securityData.total_hosts - 
-      (securityData.all_controls_coverage?.fully_protected_hosts || 0);
+    const unprotectedCount = Math.max(securityData.total_hosts - securityData.deployed_hosts, 
+                                    cmdbData.total_hosts - cmdbData.registered_hosts);
     const particleCount = Math.min(1000, Math.max(100, unprotectedCount / 100));
     
     const particlesGeometry = new THREE.BufferGeometry();
@@ -255,12 +320,12 @@ const SecurityControlCoverage = () => {
         }
       }
     };
-  }, [securityData, loading]);
+  }, [securityData, cmdbData, loading]);
 
   // Coverage Flow Animation
   useEffect(() => {
     const canvas = coverageFlowRef.current;
-    if (!canvas || !securityData) return;
+    if (!canvas || !securityData || !cmdbData) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -274,16 +339,14 @@ const SecurityControlCoverage = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const controls = [
-        { name: 'EDR', data: securityData.edr_coverage, color: '#00d4ff' },
-        { name: 'TANIUM', data: securityData.tanium_coverage, color: '#00d4ff' },
-        { name: 'DLP', data: securityData.dlp_coverage, color: '#00d4ff' },
-        { name: 'ALL CONTROLS', data: securityData.all_controls_coverage, color: '#a855f7' }
+        { name: 'TANIUM', data: securityData, color: '#00d4ff' },
+        { name: 'CMDB', data: cmdbData, color: '#00d4ff' }
       ];
 
       controls.forEach((control, index) => {
         if (!control.data) return;
         
-        const y = (index + 1) * (canvas.height / 5);
+        const y = (index + 1) * (canvas.height / 3);
         const barWidth = canvas.width - 100;
         const protectedWidth = barWidth * (control.data.coverage_percentage / 100);
         
@@ -320,12 +383,12 @@ const SecurityControlCoverage = () => {
         ctx.fillText(`${control.data.coverage_percentage?.toFixed(1) || '0.0'}%`, canvas.width - 10, y + 5);
         
         // Host counts
-        const hostCount = control.data.protected_hosts || control.data.managed_hosts || control.data.fully_protected_hosts || 0;
+        const hostCount = control.data.deployed_hosts || control.data.registered_hosts || 0;
         ctx.fillStyle = '#ffffff60';
         ctx.font = '10px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(
-          `${hostCount.toLocaleString()} / ${securityData.total_hosts?.toLocaleString() || 0} hosts`,
+          `${hostCount.toLocaleString()} / ${control.data.total_hosts?.toLocaleString() || 0} hosts`,
           canvas.width / 2,
           y + 20
         );
@@ -339,7 +402,7 @@ const SecurityControlCoverage = () => {
     return () => {
       if (animationId) cancelAnimationFrame(animationId);
     };
-  }, [securityData]);
+  }, [securityData, cmdbData]);
 
   if (loading) {
     return (
@@ -352,18 +415,18 @@ const SecurityControlCoverage = () => {
     );
   }
 
-  const overallCoverage = securityData?.all_controls_coverage?.coverage_percentage || 0;
-  const fullyProtected = securityData?.all_controls_coverage?.fully_protected_hosts || 0;
-  const totalHosts = securityData?.total_hosts || 0;
+  const combinedCoverage = (securityData?.coverage_percentage + cmdbData?.coverage_percentage) / 2 || 0;
+  const totalHosts = Math.max(securityData?.total_hosts || 0, cmdbData?.total_hosts || 0);
 
   return (
     <div className="h-full flex flex-col p-6 bg-black">
-      {overallCoverage < 50 && (
+      {combinedCoverage < 50 && (
         <div className="mb-4 bg-purple-500/10 border border-purple-500 rounded-xl p-3">
           <div className="flex items-center gap-3">
-            <span className="text-purple-400 font-bold">⚠️ CRITICAL:</span>
+            <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
+            <span className="text-purple-400 font-bold">CRITICAL:</span>
             <span className="text-white">
-              Only {overallCoverage.toFixed(1)}% of hosts have all security controls
+              Security control coverage at {combinedCoverage.toFixed(1)}% - Tanium: {securityData?.coverage_percentage?.toFixed(1)}%, CMDB: {cmdbData?.coverage_percentage?.toFixed(1)}%
             </span>
           </div>
         </div>
@@ -375,7 +438,7 @@ const SecurityControlCoverage = () => {
           <div className="h-full bg-black/90 border border-cyan-400/30 rounded-xl">
             <div className="p-4 border-b border-cyan-400/20">
               <h2 className="text-2xl font-bold text-cyan-400">SECURITY CONTROL FORTRESS</h2>
-              <p className="text-sm text-white/60 mt-1">EDR, Tanium, and DLP agent coverage visualization</p>
+              <p className="text-sm text-white/60 mt-1">Tanium and CMDB coverage visualization</p>
             </div>
             
             <div ref={fortressRef} className="h-[calc(100%-80px)]" />
@@ -384,23 +447,23 @@ const SecurityControlCoverage = () => {
 
         {/* Metrics Panel */}
         <div className="col-span-4 space-y-4">
-          {/* Overall Coverage */}
+          {/* Combined Coverage */}
           <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
-            <h3 className="text-lg font-bold text-white mb-3">ALL CONTROLS COVERAGE</h3>
+            <h3 className="text-lg font-bold text-white mb-3">COMBINED SECURITY COVERAGE</h3>
             <div className="text-5xl font-bold text-center py-4">
-              <span className={overallCoverage < 50 ? 'text-purple-400' : 'text-cyan-400'}>
-                {overallCoverage.toFixed(1)}%
+              <span className={combinedCoverage < 50 ? 'text-purple-400' : 'text-cyan-400'}>
+                {combinedCoverage.toFixed(1)}%
               </span>
             </div>
             <div className="text-center text-sm text-white/60">
-              {fullyProtected.toLocaleString()} / {totalHosts.toLocaleString()} hosts fully protected
+              Across {totalHosts.toLocaleString()} hosts
             </div>
             <div className="h-4 bg-black rounded-full overflow-hidden border border-cyan-400/30 mt-3">
               <div 
                 className="h-full transition-all duration-1000"
                 style={{
-                  width: `${overallCoverage}%`,
-                  background: overallCoverage < 50 
+                  width: `${combinedCoverage}%`,
+                  background: combinedCoverage < 50 
                     ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
                     : 'linear-gradient(90deg, #00d4ff, #0099ff)'
                 }}
@@ -410,86 +473,64 @@ const SecurityControlCoverage = () => {
 
           {/* Individual Controls */}
           <div className="space-y-3">
-            {/* EDR */}
-            <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-3">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-bold text-cyan-400">EDR COVERAGE</span>
-                <span className={`text-xs px-2 py-1 rounded ${
-                  securityData?.edr_coverage?.status === 'CRITICAL' 
-                    ? 'bg-purple-500/20 text-purple-400'
-                    : securityData?.edr_coverage?.status === 'WARNING'
-                    ? 'bg-yellow-500/20 text-yellow-400'
-                    : 'bg-cyan-500/20 text-cyan-400'
-                }`}>
-                  {securityData?.edr_coverage?.status || 'UNKNOWN'}
-                </span>
-              </div>
-              <div className="text-2xl font-bold text-white">
-                {securityData?.edr_coverage?.coverage_percentage?.toFixed(1) || '0.0'}%
-              </div>
-              <div className="text-xs text-white/60">
-                {securityData?.edr_coverage?.protected_hosts?.toLocaleString() || 0} protected
-              </div>
-              <div className="h-2 bg-black rounded-full overflow-hidden mt-2">
-                <div 
-                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600"
-                  style={{ width: `${securityData?.edr_coverage?.coverage_percentage || 0}%` }}
-                />
-              </div>
-            </div>
-
             {/* Tanium */}
             <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-3">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-bold text-cyan-400">TANIUM COVERAGE</span>
+                <span className="text-sm font-bold text-cyan-400 flex items-center gap-2">
+                  <Server className="w-4 h-4" />
+                  TANIUM COVERAGE
+                </span>
                 <span className={`text-xs px-2 py-1 rounded ${
-                  securityData?.tanium_coverage?.status === 'CRITICAL' 
+                  securityData?.status === 'CRITICAL' 
                     ? 'bg-purple-500/20 text-purple-400'
-                    : securityData?.tanium_coverage?.status === 'WARNING'
+                    : securityData?.status === 'WARNING'
                     ? 'bg-yellow-500/20 text-yellow-400'
                     : 'bg-cyan-500/20 text-cyan-400'
                 }`}>
-                  {securityData?.tanium_coverage?.status || 'UNKNOWN'}
+                  {securityData?.status || 'UNKNOWN'}
                 </span>
               </div>
               <div className="text-2xl font-bold text-white">
-                {securityData?.tanium_coverage?.coverage_percentage?.toFixed(1) || '0.0'}%
+                {securityData?.coverage_percentage?.toFixed(1) || '0.0'}%
               </div>
               <div className="text-xs text-white/60">
-                {securityData?.tanium_coverage?.managed_hosts?.toLocaleString() || 0} managed
+                {securityData?.deployed_hosts?.toLocaleString() || 0} deployed ({((securityData?.deployed_hosts || 0) / totalHosts * 100).toFixed(1)}% of total)
               </div>
               <div className="h-2 bg-black rounded-full overflow-hidden mt-2">
                 <div 
-                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600"
-                  style={{ width: `${securityData?.tanium_coverage?.coverage_percentage || 0}%` }}
+                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-1000"
+                  style={{ width: `${securityData?.coverage_percentage || 0}%` }}
                 />
               </div>
             </div>
 
-            {/* DLP */}
+            {/* CMDB */}
             <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-3">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-bold text-cyan-400">DLP COVERAGE</span>
+                <span className="text-sm font-bold text-cyan-400 flex items-center gap-2">
+                  <Database className="w-4 h-4" />
+                  CMDB REGISTRATION
+                </span>
                 <span className={`text-xs px-2 py-1 rounded ${
-                  securityData?.dlp_coverage?.status === 'CRITICAL' 
+                  cmdbData?.status === 'CRITICAL' || cmdbData?.status === 'NON_COMPLIANT'
                     ? 'bg-purple-500/20 text-purple-400'
-                    : securityData?.dlp_coverage?.status === 'WARNING'
+                    : cmdbData?.status === 'PARTIAL_COMPLIANCE'
                     ? 'bg-yellow-500/20 text-yellow-400'
                     : 'bg-cyan-500/20 text-cyan-400'
                 }`}>
-                  {securityData?.dlp_coverage?.status || 'UNKNOWN'}
+                  {cmdbData?.status || 'UNKNOWN'}
                 </span>
               </div>
               <div className="text-2xl font-bold text-white">
-                {securityData?.dlp_coverage?.coverage_percentage?.toFixed(1) || '0.0'}%
+                {cmdbData?.coverage_percentage?.toFixed(1) || '0.0'}%
               </div>
               <div className="text-xs text-white/60">
-                {securityData?.dlp_coverage?.protected_hosts?.toLocaleString() || 0} protected
+                {cmdbData?.registered_hosts?.toLocaleString() || 0} registered ({((cmdbData?.registered_hosts || 0) / totalHosts * 100).toFixed(1)}% of total)
               </div>
               <div className="h-2 bg-black rounded-full overflow-hidden mt-2">
                 <div 
-                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600"
-                  style={{ width: `${securityData?.dlp_coverage?.coverage_percentage || 0}%` }}
+                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-1000"
+                  style={{ width: `${cmdbData?.coverage_percentage || 0}%` }}
                 />
               </div>
             </div>
@@ -498,7 +539,52 @@ const SecurityControlCoverage = () => {
           {/* Coverage Flow */}
           <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
             <h3 className="text-lg font-bold text-white mb-3">CONTROL COVERAGE FLOW</h3>
-            <canvas ref={coverageFlowRef} className="w-full h-48" />
+            <canvas ref={coverageFlowRef} className="w-full h-32" />
+          </div>
+
+          {/* Regional Breakdown */}
+          {securityData?.regional_coverage && Object.keys(securityData.regional_coverage).length > 0 && (
+            <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
+              <h3 className="text-lg font-bold text-white mb-3">TOP REGIONS - TANIUM</h3>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {Object.entries(securityData.regional_coverage)
+                  .sort((a, b) => (b[1]?.deployed || 0) - (a[1]?.deployed || 0))
+                  .slice(0, 5)
+                  .map(([region, data]) => (
+                  <div key={region} className="flex justify-between items-center text-xs">
+                    <span className="text-gray-400 capitalize truncate max-w-[100px]">{region}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-white">{data?.deployed?.toLocaleString() || 0}</span>
+                      <span className={`font-bold ${
+                        (data?.coverage_percentage || 0) > 70 ? 'text-cyan-400' :
+                        (data?.coverage_percentage || 0) > 40 ? 'text-yellow-400' :
+                        'text-purple-400'
+                      }`}>
+                        {data?.coverage_percentage?.toFixed(1) || '0.0'}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Summary Stats */}
+          <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-center">
+                <div className="text-xl font-bold text-cyan-400">
+                  {((securityData?.deployed_hosts || 0) + (cmdbData?.registered_hosts || 0)).toLocaleString()}
+                </div>
+                <div className="text-xs text-gray-400">Protected Assets</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-purple-400">
+                  {(totalHosts - Math.max(securityData?.deployed_hosts || 0, cmdbData?.registered_hosts || 0)).toLocaleString()}
+                </div>
+                <div className="text-xs text-gray-400">Coverage Gap</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

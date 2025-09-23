@@ -6,6 +6,8 @@ const ComplianceMatrix: React.FC = () => {
   const [complianceData, setComplianceData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPlatform, setSelectedPlatform] = useState<'splunk' | 'chronicle' | 'both'>('both');
+  const [hostSearch, setHostSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const matrixRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLCanvasElement>(null);
   const waveRef = useRef<HTMLCanvasElement>(null);
@@ -13,14 +15,91 @@ const ComplianceMatrix: React.FC = () => {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const frameRef = useRef<number | null>(null);
 
+  // Fetch compliance data from actual API (simulated through host search)
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/logging_compliance');
-        if (!response.ok) throw new Error('Failed to fetch compliance data');
-        const data = await response.json();
-        setComplianceData(data);
+        
+        // Since there's no direct compliance endpoint, we'll analyze through host search
+        const searchTerms = ['splunk', 'chronicle', 'log', 'logging'];
+        let splunkHosts = 0;
+        let chronicleHosts = 0;
+        let totalHosts = 0;
+        let bothPlatforms = 0;
+        
+        for (const term of searchTerms) {
+          try {
+            const response = await fetch(`http://localhost:5000/api/host_search?q=${term}`);
+            if (response.ok) {
+              const data = await response.json();
+              totalHosts += data.total_found || 0;
+              
+              // Analyze source_tables field for logging platforms
+              data.hosts?.forEach((host: any) => {
+                const sources = host.source_tables?.toLowerCase() || '';
+                const hasSplunk = sources.includes('splunk');
+                const hasChronicle = sources.includes('chronicle') || sources.includes('gsoc');
+                
+                if (hasSplunk) splunkHosts++;
+                if (hasChronicle) chronicleHosts++;
+                if (hasSplunk && hasChronicle) bothPlatforms++;
+              });
+            }
+          } catch (e) {
+            console.error(`Search error for ${term}:`, e);
+          }
+        }
+        
+        // Get total host count from database status
+        const dbResponse = await fetch('http://localhost:5000/api/database_status');
+        const dbData = await dbResponse.json();
+        const actualTotal = dbData.row_count || totalHosts || 1000;
+        
+        // Calculate compliance percentages
+        const splunkCompliance = (splunkHosts / actualTotal) * 100;
+        const chronicleCompliance = (chronicleHosts / actualTotal) * 100;
+        const eitherPlatform = ((splunkHosts + chronicleHosts - bothPlatforms) / actualTotal) * 100;
+        const neitherPlatform = 100 - eitherPlatform;
+        
+        setComplianceData({
+          total_hosts: actualTotal,
+          splunk_compliance: {
+            compliance_percentage: splunkCompliance,
+            compliant_hosts: splunkHosts,
+            non_compliant_hosts: actualTotal - splunkHosts,
+            status: splunkCompliance > 70 ? 'GOOD' : splunkCompliance > 40 ? 'WARNING' : 'CRITICAL',
+            status_breakdown: [
+              { status: 'LOGGING', host_count: splunkHosts, percentage: splunkCompliance, is_compliant: true },
+              { status: 'NOT_LOGGING', host_count: actualTotal - splunkHosts, percentage: 100 - splunkCompliance, is_compliant: false }
+            ]
+          },
+          chronicle_compliance: {
+            compliance_percentage: chronicleCompliance,
+            compliant_hosts: chronicleHosts,
+            non_compliant_hosts: actualTotal - chronicleHosts,
+            status: chronicleCompliance > 70 ? 'GOOD' : chronicleCompliance > 40 ? 'WARNING' : 'CRITICAL',
+            status_breakdown: [
+              { status: 'LOGGING', host_count: chronicleHosts, percentage: chronicleCompliance, is_compliant: true },
+              { status: 'NOT_LOGGING', host_count: actualTotal - chronicleHosts, percentage: 100 - chronicleCompliance, is_compliant: false }
+            ]
+          },
+          combined_compliance: {
+            both_platforms: { 
+              host_count: bothPlatforms, 
+              percentage: (bothPlatforms / actualTotal) * 100 
+            },
+            either_platform: { 
+              host_count: splunkHosts + chronicleHosts - bothPlatforms, 
+              percentage: eitherPlatform 
+            },
+            neither_platform: { 
+              host_count: actualTotal - (splunkHosts + chronicleHosts - bothPlatforms), 
+              percentage: neitherPlatform 
+            },
+            overall_status: eitherPlatform > 70 ? 'GOOD' : eitherPlatform > 40 ? 'WARNING' : 'CRITICAL'
+          }
+        });
       } catch (error) {
         console.error('Error:', error);
         // Fallback data
@@ -56,6 +135,31 @@ const ComplianceMatrix: React.FC = () => {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Search for specific hosts
+  const handleHostSearch = async () => {
+    if (!hostSearch) return;
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/host_search?q=${hostSearch}`);
+      if (response.ok) {
+        const data = await response.json();
+        // Enrich results with logging platform info
+        const enrichedResults = data.hosts?.map((host: any) => {
+          const sources = host.source_tables?.toLowerCase() || '';
+          return {
+            ...host,
+            has_splunk: sources.includes('splunk'),
+            has_chronicle: sources.includes('chronicle') || sources.includes('gsoc'),
+            logging_status: sources.includes('splunk') || sources.includes('chronicle') ? 'COMPLIANT' : 'NON_COMPLIANT'
+          };
+        }) || [];
+        setSearchResults(enrichedResults);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+    }
+  };
 
   // 3D Compliance Matrix Visualization
   useEffect(() => {
@@ -456,6 +560,24 @@ const ComplianceMatrix: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Search Bar */}
+      <div className="mb-3 flex gap-2">
+        <input
+          type="text"
+          value={hostSearch}
+          onChange={(e) => setHostSearch(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && handleHostSearch()}
+          placeholder="Search hosts for logging compliance..."
+          className="flex-1 px-3 py-2 bg-black/50 border border-cyan-400/30 rounded-lg text-white placeholder-gray-400"
+        />
+        <button
+          onClick={handleHostSearch}
+          className="px-4 py-2 bg-cyan-500/20 border border-cyan-500 rounded-lg text-cyan-400 hover:bg-cyan-500/30"
+        >
+          SEARCH
+        </button>
+      </div>
       
       <div className="flex-1 grid grid-cols-12 gap-4">
         {/* 3D Matrix Visualization */}
@@ -577,8 +699,37 @@ const ComplianceMatrix: React.FC = () => {
             <canvas ref={waveRef} className="w-full h-24" />
           </div>
           
-          {/* Status Breakdown */}
-          {complianceData?.splunk_compliance?.status_breakdown && (
+          {/* Search Results or Status Breakdown */}
+          {searchResults.length > 0 ? (
+            <div className="glass-panel rounded-xl p-3 max-h-48 overflow-y-auto">
+              <h3 className="text-sm font-bold text-white mb-2">SEARCH RESULTS</h3>
+              <div className="space-y-1">
+                {searchResults.slice(0, 10).map((host: any, idx: number) => (
+                  <div key={idx} className="flex justify-between items-center p-2 bg-black/30 rounded">
+                    <div className="flex-1">
+                      <span className="text-xs text-white font-mono">{host.host}</span>
+                      {host.domain && (
+                        <span className="text-xs text-gray-400 ml-2">{host.domain}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {host.has_splunk && (
+                        <span className="text-xs px-1 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">S</span>
+                      )}
+                      {host.has_chronicle && (
+                        <span className="text-xs px-1 py-0.5 bg-purple-500/20 text-purple-400 rounded">C</span>
+                      )}
+                      <span className={`text-xs font-bold ${
+                        host.logging_status === 'COMPLIANT' ? 'text-cyan-400' : 'text-purple-400'
+                      }`}>
+                        {host.logging_status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : complianceData?.splunk_compliance?.status_breakdown && (
             <div className="glass-panel rounded-xl p-3">
               <h3 className="text-sm font-bold text-white mb-2">STATUS BREAKDOWN</h3>
               <div className="space-y-1">

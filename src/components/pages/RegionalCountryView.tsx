@@ -29,14 +29,20 @@ const RegionalCountryView: React.FC = () => {
         setRegionalData({
           regional_breakdown: regionData.regional_analytics || [],
           country_breakdown: countryData.country_analysis || [],
-          threat_intelligence: regionData.threat_intelligence || countryData.threat_intelligence || {}
+          threat_intelligence: regionData.threat_intelligence || countryData.threat_intelligence || {},
+          global_surveillance: regionData.global_surveillance || countryData.global_surveillance || {},
+          regional_infrastructure: regionData.regional_infrastructure || {},
+          regional_analytics: regionData.regional_analytics || []
         });
       } catch (error) {
         console.error('Error:', error);
         setRegionalData({
           regional_breakdown: [],
           country_breakdown: [],
-          threat_intelligence: {}
+          threat_intelligence: {},
+          global_surveillance: {},
+          regional_infrastructure: {},
+          regional_analytics: []
         });
       } finally {
         setLoading(false);
@@ -97,7 +103,6 @@ const RegionalCountryView: React.FC = () => {
 
     // Location markers based on view mode
     const markers: THREE.Group[] = [];
-    const connections: THREE.Line[] = [];
     
     const getLocationData = () => {
       return viewMode === 'region' 
@@ -439,7 +444,7 @@ const RegionalCountryView: React.FC = () => {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-cyan-400 flex items-center gap-2">
                 <Globe className="w-5 h-5" />
-                GEOGRAPHIC ASSET VISIBILITY
+                GEOGRAPHIC HOST DISTRIBUTION
               </h2>
               <div className="flex gap-2">
                 <button
@@ -540,7 +545,7 @@ const RegionalCountryView: React.FC = () => {
                         {name}
                       </div>
                       <div className="text-xs text-gray-400">
-                        {count.toLocaleString()} assets
+                        {count.toLocaleString()} hosts
                       </div>
                     </div>
                     <div className="text-right">
