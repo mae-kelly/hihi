@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { Server, Cloud, Database, Monitor, AlertTriangle, Eye, Activity } from 'lucide-react';
 
 const InfrastructureView = () => {
-  const [infrastructureData, setInfrastructureData] = useState<any>(null);
+  const [infrastructureData, setInfrastructureData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedType, setSelectedType] = useState<any>(null);
-  const [hoveredInfra, setHoveredInfra] = useState<any>(null);
-  const stackRef = useRef<HTMLDivElement>(null);
+  const [selectedType, setSelectedType] = useState(null);
+  const [hoveredInfra, setHoveredInfra] = useState(null);
+  const stackRef = useRef(null);
   const [viewAngle, setViewAngle] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
 
@@ -51,7 +51,7 @@ const InfrastructureView = () => {
   }, []);
 
   useEffect(() => {
-    if (!stackRef.current || !infrastructureData) return;
+    if (!stackRef.current || !infrastructureData || loading) return;
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x000000, 0.002);
@@ -76,18 +76,18 @@ const InfrastructureView = () => {
     stackRef.current.appendChild(renderer.domElement);
 
     const infrastructureTypes = infrastructureData.detailed_data || [];
-    const maxHosts = Math.max(...infrastructureTypes.map((t: any) => t.frequency), 1);
+    const maxHosts = Math.max(...infrastructureTypes.map((t) => t.frequency), 1);
     
-    const layers: THREE.Group[] = [];
-    const clickableObjects: THREE.Mesh[] = [];
+    const layers = [];
+    const clickableObjects = [];
     
-    infrastructureTypes.forEach((infra: any, index: number) => {
+    infrastructureTypes.slice(0, 15).forEach((infra, index) => {
       const layerGroup = new THREE.Group();
       
       // Calculate size based on frequency (number of hosts)
       const radius = 20 + (infra.frequency / maxHosts) * 60;
       const height = 8 + (infra.percentage / 10) * 5;
-      const yPosition = index * 20 - (infrastructureTypes.length * 10);
+      const yPosition = index * 20 - (Math.min(infrastructureTypes.length, 15) * 10);
       
       // Main infrastructure ring
       const ringGeometry = new THREE.TorusGeometry(radius, height/2, 8, 32);
@@ -108,7 +108,7 @@ const InfrastructureView = () => {
       ring.receiveShadow = true;
       layerGroup.add(ring);
       
-      // Visible portion (inner filled area)
+      // Visible portion (inner filled area) - represents percentage
       const visibleRadius = radius * (infra.percentage / 100);
       const visibleGeometry = new THREE.CylinderGeometry(visibleRadius, visibleRadius, height, 32);
       
@@ -127,10 +127,10 @@ const InfrastructureView = () => {
       layerGroup.add(visibleMesh);
       clickableObjects.push(visibleMesh);
       
-      // Add floating particles for invisible hosts
-      const invisibleCount = Math.floor((100 - infra.percentage) / 2);
-      if (invisibleCount > 0) {
-        const particleCount = Math.min(invisibleCount, 50);
+      // Add floating particles for invisible hosts (gaps)
+      const invisiblePercentage = 100 - infra.percentage;
+      if (invisiblePercentage > 0) {
+        const particleCount = Math.min(Math.floor(invisiblePercentage / 2), 50);
         const particlesGeometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         
@@ -186,7 +186,7 @@ const InfrastructureView = () => {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-    const handleClick = (event: MouseEvent) => {
+    const handleClick = (event) => {
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -199,7 +199,7 @@ const InfrastructureView = () => {
       }
     };
 
-    const handleMouseMove = (event: MouseEvent) => {
+    const handleMouseMove = (event) => {
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -219,7 +219,7 @@ const InfrastructureView = () => {
     renderer.domElement.addEventListener('click', handleClick);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
 
-    let frameId: number;
+    let frameId;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       
@@ -252,7 +252,7 @@ const InfrastructureView = () => {
       }
       renderer.dispose();
     };
-  }, [infrastructureData, viewAngle, zoom]);
+  }, [infrastructureData, viewAngle, zoom, loading]);
 
   if (loading) {
     return (
@@ -267,19 +267,24 @@ const InfrastructureView = () => {
 
   if (!infrastructureData) return null;
 
-  const criticalInfra = infrastructureData.detailed_data?.filter((item: any) => item.threat_level === 'CRITICAL') || [];
-  const modernizationScore = infrastructureData.modernization_analysis?.modernization_score || 0;
+  const criticalInfra = infrastructureData.detailed_data?.filter(item => item.threat_level === 'CRITICAL') || [];
+  const modernizationPercentage = infrastructureData.modernization_analysis?.modernization_percentage || 0;
+  const legacySystems = infrastructureData.modernization_analysis?.legacy_systems || 0;
+  const cloudAdoption = infrastructureData.modernization_analysis?.cloud_adoption || 0;
+  const totalInstances = infrastructureData.distribution?.total_instances || 0;
+  const totalTypes = infrastructureData.total_types || 0;
+  const concentrationRisk = infrastructureData.distribution?.concentration_risk || 0;
+  const diversityScore = infrastructureData.distribution?.diversity_score || 0;
 
   return (
     <div className="h-full bg-black p-4">
-      {/* Critical Alert */}
       {criticalInfra.length > 0 && (
         <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
             <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
             <span className="text-white text-sm">
-              {criticalInfra.length} infrastructure types showing high concentration risk
+              {criticalInfra.length} infrastructure types showing high concentration risk ({concentrationRisk.toFixed(1)}% concentration in top type)
             </span>
           </div>
         </div>
@@ -294,7 +299,9 @@ const InfrastructureView = () => {
                   <Server className="w-5 h-5 text-cyan-400" />
                   INFRASTRUCTURE TYPE DISTRIBUTION
                 </h3>
-                <div className="text-xs text-gray-400">Host counts by infrastructure type</div>
+                <div className="text-xs text-gray-400">
+                  Tracking {totalInstances.toLocaleString()} instances across {totalTypes} types
+                </div>
               </div>
               <div className="flex gap-2">
                 <button 
@@ -310,7 +317,7 @@ const InfrastructureView = () => {
                   ZOOM OUT
                 </button>
                 <button 
-                  onClick={() => setViewAngle({ x: 0, y: 0 })}
+                  onClick={() => {setViewAngle({ x: 0, y: 0 }); setZoom(1);}}
                   className="px-3 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 text-xs"
                 >
                   RESET
@@ -336,7 +343,7 @@ const InfrastructureView = () => {
             )}
             
             <div className="mt-2 text-xs text-white/40">
-              Click infrastructure layers for details • Auto-rotating view
+              Click infrastructure layers for details • Auto-rotating view • Size = host count, Fill = visibility %
             </div>
           </div>
         </div>
@@ -349,8 +356,8 @@ const InfrastructureView = () => {
               <h3 className="text-sm font-bold text-white/60">MODERNIZATION ANALYSIS</h3>
             </div>
             <div className="text-3xl font-bold mb-2">
-              <span className={modernizationScore < 30 ? 'text-pink-400' : modernizationScore < 60 ? 'text-yellow-400' : 'text-cyan-400'}>
-                {modernizationScore.toFixed(1)}
+              <span className={modernizationPercentage < 30 ? 'text-pink-400' : modernizationPercentage < 60 ? 'text-yellow-400' : 'text-cyan-400'}>
+                {modernizationPercentage.toFixed(1)}%
               </span>
             </div>
             <div className="text-xs text-white/60 mb-3">MODERNIZATION SCORE</div>
@@ -359,10 +366,10 @@ const InfrastructureView = () => {
               <div 
                 className="h-full transition-all duration-1000"
                 style={{
-                  width: `${Math.min(100, Math.max(0, modernizationScore))}%`,
-                  background: modernizationScore < 30 
+                  width: `${Math.min(100, Math.max(0, modernizationPercentage))}%`,
+                  background: modernizationPercentage < 30 
                     ? 'linear-gradient(90deg, #ff00ff, #ff00ff)'
-                    : modernizationScore < 60
+                    : modernizationPercentage < 60
                     ? 'linear-gradient(90deg, #ffaa00, #ff8800)'
                     : 'linear-gradient(90deg, #00d4ff, #00d4ff)'
                 }}
@@ -371,15 +378,11 @@ const InfrastructureView = () => {
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
-                <div className="text-cyan-400 font-bold">
-                  {infrastructureData.modernization_analysis?.cloud_adoption || 0}
-                </div>
+                <div className="text-cyan-400 font-bold">{cloudAdoption}</div>
                 <div className="text-gray-400">Cloud Types</div>
               </div>
               <div>
-                <div className="text-purple-400 font-bold">
-                  {infrastructureData.modernization_analysis?.legacy_systems || 0}
-                </div>
+                <div className="text-purple-400 font-bold">{legacySystems}</div>
                 <div className="text-gray-400">Legacy Types</div>
               </div>
             </div>
@@ -393,15 +396,11 @@ const InfrastructureView = () => {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-2xl font-bold text-white">
-                  {infrastructureData.total_types || 0}
-                </div>
+                <div className="text-2xl font-bold text-white">{totalTypes}</div>
                 <div className="text-xs text-gray-400">TOTAL TYPES</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-purple-400">
-                  {criticalInfra.length}
-                </div>
+                <div className="text-2xl font-bold text-purple-400">{criticalInfra.length}</div>
                 <div className="text-xs text-gray-400">CRITICAL</div>
               </div>
             </div>
@@ -409,15 +408,17 @@ const InfrastructureView = () => {
             <div className="mt-3 space-y-1">
               <div className="flex justify-between text-xs">
                 <span className="text-gray-400">Total Instances</span>
-                <span className="text-white">{infrastructureData.distribution?.total_instances?.toLocaleString() || 0}</span>
+                <span className="text-white">{totalInstances.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-gray-400">Diversity Score</span>
-                <span className="text-cyan-400">{infrastructureData.distribution?.diversity_score || 0}</span>
+                <span className="text-cyan-400">{diversityScore}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-gray-400">Concentration Risk</span>
-                <span className="text-purple-400">{infrastructureData.distribution?.concentration_risk?.toFixed(1) || 0}%</span>
+                <span className={concentrationRisk > 50 ? 'text-purple-400' : 'text-cyan-400'}>
+                  {concentrationRisk.toFixed(1)}%
+                </span>
               </div>
             </div>
           </div>
@@ -434,7 +435,7 @@ const InfrastructureView = () => {
                   <span className="text-sm font-bold text-white">{selectedType.frequency?.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-xs text-white/60">PERCENTAGE</span>
+                  <span className="text-xs text-white/60">PERCENTAGE OF TOTAL</span>
                   <span className="text-sm font-bold text-white">{selectedType.percentage?.toFixed(1)}%</span>
                 </div>
                 <div className="flex justify-between">
@@ -452,43 +453,68 @@ const InfrastructureView = () => {
             </div>
           )}
 
-          {/* Infrastructure Types List */}
-          <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl flex-1">
-            <h3 className="text-sm font-bold text-white/60 mb-3">INFRASTRUCTURE BREAKDOWN</h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {infrastructureData.detailed_data?.slice(0, 10).map((infra: any, index: number) => (
-                <div key={index} className="bg-gray-900/30 rounded p-2 cursor-pointer hover:bg-gray-800/50 transition-all"
-                     onClick={() => setSelectedType(infra)}>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="text-xs font-bold text-white truncate max-w-[120px]">
-                        {infra.type}
+          {/* Top 5 Infrastructure Types */}
+          {infrastructureData.distribution?.top_5 && (
+            <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
+              <h3 className="text-sm font-bold text-white/60 mb-3">TOP 5 INFRASTRUCTURE TYPES</h3>
+              <div className="space-y-2">
+                {infrastructureData.distribution.top_5.map((infra, index) => (
+                  <div key={index} className="bg-gray-900/30 rounded p-2 cursor-pointer hover:bg-gray-800/50 transition-all"
+                       onClick={() => setSelectedType(infra)}>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="text-xs font-bold text-white truncate max-w-[180px]">
+                          {infra.type}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {infra.frequency?.toLocaleString()} hosts
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-400">
-                        {infra.frequency?.toLocaleString()} hosts
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-lg font-bold ${
-                        infra.threat_level === 'CRITICAL' ? 'text-pink-400' :
-                        infra.threat_level === 'HIGH' ? 'text-purple-400' :
-                        infra.threat_level === 'MEDIUM' ? 'text-yellow-400' :
-                        'text-cyan-400'
-                      }`}>
-                        {infra.percentage?.toFixed(1)}%
-                      </div>
-                      <div className={`text-xs font-bold ${
-                        infra.threat_level === 'CRITICAL' ? 'text-pink-400' :
-                        infra.threat_level === 'HIGH' ? 'text-purple-400' :
-                        infra.threat_level === 'MEDIUM' ? 'text-yellow-400' :
-                        'text-cyan-400'
-                      }`}>
-                        {infra.threat_level}
+                      <div className="text-right">
+                        <div className={`text-lg font-bold ${
+                          infra.threat_level === 'CRITICAL' ? 'text-pink-400' :
+                          infra.threat_level === 'HIGH' ? 'text-purple-400' :
+                          infra.threat_level === 'MEDIUM' ? 'text-yellow-400' :
+                          'text-cyan-400'
+                        }`}>
+                          {infra.percentage?.toFixed(1)}%
+                        </div>
+                        <div className={`text-xs font-bold ${
+                          infra.threat_level === 'CRITICAL' ? 'text-pink-400' :
+                          infra.threat_level === 'HIGH' ? 'text-purple-400' :
+                          infra.threat_level === 'MEDIUM' ? 'text-yellow-400' :
+                          'text-cyan-400'
+                        }`}>
+                          {infra.threat_level}
+                        </div>
                       </div>
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Infrastructure Types List */}
+          <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl flex-1 max-h-64 overflow-hidden">
+            <h3 className="text-sm font-bold text-white/60 mb-3">ALL INFRASTRUCTURE TYPES</h3>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {infrastructureData.detailed_data?.slice(0, 20).map((infra, index) => (
+                <div key={index} className="flex justify-between items-center p-1.5 bg-gray-900/30 rounded hover:bg-gray-800/50 transition-all cursor-pointer"
+                     onClick={() => setSelectedType(infra)}>
+                  <span className="text-xs text-white truncate max-w-[150px]">{infra.type}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{infra.frequency?.toLocaleString()}</span>
+                    <span className={`text-xs font-bold ${
+                      infra.percentage < 30 ? 'text-red-400' :
+                      infra.percentage < 60 ? 'text-yellow-400' :
+                      'text-cyan-400'
+                    }`}>
+                      {infra.percentage?.toFixed(1)}%
+                    </span>
+                  </div>
                 </div>
-              )) || []}
+              ))}
             </div>
           </div>
         </div>

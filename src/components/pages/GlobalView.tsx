@@ -1,20 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { Globe, AlertTriangle, Eye, Database, Shield, TrendingDown, Activity, Server, Clock, Target, AlertCircle, ChevronDown } from 'lucide-react';
+import { Globe, AlertTriangle, Eye, Database, Shield, TrendingDown, Activity, Server, Clock, Target, AlertCircle } from 'lucide-react';
 
 const GlobalView = () => {
   const [cmdbData, setCmdbData] = useState(null);
-  const [regionData, setRegionData] = useState(null);
-  const [countryData, setCountryData] = useState(null);
+  const [taniumData, setTaniumData] = useState(null);
   const [infrastructureData, setInfrastructureData] = useState(null);
-  const [securityData, setSecurityData] = useState(null);
+  const [regionData, setRegionData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedMetric, setSelectedMetric] = useState('registration');
-  const [timeRange, setTimeRange] = useState('24h');
-  const [drillDown, setDrillDown] = useState(null);
   const globeRef = useRef(null);
   const criticalGapsRef = useRef(null);
-  const trendRef = useRef(null);
 
   // Fetch ALL relevant data from Flask API
   useEffect(() => {
@@ -22,35 +18,30 @@ const GlobalView = () => {
       try {
         setLoading(true);
         
-        // Parallel fetch all endpoints for comprehensive view
         const [
           cmdbResponse,
-          regionResponse, 
-          countryResponse,
+          taniumResponse,
           infrastructureResponse,
-          securityResponse,
+          regionResponse,
           dbStatusResponse
         ] = await Promise.all([
           fetch('http://localhost:5000/api/cmdb_presence'),
+          fetch('http://localhost:5000/api/tanium_coverage'),
+          fetch('http://localhost:5000/api/infrastructure_type_metrics'),
           fetch('http://localhost:5000/api/region_metrics'),
-          fetch('http://localhost:5000/api/country_metrics'),
-          fetch('http://localhost:5000/api/infrastructure_type'),
-          fetch('http://localhost:5000/api/security_control_coverage'),
           fetch('http://localhost:5000/api/database_status')
         ]);
 
         const cmdb = await cmdbResponse.json();
-        const region = await regionResponse.json();
-        const country = await countryResponse.json();
+        const tanium = await taniumResponse.json();
         const infrastructure = await infrastructureResponse.json();
-        const security = await securityResponse.json();
+        const region = await regionResponse.json();
         const dbStatus = await dbStatusResponse.json();
 
         setCmdbData(cmdb);
-        setRegionData(region);
-        setCountryData(country);
+        setTaniumData(tanium);
         setInfrastructureData(infrastructure);
-        setSecurityData(security);
+        setRegionData(region);
 
       } catch (error) {
         console.error('Critical data fetch error:', error);
@@ -60,7 +51,7 @@ const GlobalView = () => {
     };
 
     fetchAllData();
-    const interval = setInterval(fetchAllData, 15000); // Refresh every 15 seconds
+    const interval = setInterval(fetchAllData, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -98,30 +89,24 @@ const GlobalView = () => {
         void main() {
           vec2 uv = vUv;
           
-          // Base earth colors
           vec3 baseColor = vec3(0.0, 0.05, 0.1);
           vec3 landColor = vec3(0.0, 0.3, 0.4);
-          vec3 gapColor = vec3(1.0, 0.0, 1.0); // Purple for gaps
-          vec3 registeredColor = vec3(0.0, 0.8, 1.0); // Cyan for registered
+          vec3 gapColor = vec3(1.0, 0.0, 1.0);
+          vec3 registeredColor = vec3(0.0, 0.8, 1.0);
           
-          // Continents pattern
           float continents = step(0.3, sin(uv.x * 6.28318) * sin(uv.y * 3.14159));
           vec3 earthColor = mix(baseColor, landColor, continents);
           
-          // Visibility heat map based on CMDB coverage
           float visibilityMap = cmdbCoverage / 100.0;
           earthColor = mix(earthColor, registeredColor, visibilityMap * continents);
           
-          // Critical gaps pulsing
           float gapPulse = sin(time * 3.0) * 0.5 + 0.5;
           float gapIntensity = (100.0 - cmdbCoverage) / 100.0;
           earthColor = mix(earthColor, gapColor, gapIntensity * gapPulse * 0.3);
           
-          // Grid overlay
           float grid = step(0.98, max(sin(uv.x * 80.0), sin(uv.y * 40.0)));
           earthColor += vec3(0.0, 0.8, 1.0) * grid * 0.3;
           
-          // Atmosphere rim
           float rim = 1.0 - dot(vNormal, vec3(0.0, 0.0, 1.0));
           rim = pow(rim, 2.0);
           vec3 rimColor = mix(registeredColor, gapColor, gapIntensity);
@@ -142,17 +127,17 @@ const GlobalView = () => {
 
     // Add regional markers with REAL data
     const markers = [];
-    regionData.regional_analytics?.forEach(region => {
-      const regionCoords = {
-        'north america': { lat: 45, lon: -100 },
-        'europe': { lat: 50, lon: 10 },
-        'emea': { lat: 30, lon: 20 },
-        'asia': { lat: 30, lon: 100 },
-        'apac': { lat: 10, lon: 120 },
-        'latam': { lat: -15, lon: -60 }
-      };
+    const regionCoords = {
+      'north america': { lat: 45, lon: -100 },
+      'europe': { lat: 50, lon: 10 },
+      'emea': { lat: 30, lon: 20 },
+      'asia': { lat: 30, lon: 100 },
+      'apac': { lat: 10, lon: 120 },
+      'latam': { lat: -15, lon: -60 }
+    };
 
-      const coords = regionCoords[region.region?.toLowerCase()] || { lat: 0, lon: 0 };
+    Object.entries(regionData.region_distribution || {}).forEach(([regionName, count]) => {
+      const coords = regionCoords[regionName.toLowerCase()] || { lat: 0, lon: 0 };
       const phi = (90 - coords.lat) * Math.PI / 180;
       const theta = (coords.lon + 180) * Math.PI / 180;
       
@@ -160,26 +145,25 @@ const GlobalView = () => {
       const y = 100 * Math.cos(phi);
       const z = 100 * Math.sin(phi) * Math.sin(theta);
       
-      // Marker size based on ACTUAL asset count
-      const markerSize = 2 + Math.log(region.count / 1000 + 1) * 2;
+      const markerSize = 2 + Math.log(count / 1000 + 1) * 2;
       const markerGeometry = new THREE.SphereGeometry(markerSize, 16, 16);
       
-      // Color based on ACTUAL security score
+      const regionAnalytics = regionData.region_analytics?.[regionName] || {};
+      const percentage = regionAnalytics.percentage || 50;
+      
       const markerMaterial = new THREE.MeshBasicMaterial({
-        color: region.security_score < 40 ? 0xff00ff : 
-               region.security_score < 70 ? 0xffaa00 : 0x00d4ff,
-        emissive: region.security_score < 40 ? 0xff00ff : 0x00d4ff,
+        color: percentage < 40 ? 0xff00ff : percentage < 70 ? 0xffaa00 : 0x00d4ff,
+        emissive: percentage < 40 ? 0xff00ff : 0x00d4ff,
         emissiveIntensity: 0.5
       });
       
       const marker = new THREE.Mesh(markerGeometry, markerMaterial);
       marker.position.set(x * 1.05, y * 1.05, z * 1.05);
-      marker.userData = region;
+      marker.userData = { region: regionName, count, percentage };
       markers.push(marker);
       scene.add(marker);
       
-      // Pulse for critical regions
-      if (region.security_score < 40) {
+      if (percentage < 40) {
         const pulseGeometry = new THREE.RingGeometry(markerSize + 2, markerSize + 4, 32);
         const pulseMaterial = new THREE.MeshBasicMaterial({
           color: 0xff00ff,
@@ -211,7 +195,6 @@ const GlobalView = () => {
       positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
       positions[i + 2] = radius * Math.cos(phi);
       
-      // Purple for unregistered assets
       colors[i] = 1;
       colors[i + 1] = 0;
       colors[i + 2] = 1;
@@ -245,11 +228,9 @@ const GlobalView = () => {
       earth.rotation.y += 0.001;
       particles.rotation.y += 0.0001;
       
-      // Update shader uniforms with real-time data
       earthMaterial.uniforms.time.value = Date.now() * 0.001;
       earthMaterial.uniforms.cmdbCoverage.value = cmdbData?.registration_rate || 0;
       
-      // Pulse critical markers
       scene.children.forEach(child => {
         if (child.userData.isPulse) {
           const scale = 1 + Math.sin(Date.now() * 0.003) * 0.3;
@@ -263,7 +244,6 @@ const GlobalView = () => {
 
     animate();
 
-    // Cleanup
     return () => {
       if (globeRef.current && renderer.domElement) {
         globeRef.current.removeChild(renderer.domElement);
@@ -275,7 +255,7 @@ const GlobalView = () => {
   // Critical Gaps Visualization
   useEffect(() => {
     const canvas = criticalGapsRef.current;
-    if (!canvas || !cmdbData || !infrastructureData) return;
+    if (!canvas || !infrastructureData) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -287,7 +267,6 @@ const GlobalView = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw critical infrastructure gaps
       const criticalInfra = infrastructureData.detailed_data?.filter(i => i.threat_level === 'CRITICAL') || [];
       
       criticalInfra.slice(0, 5).forEach((infra, index) => {
@@ -295,7 +274,6 @@ const GlobalView = () => {
         const gapPercentage = 100 - infra.percentage;
         const barWidth = (canvas.width - 100) * (gapPercentage / 100);
         
-        // Gap bar
         const gradient = ctx.createLinearGradient(0, y, barWidth, y);
         gradient.addColorStop(0, '#ff00ff');
         gradient.addColorStop(1, '#ff00ff80');
@@ -303,13 +281,11 @@ const GlobalView = () => {
         ctx.fillStyle = gradient;
         ctx.fillRect(50, y - 10, barWidth, 20);
         
-        // Label
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'left';
         ctx.fillText(infra.type?.substring(0, 20) || 'Unknown', 5, y + 3);
         
-        // Gap count
         ctx.fillStyle = '#ff00ff';
         ctx.font = 'bold 12px monospace';
         ctx.textAlign = 'right';
@@ -320,7 +296,7 @@ const GlobalView = () => {
     };
 
     animate();
-  }, [cmdbData, infrastructureData]);
+  }, [infrastructureData]);
 
   if (loading) {
     return (
@@ -333,33 +309,27 @@ const GlobalView = () => {
     );
   }
 
-  // CRITICAL METRICS
+  // CRITICAL METRICS from actual API data
   const registrationRate = cmdbData?.registration_rate || 0;
   const totalAssets = cmdbData?.total_assets || 0;
   const registeredAssets = cmdbData?.cmdb_registered || 0;
   const unregisteredAssets = totalAssets - registeredAssets;
   const complianceStatus = cmdbData?.compliance_analysis?.compliance_status || 'CRITICAL';
   const governanceMaturity = cmdbData?.compliance_analysis?.governance_maturity || 'IMMATURE';
-
-  // Regional critical gaps
-  const criticalRegions = regionData?.regional_analytics?.filter(r => r.risk_category === 'HIGH') || [];
-  const regionWithLowestScore = regionData?.regional_analytics?.reduce((min, r) => 
-    r.security_score < min.security_score ? r : min, 
-    regionData?.regional_analytics?.[0] || { security_score: 100 }
-  );
-
-  // Infrastructure critical gaps
+  
+  const taniumCoverage = taniumData?.coverage_percentage || 0;
+  const taniumDeployed = taniumData?.tanium_deployed || 0;
+  const deploymentStatus = taniumData?.deployment_analysis?.coverage_status || 'CRITICAL';
+  
   const criticalInfraTypes = infrastructureData?.detailed_data?.filter(i => i.threat_level === 'CRITICAL') || [];
-  const cloudInfra = infrastructureData?.detailed_data?.find(i => i.type?.toLowerCase().includes('cloud'));
-  const legacySystems = infrastructureData?.modernization_analysis?.legacy_systems || [];
-
-  // Security control gaps
-  const allControlsCoverage = securityData?.all_controls_coverage?.coverage_percentage || 0;
-  const unprotectedHosts = totalAssets - (securityData?.all_controls_coverage?.fully_protected_hosts || 0);
+  const modernizationScore = infrastructureData?.modernization_analysis?.modernization_percentage || 0;
+  const legacySystems = infrastructureData?.modernization_analysis?.legacy_systems || 0;
+  
+  const regionCount = Object.keys(regionData?.region_distribution || {}).length;
+  const totalRegionalAssets = regionData?.total_analyzed || 0;
 
   return (
     <div className="w-full h-full p-3 bg-black">
-      {/* EXECUTIVE ALERT BANNER */}
       {registrationRate < 50 && (
         <div className="mb-3 bg-black border-2 border-red-500 rounded-xl p-3 animate-pulse">
           <div className="flex items-center justify-between">
@@ -391,7 +361,7 @@ const GlobalView = () => {
                   GLOBAL ASSET VISIBILITY - REAL-TIME CMDB STATUS
                 </h3>
                 <div className="text-xs text-gray-400">
-                  Live tracking {totalAssets.toLocaleString()} assets across {regionData?.regional_analytics?.length || 0} regions
+                  Live tracking {totalAssets.toLocaleString()} assets across {regionCount} regions
                 </div>
               </div>
               <div className="flex gap-2">
@@ -409,15 +379,7 @@ const GlobalView = () => {
                     selectedMetric === 'security' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-white/5 text-white/60'
                   }`}
                 >
-                  SECURITY
-                </button>
-                <button 
-                  onClick={() => setSelectedMetric('compliance')}
-                  className={`px-2 py-1 rounded text-xs font-bold ${
-                    selectedMetric === 'compliance' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-white/5 text-white/60'
-                  }`}
-                >
-                  COMPLIANCE
+                  TANIUM
                 </button>
               </div>
             </div>
@@ -427,38 +389,35 @@ const GlobalView = () => {
             {/* Regional Risk Matrix */}
             <div className="p-3 border-t border-white/10">
               <div className="grid grid-cols-3 gap-2 text-xs">
-                {regionData?.regional_analytics?.slice(0, 6).map(region => (
-                  <div key={region.region} className="bg-black/50 rounded p-2 border border-white/10">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold text-white">{region.region?.toUpperCase()}</span>
-                      <span className={`px-1 py-0.5 rounded text-[9px] font-bold ${
-                        region.risk_category === 'HIGH' ? 'bg-red-500/20 text-red-400' :
-                        region.risk_category === 'MEDIUM' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-green-500/20 text-green-400'
-                      }`}>
-                        {region.risk_category}
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Assets:</span>
-                        <span className="text-white font-mono">{region.count?.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">CMDB:</span>
-                        <span className={`font-mono ${region.cmdb_coverage < 50 ? 'text-red-400' : 'text-cyan-400'}`}>
-                          {region.cmdb_coverage?.toFixed(1)}%
+                {Object.entries(regionData?.region_distribution || {}).slice(0, 6).map(([region, count]) => {
+                  const analytics = regionData.region_analytics?.[region] || {};
+                  return (
+                    <div key={region} className="bg-black/50 rounded p-2 border border-white/10">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold text-white uppercase">{region}</span>
+                        <span className={`px-1 py-0.5 rounded text-[9px] font-bold ${
+                          analytics.percentage < 30 ? 'bg-red-500/20 text-red-400' :
+                          analytics.percentage < 60 ? 'bg-yellow-500/20 text-yellow-400' :
+                          'bg-green-500/20 text-green-400'
+                        }`}>
+                          {analytics.percentage < 30 ? 'HIGH' : analytics.percentage < 60 ? 'MEDIUM' : 'LOW'} RISK
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Security:</span>
-                        <span className={`font-mono ${region.security_score < 40 ? 'text-red-400' : 'text-cyan-400'}`}>
-                          {region.security_score?.toFixed(0)}
-                        </span>
+                      <div className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Assets:</span>
+                          <span className="text-white font-mono">{count.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Coverage:</span>
+                          <span className={`font-mono ${analytics.percentage < 50 ? 'text-red-400' : 'text-cyan-400'}`}>
+                            {analytics.percentage?.toFixed(1) || '0.0'}%
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -559,61 +518,33 @@ const GlobalView = () => {
             
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-400">EDR Coverage</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-2 bg-black rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600"
-                      style={{ width: `${securityData?.edr_coverage?.coverage_percentage || 0}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-mono text-white">
-                    {securityData?.edr_coverage?.coverage_percentage?.toFixed(1) || '0.0'}%
-                  </span>
-                </div>
-              </div>
-              
-              <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-400">Tanium Coverage</span>
                 <div className="flex items-center gap-2">
                   <div className="w-24 h-2 bg-black rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600"
-                      style={{ width: `${securityData?.tanium_coverage?.coverage_percentage || 0}%` }}
+                      style={{ width: `${taniumCoverage}%` }}
                     />
                   </div>
                   <span className="text-xs font-mono text-white">
-                    {securityData?.tanium_coverage?.coverage_percentage?.toFixed(1) || '0.0'}%
-                  </span>
-                </div>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-400">DLP Coverage</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-2 bg-black rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600"
-                      style={{ width: `${securityData?.dlp_coverage?.coverage_percentage || 0}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-mono text-white">
-                    {securityData?.dlp_coverage?.coverage_percentage?.toFixed(1) || '0.0'}%
+                    {taniumCoverage.toFixed(1)}%
                   </span>
                 </div>
               </div>
               
               <div className="pt-2 mt-2 border-t border-white/10">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-purple-400">ALL CONTROLS</span>
+                  <span className="text-xs font-bold text-purple-400">DEPLOYMENT STATUS</span>
                   <span className={`text-lg font-bold ${
-                    allControlsCoverage < 50 ? 'text-red-400' : 'text-cyan-400'
+                    deploymentStatus === 'CRITICAL' ? 'text-red-400' : 
+                    deploymentStatus === 'ACCEPTABLE' ? 'text-yellow-400' : 
+                    'text-cyan-400'
                   }`}>
-                    {allControlsCoverage.toFixed(1)}%
+                    {deploymentStatus}
                   </span>
                 </div>
                 <div className="text-xs text-red-400 mt-1">
-                  {unprotectedHosts.toLocaleString()} hosts without full protection
+                  {(totalAssets - taniumDeployed).toLocaleString()} hosts without Tanium
                 </div>
               </div>
             </div>
@@ -639,37 +570,37 @@ const GlobalView = () => {
                 </div>
               )}
               
-              {cloudInfra && cloudInfra.percentage < 30 && (
+              {taniumCoverage < 60 && (
                 <div className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5"></div>
                   <div className="flex-1">
-                    <div className="text-xs font-bold text-white">Cloud Infrastructure</div>
+                    <div className="text-xs font-bold text-white">Tanium Deployment</div>
                     <div className="text-xs text-gray-400">
-                      Only {cloudInfra.percentage.toFixed(1)}% visibility - Enable CloudTrail and VPC logs
+                      Only {taniumCoverage.toFixed(1)}% coverage - Deploy to {(totalAssets - taniumDeployed).toLocaleString()} hosts
                     </div>
                   </div>
                 </div>
               )}
               
-              {criticalRegions.length > 0 && (
-                <div className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5"></div>
-                  <div className="flex-1">
-                    <div className="text-xs font-bold text-white">Regional Gaps</div>
-                    <div className="text-xs text-gray-400">
-                      {criticalRegions.length} regions at HIGH risk - {regionWithLowestScore?.region} at {regionWithLowestScore?.security_score?.toFixed(0)} score
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {legacySystems.length > 3 && (
+              {modernizationScore < 30 && (
                 <div className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 mt-1.5"></div>
                   <div className="flex-1">
-                    <div className="text-xs font-bold text-white">Legacy Systems</div>
+                    <div className="text-xs font-bold text-white">Infrastructure Modernization</div>
                     <div className="text-xs text-gray-400">
-                      {legacySystems.length} legacy infrastructure types need modernization
+                      {legacySystems} legacy systems need immediate modernization
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {criticalInfraTypes.length > 0 && (
+                <div className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 mt-1.5"></div>
+                  <div className="flex-1">
+                    <div className="text-xs font-bold text-white">Critical Infrastructure</div>
+                    <div className="text-xs text-gray-400">
+                      {criticalInfraTypes.length} infrastructure types at critical risk level
                     </div>
                   </div>
                 </div>
@@ -677,7 +608,7 @@ const GlobalView = () => {
             </div>
           </div>
 
-          {/* Top Unregistered Infrastructure Types */}
+          {/* Top Visibility Gaps by Type */}
           <div className="flex-1 bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
             <h3 className="text-xs font-bold text-white/60 mb-2">TOP VISIBILITY GAPS BY TYPE</h3>
             <div className="space-y-1 max-h-32 overflow-y-auto">

@@ -3,9 +3,8 @@ from flask_cors import CORS
 import duckdb
 import re
 import os
-import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
 app = Flask(__name__)
@@ -112,19 +111,19 @@ def normalize_region(region):
     
     region_lower = region.lower().strip()
     
-    # Define regional indicators
-    na_indicators = ['na', 'north america', 'us', 'usa', 'united states', 'canada', 'ca', 'mexico', 'mx']
+    # Define indicators for each region
+    na_indicators = ['north america', 'na', 'us', 'usa', 'united states', 'canada', 'ca', 'mexico', 'mx']
     emea_indicators = ['emea', 'europe', 'eu', 'middle east', 'africa', 'uk', 'gb', 'germany', 'de', 
                        'france', 'fr', 'italy', 'spain', 'netherlands', 'belgium', 'switzerland']
     latam_indicators = ['latam', 'latin america', 'south america', 'brazil', 'argentina', 'chile', 
-                        'colombia', 'peru', 'ecuador', 'venezuela']
+                        'colombia', 'peru', 'venezuela', 'mexico']
     apac_indicators = ['apac', 'asia', 'pacific', 'japan', 'jp', 'china', 'cn', 'india', 'in', 
-                       'australia', 'au', 'singapore', 'sg']
+                       'australia', 'au', 'singapore', 'sg', 'korea', 'kr']
     
     if any(indicator in region_lower for indicator in na_indicators):
         return 'north america'
     elif any(indicator in region_lower for indicator in emea_indicators):
-        return 'emea'
+        return 'emea'  
     elif any(indicator in region_lower for indicator in latam_indicators):
         return 'latam'
     elif any(indicator in region_lower for indicator in apac_indicators):
@@ -154,17 +153,15 @@ def database_status():
         conn = get_db_connection()
         columns, row_count = verify_table_structure(conn)
         
-        # Get table list
-        tables = conn.execute("SHOW TABLES").fetchall()
-        table_list = [str(table[0]) for table in tables]
-        
+        # Get sample data
+        sample_data = conn.execute("SELECT * FROM universal_cmdb LIMIT 5").fetchall()
         conn.close()
         
         return jsonify({
             'status': 'connected',
             'columns': columns,
             'row_count': row_count,
-            'tables': table_list
+            'sample_rows': len(sample_data)
         })
     except Exception as e:
         logger.error(f"Database status error: {e}")
@@ -175,12 +172,8 @@ def source_tables_metrics():
     try:
         conn = get_db_connection()
         
-        # First, get total row count
-        total_rows = conn.execute("""
-            SELECT COUNT(*) 
-            FROM universal_cmdb 
-            WHERE source_tables IS NOT NULL AND source_tables != ''
-        """).fetchone()[0]
+        # Get total rows for percentage calculation
+        total_rows = conn.execute("SELECT COUNT(*) FROM universal_cmdb WHERE source_tables IS NOT NULL AND source_tables != ''").fetchone()[0]
         
         queries_to_try = [
             """
@@ -226,40 +219,26 @@ def source_tables_metrics():
             conn.close()
             return jsonify({'error': 'No source table data found'}), 500
         
-        # Calculate total mentions
+        # Calculate metrics
         total_mentions = sum([row[1] for row in result])
         
-        # Build source intelligence data
-        data = []
         detailed_data = []
-        
         for source_name, frequency, unique_hosts in result:
             percentage = (frequency / total_mentions * 100) if total_mentions > 0 else 0
-            unique_hosts_val = unique_hosts if unique_hosts else 1
-            
-            data_item = {
+            detailed_data.append({
                 'source': source_name,
                 'frequency': frequency,
+                'unique_hosts': unique_hosts,
                 'percentage': round(percentage, 2)
-            }
-            data.append(data_item)
-            
-            detailed_item = {
-                'source': source_name,
-                'frequency': frequency,
-                'unique_hosts': unique_hosts_val,
-                'percentage': round(percentage, 2)
-            }
-            detailed_data.append(detailed_item)
+            })
         
         detailed_data.sort(key=lambda x: x['frequency'], reverse=True)
         
         conn.close()
         
         return jsonify({
-            'source_intelligence': data,
             'detailed_data': detailed_data,
-            'unique_sources': len(data),
+            'unique_sources': len(detailed_data),
             'total_mentions': total_mentions,
             'unique_hosts_with_sources': total_rows,
             'top_10': detailed_data[:10],
@@ -288,25 +267,28 @@ def domain_metrics():
         
         domain_counter = Counter()
         unique_domains = set()
-        host_domain_map = defaultdict(set)
+        host_domain_map = {}
         
         for row in result:
             host, domain = row
             
             if domain:
                 domain_values = parse_pipe_separated_values(domain)
+                host_domains = {'tdc': False, 'fead': False, 'other': False}
                 
                 for d in domain_values:
                     unique_domains.add(d)
                     if 'tdc' in d.lower():
-                        domain_counter['tdc'] += 1
-                        host_domain_map[host].add('tdc')
+                        host_domains['tdc'] = True
                     elif 'fead' in d.lower():
-                        domain_counter['fead'] += 1
-                        host_domain_map[host].add('fead')
+                        host_domains['fead'] = True
                     else:
-                        domain_counter['other'] += 1
-                        host_domain_map[host].add('other')
+                        host_domains['other'] = True
+                
+                for domain_type, present in host_domains.items():
+                    if present:
+                        domain_counter[domain_type] += 1
+                        host_domain_map[host] = domain_type
         
         total_analyzed = sum(domain_counter.values())
         
@@ -318,9 +300,11 @@ def domain_metrics():
                 'percentage': round(percentage, 2)
             }
         
-        # Count hosts with multiple domain types
-        multi_domain_hosts = len([h for h, domains in host_domain_map.items() 
-                                  if 'tdc' in domains and 'fead' in domains])
+        # Count multi-domain hosts
+        multi_domain_hosts = 0
+        for host in host_domain_map:
+            if host_domain_map.get(host) == 'tdc' and host_domain_map.get(host) == 'fead':
+                multi_domain_hosts += 1
         
         conn.close()
         
@@ -339,7 +323,7 @@ def domain_metrics():
                 'dominant_domain': max(domain_counter, key=domain_counter.get) if domain_counter else 'unknown',
                 'domain_balance': abs(domain_counter.get('tdc', 0) - domain_counter.get('fead', 0)),
                 'tactical_status': 'BALANCED' if abs(domain_counter.get('tdc', 0) - 
-                                                    domain_counter.get('fead', 0)) < total_analyzed * 0.1 else 'DOMINANT'
+                domain_counter.get('fead', 0)) < total_analyzed * 0.1 else 'DOMINANT'
             }
         })
     except Exception as e:
@@ -394,7 +378,8 @@ def infrastructure_type_metrics():
         
         detailed_data.sort(key=lambda x: x['frequency'], reverse=True)
         
-        modernization_score = sum(1 for item in detailed_data if 'cloud' in item['type'].lower() or 'saas' in item['type'].lower())
+        modernization_score = sum(1 for item in detailed_data if 'cloud' in 
+                                item['type'].lower() or 'saas' in item['type'].lower())
         modernization_percentage = (modernization_score / len(detailed_data) * 100) if detailed_data else 0
         
         conn.close()
@@ -408,8 +393,10 @@ def infrastructure_type_metrics():
             'modernization_analysis': {
                 'modernization_score': modernization_score,
                 'modernization_percentage': round(modernization_percentage, 2),
-                'legacy_systems': len([item for item in detailed_data if 'legacy' in item['type'].lower()]),
-                'cloud_adoption': len([item for item in detailed_data if 'cloud' in item['type'].lower()])
+                'legacy_systems': len([item for item in detailed_data if 'legacy' in 
+                                     item['type'].lower()]),
+                'cloud_adoption': len([item for item in detailed_data if 'cloud' in 
+                                     item['type'].lower()])
             },
             'distribution': {
                 'top_5': detailed_data[:5],
@@ -441,6 +428,7 @@ def region_metrics():
         
         region_counter = Counter()
         region_details = defaultdict(list)
+        total_analyzed = 0
         raw_regions = []
         
         for row in result:
@@ -457,25 +445,25 @@ def region_metrics():
                         'frequency': frequency,
                         'infrastructure': infra_type
                     })
+                total_analyzed += frequency
         
-        total_analyzed = sum(region_counter.values())
-        
-        regional_distribution = {}
+        # Create region analytics
+        region_analytics = {}
         for region, count in region_counter.items():
             percentage = (count / total_analyzed * 100) if total_analyzed > 0 else 0
-            regional_distribution[region] = {
+            region_analytics[region] = {
                 'count': count,
                 'percentage': round(percentage, 2),
-                'details': region_details[region][:10]  # Limit details for response size
+                'details': region_details[region][:10]  # Top 10 details for each region
             }
         
         conn.close()
         
         return jsonify({
-            'regional_distribution': regional_distribution,
-            'region_summary': dict(region_counter),
+            'region_distribution': dict(region_counter),
+            'region_analytics': region_analytics,
             'total_analyzed': total_analyzed,
-            'raw_regions': raw_regions[:100]  # Limit for response size
+            'raw_regions': raw_regions[:100]  # Top 100 raw regions
         })
     except Exception as e:
         logger.error(f"Region metrics error: {e}")
@@ -494,53 +482,54 @@ def system_classification():
             COALESCE(infrastructure_type, 'unknown') as infrastructure_type,
             COALESCE(business_unit, 'unknown') as business_unit
         FROM universal_cmdb
-        WHERE system IS NOT NULL AND system != ''
         GROUP BY system, region, infrastructure_type, business_unit
         ORDER BY frequency DESC
         """).fetchall()
         
-        system_matrix = {}
+        system_matrix = Counter()
         system_analytics = defaultdict(lambda: {
             'total': 0,
-            'regions': set(),
             'infrastructure_types': set(),
+            'regions': set(),
             'business_units': set(),
             'security_category': 'standard'
         })
-        os_distribution = defaultdict(int)
-        version_analysis = defaultdict(int)
+        
+        os_distribution = Counter()
+        version_analysis = defaultdict(list)
         
         for row in result:
             system_name, frequency, region, infra_type, bu = row
-            
             if system_name and system_name != 'unknown':
-                system_matrix[system_name] = system_matrix.get(system_name, 0) + frequency
+                system_matrix[system_name] += frequency
                 system_analytics[system_name]['total'] += frequency
-                system_analytics[system_name]['regions'].add(normalize_region(region))
                 system_analytics[system_name]['infrastructure_types'].add(infra_type)
+                system_analytics[system_name]['regions'].add(normalize_region(region))
                 system_analytics[system_name]['business_units'].add(bu)
                 
-                # Extract OS type
+                # Categorize OS
                 s_lower = system_name.lower()
                 if 'windows' in s_lower:
                     os_distribution['Windows'] += frequency
                 elif 'linux' in s_lower or 'ubuntu' in s_lower or 'centos' in s_lower or 'rhel' in s_lower:
                     os_distribution['Linux'] += frequency
                 elif 'mac' in s_lower or 'osx' in s_lower:
-                    os_distribution['macOS'] += frequency
+                    os_distribution['MacOS'] += frequency
+                elif 'unix' in s_lower or 'aix' in s_lower or 'solaris' in s_lower:
+                    os_distribution['Unix'] += frequency
                 else:
                     os_distribution['Other'] += frequency
                 
-                # Categorize by version/age
-                if any(keyword in s_lower for keyword in ['2008', '2012', '2016', 'xp', 'vista', '7', '9']):
+                # Extract version numbers
+                version_match = re.search(r'\d+(\.\d+)*', system_name)
+                if version_match:
+                    version_analysis[version_match.group()].append(system_name)
+                
+                # Security categorization
+                if any(keyword in s_lower for keyword in ['2008', '2012', '2016', 'xp', 'vista', '7', '8']):
                     system_analytics[system_name]['security_category'] = 'legacy'
-                    version_analysis['Legacy'] += frequency
                 elif any(keyword in s_lower for keyword in ['2019', '2022', '10', '11', 'latest']):
                     system_analytics[system_name]['security_category'] = 'modern'
-                    version_analysis['Modern'] += frequency
-                else:
-                    system_analytics[system_name]['security_category'] = 'standard'
-                    version_analysis['Standard'] += frequency
         
         security_distribution = defaultdict(int)
         modernization_candidates = []
@@ -564,30 +553,33 @@ def system_classification():
         conn.close()
         
         return jsonify({
-            'system_matrix': system_matrix,
+            'system_matrix': dict(system_matrix),
             'system_analytics': dict(system_analytics),
             'os_distribution': dict(os_distribution),
-            'version_analysis': dict(version_analysis),
+            'version_analysis': {k: v[:5] for k, v in version_analysis.items()},  # Top 5 systems per version
             'security_distribution': dict(security_distribution),
             'total_systems': len(system_matrix),
             'modernization_analysis': {
                 'legacy_systems': len(modernization_candidates),
                 'legacy_assets': sum([c['count'] for c in modernization_candidates]),
-                'modernization_priority': sorted(modernization_candidates, key=lambda x: x['count'], reverse=True)[:10],
-                'security_risk_level': round((security_distribution.get('legacy', 0) / total_systems * 100), 2) if total_systems > 0 else 0
+                'modernization_priority': sorted(modernization_candidates, key=lambda x: 
+                x['count'], reverse=True)[:10],
+                'security_risk_level': round((security_distribution.get('legacy', 0) / 
+                total_systems * 100), 2) if total_systems > 0 else 0
             },
             'taxonomy_intelligence': {
                 'os_diversity': len(os_distribution),
                 'dominant_os': max(os_distribution, key=os_distribution.get) if os_distribution else 'unknown',
                 'system_sprawl': len(system_matrix),
-                'standardization_score': round(max(os_distribution.values()) / total_systems * 100, 2) if os_distribution and total_systems > 0 else 0
+                'standardization_score': round(max(os_distribution.values()) / total_systems * 
+                100, 2) if os_distribution and total_systems > 0 else 0
             }
         })
     except Exception as e:
         logger.error(f"System classification error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/business_unit_metrics')
+@app.route('/api/business_unit_metrics')  
 def business_unit_metrics():
     try:
         conn = get_db_connection()
@@ -626,7 +618,7 @@ def business_unit_metrics():
                 for sep in separators:
                     new_units = []
                     for u in units:
-                        new_units.extend([x.strip() for x in str(u).split(sep) if x.strip()])
+                        new_units.extend([u.strip() for u in str(u).split(sep) if u.strip()])
                     units = new_units
                 
                 for unit in units:
@@ -665,8 +657,7 @@ def business_unit_metrics():
         
         total_bu_assets = sum(business_intelligence.values())
         
-        security_priority = sorted(bu_security_analysis.items(), 
-                                  key=lambda x: (x[1]['security_score'], -x[1]['total_assets']))
+        security_priority = sorted(bu_security_analysis.items(), key=lambda x: (x[1]['security_score'], -x[1]['total_assets']))
         
         conn.close()
         
@@ -678,15 +669,19 @@ def business_unit_metrics():
             'organizational_analytics': {
                 'total_assets': total_bu_assets,
                 'largest_bu': max(business_intelligence, key=business_intelligence.get) if business_intelligence else 'unknown',
-                'most_distributed_bu': max(bu_security_analysis.keys(), 
-                                          key=lambda k: bu_security_analysis[k]['geographic_spread']) if bu_security_analysis else 'unknown',
-                'security_leaders': [unit for unit, data in bu_security_analysis.items() if data['security_status'] == 'SECURE'],
-                'vulnerable_units': [unit for unit, data in bu_security_analysis.items() if data['security_status'] == 'VULNERABLE'],
+                'most_distributed_bu': max(bu_security_analysis.keys(), key=lambda k: 
+                bu_security_analysis[k]['geographic_spread']) if bu_security_analysis else 'unknown',
+                'security_leaders': [unit for unit, data in bu_security_analysis.items() if 
+                data['security_status'] == 'SECURE'],
+                'vulnerable_units': [unit for unit, data in bu_security_analysis.items() if 
+                data['security_status'] == 'VULNERABLE'],
                 'risk_assessment': {
-                    'high_risk_units': [unit for unit, data in bu_security_analysis.items() if data['security_score'] < 50],
-                    'assets_at_risk': sum([data['total_assets'] for unit, data in bu_security_analysis.items() if data['security_score'] < 50]),
-                    'security_priority_list': [{'unit': unit, 'assets': data['total_assets'], 'score': data['security_score']} 
-                                              for unit, data in security_priority[:10]]
+                    'high_risk_units': [unit for unit, data in bu_security_analysis.items() if 
+                    data['security_score'] < 50],
+                    'assets_at_risk': sum([data['total_assets'] for unit, data in 
+                    bu_security_analysis.items() if data['security_score'] < 50]),
+                    'security_priority_list': [{'unit': unit, 'assets': data['total_assets'], 'score': 
+                    data['security_score']} for unit, data in security_priority[:10]]
                 }
             }
         })
@@ -749,18 +744,27 @@ def cio_metrics():
         total_cio_assets = sum(operative_intelligence.values())
         
         governance_metrics = {
-            'executive_leaders': len([cio for cio, data in leadership_analysis.items() if data['leadership_tier'] == 'EXECUTIVE']),
-            'senior_leaders': len([cio for cio, data in leadership_analysis.items() if data['leadership_tier'] == 'SENIOR']),
-            'managers': len([cio for cio, data in leadership_analysis.items() if data['leadership_tier'] == 'MANAGER']),
-            'largest_portfolio': max(leadership_analysis.values(), key=lambda x: x['total_assets'])['total_assets'] if leadership_analysis else 0,
-            'most_distributed': max(leadership_analysis.values(), key=lambda x: x['span_of_control'])['span_of_control'] if leadership_analysis else 0,
-            'average_portfolio_size': round(total_cio_assets / len(operative_intelligence), 0) if operative_intelligence else 0
+            'executive_leaders': len([cio for cio, data in leadership_analysis.items() if 
+            data['leadership_tier'] == 'EXECUTIVE']),
+            'senior_leaders': len([cio for cio, data in leadership_analysis.items() if 
+            data['leadership_tier'] == 'SENIOR']),
+            'managers': len([cio for cio, data in leadership_analysis.items() if 
+            data['leadership_tier'] == 'MANAGER']),
+            'largest_portfolio': max(leadership_analysis.values(), key=lambda x: 
+            x['total_assets'])['total_assets'] if leadership_analysis else 0,
+            'most_distributed': max(leadership_analysis.values(), key=lambda x: 
+            x['span_of_control'])['span_of_control'] if leadership_analysis else 0,
+            'average_portfolio_size': round(total_cio_assets / len(operative_intelligence), 0) if 
+            operative_intelligence else 0
         }
         
         executive_summary = {
-            'top_executives': sorted(leadership_analysis.items(), key=lambda x: x[1]['total_assets'], reverse=True)[:5],
-            'most_distributed_leaders': sorted(leadership_analysis.items(), key=lambda x: x[1]['span_of_control'], reverse=True)[:5],
-            'leadership_effectiveness': len([cio for cio, data in leadership_analysis.items() if data['span_of_control'] >= 5])
+            'top_executives': sorted(leadership_analysis.items(), key=lambda x: 
+            x[1]['total_assets'], reverse=True)[:5],
+            'most_distributed_leaders': sorted(leadership_analysis.items(), key=lambda x: 
+            x[1]['span_of_control'], reverse=True)[:5],
+            'leadership_effectiveness': len([cio for cio, data in leadership_analysis.items() if 
+            data['span_of_control'] >= 5])
         }
         
         conn.close()
@@ -844,13 +848,13 @@ def tanium_coverage():
             }
         
         infrastructure_analysis = {}
-        for infra, data in infrastructure_coverage.items():
+        for infra_type, data in infrastructure_coverage.items():
             coverage_pct = (data['deployed'] / data['total'] * 100) if data['total'] > 0 else 0
-            infrastructure_analysis[infra] = {
+            infrastructure_analysis[infra_type] = {
                 'deployed': data['deployed'],
                 'total': data['total'],
                 'coverage_percentage': round(coverage_pct, 2),
-                'priority': 'HIGH' if coverage_pct < 50 else 'MEDIUM' if coverage_pct < 80 else 'LOW'
+                'priority': 'HIGH' if coverage_pct < 60 else 'MEDIUM' if coverage_pct < 85 else 'LOW'
             }
         
         bu_analysis = {}
@@ -860,7 +864,7 @@ def tanium_coverage():
                 'deployed': data['deployed'],
                 'total': data['total'],
                 'coverage_percentage': round(coverage_pct, 2),
-                'risk_level': 'CRITICAL' if coverage_pct < 40 else 'MEDIUM' if coverage_pct < 70 else 'LOW'
+                'risk_level': 'CRITICAL' if coverage_pct < 40 else 'HIGH' if coverage_pct < 70 else 'LOW'
             }
         
         deployment_gaps = {
@@ -899,16 +903,20 @@ def tanium_coverage():
             'total_assets': total_count,
             'coverage_percentage': round(coverage_percentage, 2),
             'status_breakdown': status_breakdown,
-            'regional_coverage': dict(regional_analysis),
-            'infrastructure_coverage': dict(infrastructure_analysis),
-            'business_unit_coverage': dict(bu_analysis),
+            'regional_coverage': regional_analysis,
+            'infrastructure_coverage': infrastructure_analysis,
+            'business_unit_coverage': bu_analysis,
             'deployment_gaps': deployment_gaps,
-            'deployment_recommendations': sorted(deployment_recommendations, key=lambda x: x['assets'], reverse=True)[:10],
+            'deployment_recommendations': sorted(deployment_recommendations, 
+            key=lambda x: x['assets'], reverse=True)[:10],
             'deployment_analysis': {
-                'coverage_status': 'OPTIMAL' if coverage_percentage >= 80 else 'ACCEPTABLE' if coverage_percentage >= 60 else 'CRITICAL',
+                'coverage_status': 'OPTIMAL' if coverage_percentage >= 80 else 'ACCEPTABLE' if 
+                coverage_percentage >= 60 else 'CRITICAL',
                 'deployment_gap': total_count - tanium_count,
-                'recommended_action': 'MAINTAIN' if coverage_percentage >= 80 else 'EXPAND' if coverage_percentage >= 60 else 'URGENT_DEPLOY',
-                'security_risk_level': 'LOW' if coverage_percentage >= 80 else 'MEDIUM' if coverage_percentage >= 60 else 'HIGH'
+                'recommended_action': 'MAINTAIN' if coverage_percentage >= 80 else 'EXPAND' if 
+                coverage_percentage >= 60 else 'URGENT_DEPLOY',
+                'security_risk_level': 'LOW' if coverage_percentage >= 80 else 'MEDIUM' if 
+                coverage_percentage >= 60 else 'HIGH'
             },
             'trend_analysis': {
                 'coverage_trend': 'improving',
@@ -987,7 +995,7 @@ def cmdb_presence():
                 'total': data['total'],
                 'compliance_percentage': round(compliance_pct, 2),
                 'governance_status': 'EXCELLENT' if compliance_pct >= 95 else 'GOOD' if compliance_pct >= 85 else 'POOR',
-                'status': 'COMPLIANT' if compliance_pct >= 90 else 'PARTIAL_COMPLIANCE' if compliance_pct >= 70 else 'NON_COMPLIANT'
+                'status': 'COMPLIANT' if compliance_pct >= 90 else 'PARTIAL' if compliance_pct >= 70 else 'NON_COMPLIANT'
             }
         
         infrastructure_compliance = {}
@@ -1059,16 +1067,19 @@ def cmdb_presence():
             'total_assets': total_count,
             'registration_rate': round(registration_rate, 2),
             'status_breakdown': status_breakdown,
-            'regional_compliance': dict(regional_compliance),
-            'infrastructure_compliance': dict(infrastructure_compliance),
-            'business_unit_compliance': dict(bu_compliance),
-            'datacenter_compliance': dict(datacenter_compliance),
+            'regional_compliance': regional_compliance,
+            'infrastructure_compliance': infrastructure_compliance,
+            'business_unit_compliance': bu_compliance,
+            'datacenter_compliance': datacenter_compliance,
             'compliance_gaps': compliance_gaps,
-            'improvement_recommendations': sorted(improvement_recommendations, key=lambda x: x['assets_to_register'], reverse=True)[:10],
+            'improvement_recommendations': sorted(improvement_recommendations, 
+            key=lambda x: x['assets_to_register'], reverse=True)[:10],
             'compliance_analysis': {
-                'compliance_status': 'COMPLIANT' if registration_rate >= 90 else 'PARTIAL_COMPLIANCE' if registration_rate >= 70 else 'NON_COMPLIANT',
+                'compliance_status': 'COMPLIANT' if registration_rate >= 90 else 
+                'PARTIAL_COMPLIANCE' if registration_rate >= 70 else 'NON_COMPLIANT',
                 'improvement_needed': max(0, round(90 - registration_rate, 2)),
-                'governance_maturity': 'MATURE' if registration_rate >= 95 else 'DEVELOPING' if registration_rate >= 50 else 'IMMATURE',
+                'governance_maturity': 'MATURE' if registration_rate >= 95 else 'DEVELOPING' if 
+                registration_rate >= 50 else 'IMMATURE',
                 'audit_readiness': {
                     'audit_score': round(registration_rate, 0),
                     'compliant_regions': len([r for r, d in regional_compliance.items() if d['status'] == 'COMPLIANT']),
@@ -1118,6 +1129,7 @@ def host_search():
         for i, query in enumerate(search_queries):
             try:
                 result = conn.execute(query, [search_pattern]).fetchall()
+                
                 if result:
                     logger.info(f"Search query ({i+1}) returned {len(result)} results")
                     break
@@ -1148,11 +1160,11 @@ def host_search():
             hosts.append(host_data)
         
         search_analytics = {
-            'regions': list(set([h['region'] for h in hosts if h['region'] != 'unknown'])),
-            'countries': list(set([h['country'] for h in hosts if h['country'] != 'unknown'])),
-            'infrastructure_types': list(set([h['infrastructure_type'] for h in hosts if h['infrastructure_type'] != 'unknown'])),
-            'business_units': list(set([h['business_unit'] for h in hosts if h['business_unit'] != 'unknown'])),
-            'data_centers': list(set([h['data_center'] for h in hosts if h['data_center'] != 'unknown'])),
+            'regions': list(set([h['region'] for h in hosts if h['region'] != 'unknown']))[:20],
+            'countries': list(set([h['country'] for h in hosts if h['country'] != 'unknown']))[:20],
+            'infrastructure_types': list(set([h['infrastructure_type'] for h in hosts if h['infrastructure_type'] != 'unknown']))[:20],
+            'business_units': list(set([h['business_unit'] for h in hosts if h['business_unit'] != 'unknown']))[:20],
+            'data_centers': list(set([h['data_center'] for h in hosts if h['data_center'] != 'unknown']))[:20],
             'cmdb_registered': len([h for h in hosts if 'yes' in str(h['present_in_cmdb']).lower()]),
             'tanium_deployed': len([h for h in hosts if 'tanium' in str(h['tanium_coverage']).lower()]),
             'security_coverage': 0
@@ -1165,14 +1177,14 @@ def host_search():
         conn.close()
         
         return jsonify({
-            'hosts': hosts,
+            'hosts': hosts[:100],  # Limit to 100 results for frontend
             'total_found': len(hosts),
             'search_term': search_term,
             'search_summary': search_analytics,
             'drill_down_available': len(hosts) > 100,
             'search_scope': {
                 'searched_fields': ['host'],
-                'result_limit': 500,
+                'result_limit': 100,
                 'total_matches': len(hosts)
             }
         })
@@ -1273,7 +1285,7 @@ def advanced_analytics():
         conn.close()
         
         return jsonify({
-            'correlation_analysis': correlation_analysis,
+            'correlation_analysis': correlation_analysis[:50],  # Limit for performance
             'trend_analysis': trend_analysis,
             'high_risk_combinations': sorted(high_risk_combinations, key=lambda x: x['asset_count'], reverse=True),
             'predictive_insights': predictive_insights,

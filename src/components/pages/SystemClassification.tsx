@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { Monitor, Server, Cloud, Database, Network, AlertTriangle, Activity, Cpu } from 'lucide-react';
 
 const SystemClassification = () => {
   const [systemData, setSystemData] = useState(null);
@@ -15,17 +16,31 @@ const SystemClassification = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/system_classification_visibility');
+        const response = await fetch('http://localhost:5000/api/system_classification');
         if (!response.ok) throw new Error('Failed to fetch');
         const data = await response.json();
         setSystemData(data);
       } catch (error) {
         console.error('Error:', error);
         setSystemData({
-          category_summary: {},
-          detailed_breakdown: [],
-          total_system_types: 0,
-          critical_systems: []
+          system_matrix: {},
+          system_analytics: {},
+          os_distribution: {},
+          version_analysis: {},
+          security_distribution: {},
+          total_systems: 0,
+          modernization_analysis: {
+            legacy_systems: 0,
+            legacy_assets: 0,
+            modernization_priority: [],
+            security_risk_level: 0
+          },
+          taxonomy_intelligence: {
+            os_diversity: 0,
+            dominant_os: 'Unknown',
+            system_sprawl: 0,
+            standardization_score: 0
+          }
         });
       } finally {
         setLoading(false);
@@ -70,17 +85,16 @@ const SystemClassification = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     galaxyRef.current.appendChild(renderer.domElement);
 
-    const categories = systemData.category_summary || {};
-    const systems = systemData.detailed_breakdown || [];
+    const systems = Object.entries(systemData.system_matrix || {});
+    const osTypes = systemData.os_distribution || {};
     
-    // Create central core representing total visibility
-    const overallVisibility = Object.values(categories).reduce((sum, cat) => 
-      sum + (cat.visibility_percentage || 0), 0) / Math.max(Object.keys(categories).length, 1);
+    // Create central core representing total systems
+    const securityRiskLevel = systemData.modernization_analysis?.security_risk_level || 0;
     
     const coreGeometry = new THREE.SphereGeometry(20, 32, 32);
     const coreMaterial = new THREE.MeshPhongMaterial({
-      color: overallVisibility > 50 ? 0x00d4ff : 0xa855f7,
-      emissive: overallVisibility > 50 ? 0x00d4ff : 0xa855f7,
+      color: securityRiskLevel > 50 ? 0xa855f7 : 0x00d4ff,
+      emissive: securityRiskLevel > 50 ? 0xa855f7 : 0x00d4ff,
       emissiveIntensity: 0.3,
       transparent: true,
       opacity: 0.9
@@ -88,16 +102,16 @@ const SystemClassification = () => {
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
     scene.add(core);
 
-    // Create category rings
+    // Create OS category rings
     const categoryGroups = [];
-    Object.entries(categories).forEach(([category, data], catIndex) => {
+    Object.entries(osTypes).forEach(([osType, count], catIndex) => {
       const categoryGroup = new THREE.Group();
-      const orbitRadius = 60 + catIndex * 50;
+      const orbitRadius = 60 + catIndex * 40;
       
       // Category orbit ring
       const ringGeometry = new THREE.TorusGeometry(orbitRadius, 1, 8, 100);
       const ringMaterial = new THREE.MeshBasicMaterial({
-        color: data.visibility_percentage < 50 ? 0xa855f7 : 0x00d4ff,
+        color: count < 1000 ? 0xa855f7 : 0x00d4ff,
         transparent: true,
         opacity: 0.2
       });
@@ -105,50 +119,42 @@ const SystemClassification = () => {
       ring.rotation.x = Math.PI / 2;
       categoryGroup.add(ring);
       
-      // Systems in this category
-      const categorySystems = systems.filter(s => s.category === category);
-      const filteredSystems = selectedCategory === 'all' ? categorySystems : 
-                             selectedCategory === category ? categorySystems : [];
+      // Systems in this OS category
+      const categorySystems = systems.filter(([name]) => {
+        const nameLower = name.toLowerCase();
+        const osTypeLower = osType.toLowerCase();
+        return nameLower.includes(osTypeLower) || 
+               (osTypeLower === 'windows' && nameLower.includes('win')) ||
+               (osTypeLower === 'linux' && (nameLower.includes('ubuntu') || nameLower.includes('centos') || nameLower.includes('rhel')));
+      });
       
-      filteredSystems.slice(0, 20).forEach((system, sysIndex) => {
-        const angle = (sysIndex / Math.min(categorySystems.length, 20)) * Math.PI * 2;
+      categorySystems.slice(0, 10).forEach((system, sysIndex) => {
+        const [systemName, systemCount] = system;
+        const angle = (sysIndex / Math.min(categorySystems.length, 10)) * Math.PI * 2;
         const x = Math.cos(angle) * orbitRadius;
         const z = Math.sin(angle) * orbitRadius;
         const y = (Math.random() - 0.5) * 20;
         
         // System node
-        const size = 3 + Math.log(system.total_hosts / 1000 + 1) * 3;
+        const size = 3 + Math.log(systemCount / 100 + 1) * 3;
+        const analytics = systemData.system_analytics?.[systemName] || {};
         
-        // Outer sphere for total hosts
-        const outerGeometry = new THREE.SphereGeometry(size, 16, 16);
-        const outerMaterial = new THREE.MeshPhongMaterial({
-          color: 0x111111,
-          emissive: system.status === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
-          emissiveIntensity: 0.1,
+        const nodeGeometry = new THREE.SphereGeometry(size, 16, 16);
+        const nodeMaterial = new THREE.MeshPhongMaterial({
+          color: analytics.security_category === 'legacy' ? 0xa855f7 : 0x00d4ff,
+          emissive: analytics.security_category === 'legacy' ? 0xa855f7 : 0x00d4ff,
+          emissiveIntensity: 0.3,
           transparent: true,
-          opacity: 0.3
+          opacity: 0.8
         });
-        const outerSphere = new THREE.Mesh(outerGeometry, outerMaterial);
-        outerSphere.position.set(x, y, z);
+        const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+        node.position.set(x, y, z);
+        node.userData = { systemName, count: systemCount, analytics };
         
-        // Inner sphere for visible hosts
-        const visRadius = size * (system.visibility_percentage / 100);
-        const visGeometry = new THREE.SphereGeometry(visRadius, 12, 12);
-        const visMaterial = new THREE.MeshPhongMaterial({
-          color: system.visibility_percentage > 50 ? 0x00d4ff : 0xa855f7,
-          emissive: system.visibility_percentage > 50 ? 0x00d4ff : 0xa855f7,
-          emissiveIntensity: 0.5,
-          transparent: true,
-          opacity: 1
-        });
-        const visSphere = new THREE.Mesh(visGeometry, visMaterial);
-        visSphere.position.copy(outerSphere.position);
-        
-        categoryGroup.add(outerSphere);
-        categoryGroup.add(visSphere);
+        categoryGroup.add(node);
       });
       
-      categoryGroup.userData = { category, data };
+      categoryGroup.userData = { osType, count };
       categoryGroups.push(categoryGroup);
       scene.add(categoryGroup);
     });
@@ -164,9 +170,9 @@ const SystemClassification = () => {
       positions[i + 1] = (Math.random() - 0.5) * 300;
       positions[i + 2] = (Math.random() - 0.5) * 400;
       
-      const isVisible = Math.random() < overallVisibility / 100;
-      colors[i] = isVisible ? 0 : 0.66;
-      colors[i + 1] = isVisible ? 0.83 : 0.33;
+      const isLegacy = Math.random() < securityRiskLevel / 100;
+      colors[i] = isLegacy ? 0.66 : 0;
+      colors[i + 1] = isLegacy ? 0.33 : 0.83;
       colors[i + 2] = 1;
     }
     
@@ -274,48 +280,49 @@ const SystemClassification = () => {
         ctx.stroke();
       }
 
-      // Draw categories
-      const categories = systemData.category_summary || {};
-      const categoryArray = Object.entries(categories);
+      // Draw OS distribution segments
+      const osDistribution = systemData.os_distribution || {};
+      const totalSystems = Object.values(osDistribution).reduce((sum, count) => sum + count, 1);
       
-      if (categoryArray.length > 0) {
-        categoryArray.forEach(([name, data], index) => {
-          const startAngle = (index / categoryArray.length) * Math.PI * 2;
-          const endAngle = ((index + 1) / categoryArray.length) * Math.PI * 2;
-          const radius = (data.visibility_percentage / 100) * maxRadius;
-          
-          // Draw segment
-          const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-          if (data.status === 'CRITICAL') {
-            gradient.addColorStop(0, 'rgba(168, 85, 247, 0.5)');
-            gradient.addColorStop(1, 'rgba(168, 85, 247, 0.1)');
-          } else if (data.status === 'WARNING') {
-            gradient.addColorStop(0, 'rgba(255, 170, 0, 0.5)');
-            gradient.addColorStop(1, 'rgba(255, 170, 0, 0.1)');
-          } else {
-            gradient.addColorStop(0, 'rgba(0, 212, 255, 0.5)');
-            gradient.addColorStop(1, 'rgba(0, 212, 255, 0.1)');
-          }
-          
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.moveTo(centerX, centerY);
-          ctx.arc(centerX, centerY, radius, startAngle, endAngle);
-          ctx.closePath();
-          ctx.fill();
-          
-          // Category label
-          const labelAngle = (startAngle + endAngle) / 2;
-          const labelX = centerX + Math.cos(labelAngle) * (maxRadius + 20);
-          const labelY = centerY + Math.sin(labelAngle) * (maxRadius + 20);
-          
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '10px monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(name.substring(0, 15), labelX, labelY);
-        });
-      }
+      let startAngle = 0;
+      Object.entries(osDistribution).forEach(([osType, count]) => {
+        const sweepSize = (count / totalSystems) * Math.PI * 2;
+        const endAngle = startAngle + sweepSize;
+        const radius = maxRadius * (count / Math.max(...Object.values(osDistribution), 1));
+        
+        // Draw segment
+        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+        if (osType === 'Windows') {
+          gradient.addColorStop(0, 'rgba(0, 212, 255, 0.5)');
+          gradient.addColorStop(1, 'rgba(0, 212, 255, 0.1)');
+        } else if (osType === 'Linux') {
+          gradient.addColorStop(0, 'rgba(168, 85, 247, 0.5)');
+          gradient.addColorStop(1, 'rgba(168, 85, 247, 0.1)');
+        } else {
+          gradient.addColorStop(0, 'rgba(255, 170, 0, 0.5)');
+          gradient.addColorStop(1, 'rgba(255, 170, 0, 0.1)');
+        }
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fill();
+        
+        // OS label
+        const labelAngle = (startAngle + endAngle) / 2;
+        const labelX = centerX + Math.cos(labelAngle) * (maxRadius + 20);
+        const labelY = centerY + Math.sin(labelAngle) * (maxRadius + 20);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(osType, labelX, labelY);
+        
+        startAngle = endAngle;
+      });
 
       // Sweep line
       sweepAngle += 0.02;
@@ -346,20 +353,24 @@ const SystemClassification = () => {
     );
   }
 
-  const categories = systemData?.category_summary || {};
-  const systems = systemData?.detailed_breakdown || [];
-  const criticalSystems = systemData?.critical_systems || [];
-  
-  const overallVisibility = Object.values(categories).reduce((sum, cat) => 
-    sum + (cat.visibility_percentage || 0), 0) / Math.max(Object.keys(categories).length, 1);
+  const totalSystems = systemData?.total_systems || 0;
+  const legacySystems = systemData?.modernization_analysis?.legacy_systems || 0;
+  const legacyAssets = systemData?.modernization_analysis?.legacy_assets || 0;
+  const securityRiskLevel = systemData?.modernization_analysis?.security_risk_level || 0;
+  const osDiversity = systemData?.taxonomy_intelligence?.os_diversity || 0;
+  const dominantOs = systemData?.taxonomy_intelligence?.dominant_os || 'Unknown';
+  const standardizationScore = systemData?.taxonomy_intelligence?.standardization_score || 0;
 
   return (
     <div className="h-full flex flex-col p-6 bg-black">
-      {criticalSystems.length > 5 && (
+      {legacySystems > 5 && (
         <div className="mb-4 bg-purple-500/10 border border-purple-500 rounded-xl p-3">
           <div className="flex items-center gap-3">
-            <span className="text-purple-400 font-bold">⚠️ CRITICAL:</span>
-            <span className="text-white">{criticalSystems.length} system types below 30% visibility</span>
+            <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
+            <span className="text-purple-400 font-bold">CRITICAL:</span>
+            <span className="text-white">
+              {legacySystems} legacy system types with {legacyAssets.toLocaleString()} assets at {securityRiskLevel.toFixed(1)}% risk
+            </span>
           </div>
         </div>
       )}
@@ -372,32 +383,9 @@ const SystemClassification = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-cyan-400">SYSTEM CLASSIFICATION GALAXY</h2>
-                  <p className="text-sm text-white/60 mt-1">Visibility across all system types</p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedCategory('all')}
-                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-                      selectedCategory === 'all'
-                        ? 'bg-cyan-400/20 border border-cyan-400 text-cyan-400'
-                        : 'bg-black/50 border border-white/20 text-white/60'
-                    }`}
-                  >
-                    ALL
-                  </button>
-                  {Object.keys(categories).slice(0, 3).map(category => (
-                    <button
-                      key={category}
-                      onClick={() => setSelectedCategory(category)}
-                      className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-                        selectedCategory === category
-                          ? 'bg-cyan-400/20 border border-cyan-400 text-cyan-400'
-                          : 'bg-black/50 border border-white/20 text-white/60'
-                      }`}
-                    >
-                      {category.toUpperCase().substring(0, 10)}
-                    </button>
-                  ))}
+                  <p className="text-sm text-white/60 mt-1">
+                    Tracking {totalSystems} unique system types across {osDiversity} OS families
+                  </p>
                 </div>
               </div>
             </div>
@@ -408,64 +396,101 @@ const SystemClassification = () => {
 
         {/* Metrics Panel */}
         <div className="col-span-4 space-y-4">
-          {/* Overall Visibility */}
+          {/* Security Risk Level */}
           <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
-            <h3 className="text-lg font-bold text-white mb-3">OVERALL SYSTEM VISIBILITY</h3>
+            <h3 className="text-lg font-bold text-white mb-3">SECURITY RISK LEVEL</h3>
             <div className="text-5xl font-bold text-center py-4">
-              <span className={overallVisibility < 50 ? 'text-purple-400' : 'text-cyan-400'}>
-                {overallVisibility.toFixed(1)}%
+              <span className={securityRiskLevel > 50 ? 'text-purple-400' : 'text-cyan-400'}>
+                {securityRiskLevel.toFixed(1)}%
               </span>
             </div>
             <div className="text-center text-sm text-white/60">
-              Across {systemData?.total_system_types || 0} system types
+              Legacy system exposure
+            </div>
+            <div className="h-4 bg-black rounded-full overflow-hidden border border-cyan-400/30 mt-3">
+              <div 
+                className="h-full transition-all duration-1000"
+                style={{
+                  width: `${securityRiskLevel}%`,
+                  background: securityRiskLevel > 50 
+                    ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
+                    : 'linear-gradient(90deg, #00d4ff, #0099ff)'
+                }}
+              />
             </div>
           </div>
 
-          {/* Category Radar */}
+          {/* OS Radar */}
           <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
-            <h3 className="text-lg font-bold text-white mb-3">CATEGORY RADAR</h3>
+            <h3 className="text-lg font-bold text-white mb-3">OS DISTRIBUTION RADAR</h3>
             <canvas ref={radarRef} className="w-full h-48" />
           </div>
 
-          {/* Category Stats */}
-          <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4 max-h-64 overflow-y-auto">
-            <h3 className="text-lg font-bold text-white mb-3">CATEGORY BREAKDOWN</h3>
+          {/* Taxonomy Intelligence */}
+          <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
+            <h3 className="text-lg font-bold text-white mb-3">TAXONOMY INTELLIGENCE</h3>
             <div className="space-y-2">
-              {Object.entries(categories).map(([category, data]) => (
-                <div key={category} className="border border-cyan-400/20 rounded-lg p-2">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-bold text-cyan-400">{category.toUpperCase()}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      data.status === 'CRITICAL' ? 'bg-purple-500/20 text-purple-400' :
-                      data.status === 'WARNING' ? 'bg-yellow-500/20 text-yellow-400' :
-                      'bg-cyan-500/20 text-cyan-400'
-                    }`}>
-                      {data.status}
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-400">OS Diversity</span>
+                <span className="text-sm font-bold text-white">{osDiversity}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-400">Dominant OS</span>
+                <span className="text-sm font-bold text-cyan-400">{dominantOs}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-400">Standardization</span>
+                <span className="text-sm font-bold text-white">{standardizationScore.toFixed(1)}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-400">System Sprawl</span>
+                <span className="text-sm font-bold text-purple-400">{systemData?.taxonomy_intelligence?.system_sprawl || 0}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Security Distribution */}
+          <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
+            <h3 className="text-lg font-bold text-white mb-3">SECURITY CATEGORIES</h3>
+            <div className="space-y-2">
+              {Object.entries(systemData?.security_distribution || {}).map(([category, count]) => (
+                <div key={category} className="flex justify-between items-center">
+                  <span className="text-xs text-gray-400 capitalize">{category}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 h-2 bg-black rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full ${
+                          category === 'legacy' ? 'bg-purple-400' :
+                          category === 'modern' ? 'bg-cyan-400' :
+                          'bg-yellow-400'
+                        }`}
+                        style={{ width: `${(count / legacyAssets * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-bold text-white min-w-[60px] text-right">
+                      {count.toLocaleString()}
                     </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-white/60">
-                      {data.visible_hosts?.toLocaleString()} / {data.total_hosts?.toLocaleString()}
-                    </span>
-                    <span className="text-lg font-bold text-white">
-                      {data.visibility_percentage?.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="h-1 bg-black rounded-full overflow-hidden mt-1">
-                    <div 
-                      className="h-full transition-all duration-500"
-                      style={{
-                        width: `${data.visibility_percentage}%`,
-                        background: data.status === 'CRITICAL' 
-                          ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
-                          : 'linear-gradient(90deg, #00d4ff, #0099ff)'
-                      }}
-                    />
                   </div>
                 </div>
               ))}
             </div>
           </div>
+
+          {/* Modernization Priority */}
+          {systemData?.modernization_analysis?.modernization_priority?.length > 0 && (
+            <div className="bg-black/90 border border-red-400/30 rounded-xl p-4 max-h-48 overflow-y-auto">
+              <h3 className="text-sm font-bold text-red-400 mb-2">MODERNIZATION PRIORITY</h3>
+              <div className="space-y-2">
+                {systemData.modernization_analysis.modernization_priority.slice(0, 5).map((system, idx) => (
+                  <div key={idx} className="text-xs">
+                    <div className="font-bold text-white">{system.system}</div>
+                    <div className="text-gray-400">{system.count.toLocaleString()} assets</div>
+                    <div className="text-purple-400">Regions: {system.regions?.slice(0, 3).join(', ')}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

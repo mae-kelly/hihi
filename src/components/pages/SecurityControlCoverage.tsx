@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Shield, Server, Activity, AlertTriangle, Eye, Database, CheckCircle, XCircle } from 'lucide-react';
 
 const SecurityControlCoverage = () => {
-  const [securityData, setSecurityData] = useState(null);
+  const [taniumData, setTaniumData] = useState(null);
   const [cmdbData, setCmdbData] = useState(null);
   const [loading, setLoading] = useState(true);
   const fortressRef = useRef(null);
@@ -25,52 +25,28 @@ const SecurityControlCoverage = () => {
           throw new Error('Failed to fetch security data');
         }
 
-        const taniumData = await taniumResponse.json();
-        const cmdbDataRaw = await cmdbResponse.json();
+        const tanium = await taniumResponse.json();
+        const cmdb = await cmdbResponse.json();
 
-        // Transform Tanium data
-        const transformedTaniumData = {
-          coverage_percentage: taniumData.coverage_percentage || 0,
-          deployed_hosts: taniumData.tanium_deployed || 0,
-          total_hosts: taniumData.total_assets || 0,
-          status: taniumData.deployment_analysis?.coverage_status || 'CRITICAL',
-          regional_coverage: taniumData.regional_coverage || {},
-          infrastructure_coverage: taniumData.infrastructure_coverage || {},
-          business_unit_coverage: taniumData.business_unit_coverage || {},
-          deployment_gaps: taniumData.deployment_gaps || {}
-        };
-
-        // Transform CMDB data 
-        const transformedCmdbData = {
-          coverage_percentage: cmdbDataRaw.registration_rate || 0,
-          registered_hosts: cmdbDataRaw.cmdb_registered || 0,
-          total_hosts: cmdbDataRaw.total_assets || 0,
-          status: cmdbDataRaw.compliance_analysis?.compliance_status || 'CRITICAL',
-          regional_compliance: cmdbDataRaw.regional_compliance || {},
-          infrastructure_compliance: cmdbDataRaw.infrastructure_compliance || {},
-          business_unit_compliance: cmdbDataRaw.business_unit_compliance || {}
-        };
-
-        setSecurityData(transformedTaniumData);
-        setCmdbData(transformedCmdbData);
+        setTaniumData(tanium);
+        setCmdbData(cmdb);
 
       } catch (error) {
         console.error('Error:', error);
-        setSecurityData({
+        setTaniumData({
           coverage_percentage: 0,
-          deployed_hosts: 0,
-          total_hosts: 0,
-          status: 'CRITICAL',
+          tanium_deployed: 0,
+          total_assets: 0,
+          deployment_analysis: { coverage_status: 'CRITICAL' },
           regional_coverage: {},
           infrastructure_coverage: {},
-          business_unit_coverage: {},
-          deployment_gaps: {}
+          business_unit_coverage: {}
         });
         setCmdbData({
-          coverage_percentage: 0,
-          registered_hosts: 0,
-          total_hosts: 0,
-          status: 'CRITICAL',
+          registration_rate: 0,
+          cmdb_registered: 0,
+          total_assets: 0,
+          compliance_analysis: { compliance_status: 'CRITICAL' },
           regional_compliance: {},
           infrastructure_compliance: {},
           business_unit_compliance: {}
@@ -87,7 +63,7 @@ const SecurityControlCoverage = () => {
 
   // 3D Security Fortress
   useEffect(() => {
-    if (!fortressRef.current || !securityData || !cmdbData || loading) return;
+    if (!fortressRef.current || !taniumData || !cmdbData || loading) return;
 
     if (rendererRef.current) {
       rendererRef.current.dispose();
@@ -132,24 +108,22 @@ const SecurityControlCoverage = () => {
     const platform = new THREE.Mesh(platformGeometry, platformMaterial);
     fortressGroup.add(platform);
 
-    // Two security layers (Tanium and CMDB)
+    // Security layers
     const controls = [
       { 
         name: 'Tanium', 
-        data: {
-          coverage_percentage: securityData.coverage_percentage,
-          protected_hosts: securityData.deployed_hosts
-        }, 
+        coverage: taniumData.coverage_percentage || 0,
+        deployed: taniumData.tanium_deployed || 0,
+        total: taniumData.total_assets || 0,
         height: 40, 
         radius: 55, 
         yPos: 25 
       },
       { 
         name: 'CMDB', 
-        data: {
-          coverage_percentage: cmdbData.coverage_percentage,
-          protected_hosts: cmdbData.registered_hosts
-        }, 
+        coverage: cmdbData.registration_rate || 0,
+        deployed: cmdbData.cmdb_registered || 0,
+        total: cmdbData.total_assets || 0,
         height: 35, 
         radius: 45, 
         yPos: 55 
@@ -157,10 +131,6 @@ const SecurityControlCoverage = () => {
     ];
 
     controls.forEach(control => {
-      if (!control.data) return;
-      
-      const coverage = control.data.coverage_percentage || 0;
-      
       // Outer ring (total capacity)
       const outerGeometry = new THREE.CylinderGeometry(
         control.radius, 
@@ -170,7 +140,7 @@ const SecurityControlCoverage = () => {
       );
       const outerMaterial = new THREE.MeshPhongMaterial({
         color: 0x111111,
-        emissive: coverage > 50 ? 0x00d4ff : 0xa855f7,
+        emissive: control.coverage > 50 ? 0x00d4ff : 0xa855f7,
         emissiveIntensity: 0.1,
         transparent: true,
         opacity: 0.3,
@@ -181,7 +151,7 @@ const SecurityControlCoverage = () => {
       fortressGroup.add(outerRing);
       
       // Inner cylinder (protected hosts)
-      const protectedHeight = control.height * (coverage / 100);
+      const protectedHeight = control.height * (control.coverage / 100);
       const innerGeometry = new THREE.CylinderGeometry(
         control.radius - 5,
         control.radius - 5,
@@ -189,8 +159,8 @@ const SecurityControlCoverage = () => {
         32
       );
       const innerMaterial = new THREE.MeshPhongMaterial({
-        color: coverage > 70 ? 0x00d4ff : coverage > 40 ? 0xffaa00 : 0xa855f7,
-        emissive: coverage > 70 ? 0x00d4ff : coverage > 40 ? 0xffaa00 : 0xa855f7,
+        color: control.coverage > 70 ? 0x00d4ff : control.coverage > 40 ? 0xffaa00 : 0xa855f7,
+        emissive: control.coverage > 70 ? 0x00d4ff : control.coverage > 40 ? 0xffaa00 : 0xa855f7,
         emissiveIntensity: 0.4,
         transparent: true,
         opacity: 0.9
@@ -202,7 +172,7 @@ const SecurityControlCoverage = () => {
       // Coverage percentage ring
       const ringGeometry = new THREE.RingGeometry(control.radius + 2, control.radius + 4, 64);
       const ringMaterial = new THREE.MeshBasicMaterial({
-        color: coverage > 50 ? 0x00d4ff : 0xa855f7,
+        color: control.coverage > 50 ? 0x00d4ff : 0xa855f7,
         transparent: true,
         opacity: 0.5,
         side: THREE.DoubleSide
@@ -214,7 +184,7 @@ const SecurityControlCoverage = () => {
     });
 
     // Central core (combined coverage)
-    const combinedCoverage = (securityData.coverage_percentage + cmdbData.coverage_percentage) / 2;
+    const combinedCoverage = ((taniumData.coverage_percentage || 0) + (cmdbData.registration_rate || 0)) / 2;
     const coreGeometry = new THREE.SphereGeometry(15, 32, 32);
     const coreMaterial = new THREE.MeshPhongMaterial({
       color: combinedCoverage > 50 ? 0x00d4ff : 0xa855f7,
@@ -230,9 +200,10 @@ const SecurityControlCoverage = () => {
     scene.add(fortressGroup);
 
     // Threat particles (unprotected hosts)
-    const unprotectedCount = Math.max(securityData.total_hosts - securityData.deployed_hosts, 
-                                    cmdbData.total_hosts - cmdbData.registered_hosts);
-    const particleCount = Math.min(1000, Math.max(100, unprotectedCount / 100));
+    const unprotectedTanium = taniumData.total_assets - taniumData.tanium_deployed;
+    const unprotectedCMDB = cmdbData.total_assets - cmdbData.cmdb_registered;
+    const maxUnprotected = Math.max(unprotectedTanium, unprotectedCMDB);
+    const particleCount = Math.min(1000, Math.max(100, maxUnprotected / 100));
     
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
@@ -320,12 +291,12 @@ const SecurityControlCoverage = () => {
         }
       }
     };
-  }, [securityData, cmdbData, loading]);
+  }, [taniumData, cmdbData, loading]);
 
   // Coverage Flow Animation
   useEffect(() => {
     const canvas = coverageFlowRef.current;
-    if (!canvas || !securityData || !cmdbData) return;
+    if (!canvas || !taniumData || !cmdbData) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -339,16 +310,14 @@ const SecurityControlCoverage = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const controls = [
-        { name: 'TANIUM', data: securityData, color: '#00d4ff' },
-        { name: 'CMDB', data: cmdbData, color: '#00d4ff' }
+        { name: 'TANIUM', coverage: taniumData.coverage_percentage || 0, deployed: taniumData.tanium_deployed || 0, total: taniumData.total_assets || 0 },
+        { name: 'CMDB', coverage: cmdbData.registration_rate || 0, deployed: cmdbData.cmdb_registered || 0, total: cmdbData.total_assets || 0 }
       ];
 
       controls.forEach((control, index) => {
-        if (!control.data) return;
-        
         const y = (index + 1) * (canvas.height / 3);
         const barWidth = canvas.width - 100;
-        const protectedWidth = barWidth * (control.data.coverage_percentage / 100);
+        const protectedWidth = barWidth * (control.coverage / 100);
         
         // Background bar
         ctx.fillStyle = 'rgba(168, 85, 247, 0.1)';
@@ -356,10 +325,10 @@ const SecurityControlCoverage = () => {
         
         // Protected portion
         const gradient = ctx.createLinearGradient(50, y, 50 + protectedWidth, y);
-        if (control.data.coverage_percentage > 70) {
+        if (control.coverage > 70) {
           gradient.addColorStop(0, '#00d4ff');
           gradient.addColorStop(1, '#0099ff');
-        } else if (control.data.coverage_percentage > 40) {
+        } else if (control.coverage > 40) {
           gradient.addColorStop(0, '#ffaa00');
           gradient.addColorStop(1, '#ff8800');
         } else {
@@ -377,18 +346,17 @@ const SecurityControlCoverage = () => {
         ctx.fillText(control.name, 50, y - 20);
         
         // Percentage
-        ctx.fillStyle = control.data.coverage_percentage > 50 ? '#00d4ff' : '#a855f7';
+        ctx.fillStyle = control.coverage > 50 ? '#00d4ff' : '#a855f7';
         ctx.font = 'bold 16px monospace';
         ctx.textAlign = 'right';
-        ctx.fillText(`${control.data.coverage_percentage?.toFixed(1) || '0.0'}%`, canvas.width - 10, y + 5);
+        ctx.fillText(`${control.coverage.toFixed(1)}%`, canvas.width - 10, y + 5);
         
         // Host counts
-        const hostCount = control.data.deployed_hosts || control.data.registered_hosts || 0;
         ctx.fillStyle = '#ffffff60';
         ctx.font = '10px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(
-          `${hostCount.toLocaleString()} / ${control.data.total_hosts?.toLocaleString() || 0} hosts`,
+          `${control.deployed.toLocaleString()} / ${control.total.toLocaleString()} hosts`,
           canvas.width / 2,
           y + 20
         );
@@ -402,7 +370,7 @@ const SecurityControlCoverage = () => {
     return () => {
       if (animationId) cancelAnimationFrame(animationId);
     };
-  }, [securityData, cmdbData]);
+  }, [taniumData, cmdbData]);
 
   if (loading) {
     return (
@@ -415,8 +383,14 @@ const SecurityControlCoverage = () => {
     );
   }
 
-  const combinedCoverage = (securityData?.coverage_percentage + cmdbData?.coverage_percentage) / 2 || 0;
-  const totalHosts = Math.max(securityData?.total_hosts || 0, cmdbData?.total_hosts || 0);
+  const taniumCoverage = taniumData?.coverage_percentage || 0;
+  const cmdbCoverage = cmdbData?.registration_rate || 0;
+  const combinedCoverage = (taniumCoverage + cmdbCoverage) / 2;
+  const totalHosts = Math.max(taniumData?.total_assets || 0, cmdbData?.total_assets || 0);
+  const taniumDeployed = taniumData?.tanium_deployed || 0;
+  const cmdbRegistered = cmdbData?.cmdb_registered || 0;
+  const taniumGaps = taniumData?.deployment_gaps || {};
+  const cmdbGaps = cmdbData?.compliance_gaps || {};
 
   return (
     <div className="h-full flex flex-col p-6 bg-black">
@@ -426,7 +400,7 @@ const SecurityControlCoverage = () => {
             <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
             <span className="text-purple-400 font-bold">CRITICAL:</span>
             <span className="text-white">
-              Security control coverage at {combinedCoverage.toFixed(1)}% - Tanium: {securityData?.coverage_percentage?.toFixed(1)}%, CMDB: {cmdbData?.coverage_percentage?.toFixed(1)}%
+              Security control coverage at {combinedCoverage.toFixed(1)}% - Tanium: {taniumCoverage.toFixed(1)}%, CMDB: {cmdbCoverage.toFixed(1)}%
             </span>
           </div>
         </div>
@@ -481,27 +455,32 @@ const SecurityControlCoverage = () => {
                   TANIUM COVERAGE
                 </span>
                 <span className={`text-xs px-2 py-1 rounded ${
-                  securityData?.status === 'CRITICAL' 
+                  taniumData?.deployment_analysis?.coverage_status === 'CRITICAL' 
                     ? 'bg-purple-500/20 text-purple-400'
-                    : securityData?.status === 'WARNING'
+                    : taniumData?.deployment_analysis?.coverage_status === 'ACCEPTABLE'
                     ? 'bg-yellow-500/20 text-yellow-400'
                     : 'bg-cyan-500/20 text-cyan-400'
                 }`}>
-                  {securityData?.status || 'UNKNOWN'}
+                  {taniumData?.deployment_analysis?.coverage_status || 'UNKNOWN'}
                 </span>
               </div>
               <div className="text-2xl font-bold text-white">
-                {securityData?.coverage_percentage?.toFixed(1) || '0.0'}%
+                {taniumCoverage.toFixed(1)}%
               </div>
               <div className="text-xs text-white/60">
-                {securityData?.deployed_hosts?.toLocaleString() || 0} deployed ({((securityData?.deployed_hosts || 0) / totalHosts * 100).toFixed(1)}% of total)
+                {taniumDeployed.toLocaleString()} deployed ({(taniumDeployed / totalHosts * 100).toFixed(1)}% of total)
               </div>
               <div className="h-2 bg-black rounded-full overflow-hidden mt-2">
                 <div 
                   className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-1000"
-                  style={{ width: `${securityData?.coverage_percentage || 0}%` }}
+                  style={{ width: `${taniumCoverage}%` }}
                 />
               </div>
+              {taniumGaps.total_unprotected_assets > 0 && (
+                <div className="mt-2 text-xs text-red-400">
+                  Gap: {taniumGaps.total_unprotected_assets.toLocaleString()} unprotected
+                </div>
+              )}
             </div>
 
             {/* CMDB */}
@@ -512,27 +491,32 @@ const SecurityControlCoverage = () => {
                   CMDB REGISTRATION
                 </span>
                 <span className={`text-xs px-2 py-1 rounded ${
-                  cmdbData?.status === 'CRITICAL' || cmdbData?.status === 'NON_COMPLIANT'
+                  cmdbData?.compliance_analysis?.compliance_status === 'NON_COMPLIANT'
                     ? 'bg-purple-500/20 text-purple-400'
-                    : cmdbData?.status === 'PARTIAL_COMPLIANCE'
+                    : cmdbData?.compliance_analysis?.compliance_status === 'PARTIAL_COMPLIANCE'
                     ? 'bg-yellow-500/20 text-yellow-400'
                     : 'bg-cyan-500/20 text-cyan-400'
                 }`}>
-                  {cmdbData?.status || 'UNKNOWN'}
+                  {cmdbData?.compliance_analysis?.compliance_status || 'UNKNOWN'}
                 </span>
               </div>
               <div className="text-2xl font-bold text-white">
-                {cmdbData?.coverage_percentage?.toFixed(1) || '0.0'}%
+                {cmdbCoverage.toFixed(1)}%
               </div>
               <div className="text-xs text-white/60">
-                {cmdbData?.registered_hosts?.toLocaleString() || 0} registered ({((cmdbData?.registered_hosts || 0) / totalHosts * 100).toFixed(1)}% of total)
+                {cmdbRegistered.toLocaleString()} registered ({(cmdbRegistered / totalHosts * 100).toFixed(1)}% of total)
               </div>
               <div className="h-2 bg-black rounded-full overflow-hidden mt-2">
                 <div 
                   className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-1000"
-                  style={{ width: `${cmdbData?.coverage_percentage || 0}%` }}
+                  style={{ width: `${cmdbCoverage}%` }}
                 />
               </div>
+              {cmdbGaps.total_unregistered_assets > 0 && (
+                <div className="mt-2 text-xs text-red-400">
+                  Gap: {cmdbGaps.total_unregistered_assets.toLocaleString()} unregistered
+                </div>
+              )}
             </div>
           </div>
 
@@ -543,11 +527,11 @@ const SecurityControlCoverage = () => {
           </div>
 
           {/* Regional Breakdown */}
-          {securityData?.regional_coverage && Object.keys(securityData.regional_coverage).length > 0 && (
+          {taniumData?.regional_coverage && Object.keys(taniumData.regional_coverage).length > 0 && (
             <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
               <h3 className="text-lg font-bold text-white mb-3">TOP REGIONS - TANIUM</h3>
               <div className="space-y-2 max-h-32 overflow-y-auto">
-                {Object.entries(securityData.regional_coverage)
+                {Object.entries(taniumData.regional_coverage)
                   .sort((a, b) => (b[1]?.deployed || 0) - (a[1]?.deployed || 0))
                   .slice(0, 5)
                   .map(([region, data]) => (
@@ -569,20 +553,36 @@ const SecurityControlCoverage = () => {
             </div>
           )}
 
+          {/* Deployment Recommendations */}
+          {taniumData?.deployment_recommendations?.length > 0 && (
+            <div className="bg-black/90 border border-red-400/30 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-red-400 mb-2">CRITICAL ACTIONS</h3>
+              <div className="space-y-2">
+                {taniumData.deployment_recommendations.slice(0, 3).map((rec, idx) => (
+                  <div key={idx} className="text-xs">
+                    <div className="font-bold text-white">{rec.target}</div>
+                    <div className="text-gray-400">{rec.reason}</div>
+                    <div className="text-red-400">{rec.assets.toLocaleString()} assets need coverage</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Summary Stats */}
           <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="text-center">
                 <div className="text-xl font-bold text-cyan-400">
-                  {((securityData?.deployed_hosts || 0) + (cmdbData?.registered_hosts || 0)).toLocaleString()}
+                  {Math.max(taniumDeployed, cmdbRegistered).toLocaleString()}
                 </div>
-                <div className="text-xs text-gray-400">Protected Assets</div>
+                <div className="text-xs text-gray-400">Best Coverage</div>
               </div>
               <div className="text-center">
                 <div className="text-xl font-bold text-purple-400">
-                  {(totalHosts - Math.max(securityData?.deployed_hosts || 0, cmdbData?.registered_hosts || 0)).toLocaleString()}
+                  {(totalHosts - Math.min(taniumDeployed, cmdbRegistered)).toLocaleString()}
                 </div>
-                <div className="text-xs text-gray-400">Coverage Gap</div>
+                <div className="text-xs text-gray-400">Worst Gap</div>
               </div>
             </div>
           </div>
