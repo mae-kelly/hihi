@@ -16,26 +16,38 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const [cmdbResponse, taniumResponse, statusResponse] = await Promise.all([
+        const [cmdbResponse, databaseResponse] = await Promise.all([
           fetch('http://localhost:5000/api/cmdb_presence'),
-          fetch('http://localhost:5000/api/tanium_coverage'),
           fetch('http://localhost:5000/api/database_status')
         ]);
 
         const cmdb = await cmdbResponse.json();
-        const tanium = await taniumResponse.json();
-        const status = await statusResponse.json();
+        const database = await databaseResponse.json();
 
+        // Calculate combined visibility from CMDB registration
+        const cmdbRate = cmdb.registration_rate || 0;
+        
         setStatusData({
-          cmdb: cmdb.registration_rate?.toFixed(1) + '%' || '0%',
-          tanium: tanium.coverage_percentage?.toFixed(1) + '%' || '0%',
-          total: status.row_count || 0,
-          isLive: cmdb.registration_rate > 0,
-          isCritical: cmdb.registration_rate < 50
+          cmdb_registration: cmdbRate.toFixed(1) + '%',
+          database_status: database.status === 'connected' ? 'ONLINE' : 'OFFLINE',
+          total_assets: database.row_count || 0,
+          registered_assets: cmdb.cmdb_registered || 0,
+          isLive: database.status === 'connected',
+          isCritical: cmdbRate < 50,
+          compliance_status: cmdb.compliance_analysis?.compliance_status || 'UNKNOWN'
         });
         setLoading(false);
       } catch (error) {
         console.error('Failed to fetch status:', error);
+        setStatusData({
+          cmdb_registration: '0%',
+          database_status: 'OFFLINE',
+          total_assets: 0,
+          registered_assets: 0,
+          isLive: false,
+          isCritical: true,
+          compliance_status: 'ERROR'
+        });
         setLoading(false);
       }
     };
@@ -46,23 +58,22 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
   }, []);
 
   const navItems = [
-    { id: 'dashboard', label: 'DASHBOARD', icon: BarChart3, color: '#00d4ff' },
-    { id: 'global-view', label: 'GLOBAL VIEW', icon: Globe, color: '#a855f7' },
-    { id: 'infrastructure', label: 'INFRASTRUCTURE', icon: Server, color: '#00d4ff' },
-    { id: 'regional-country', label: 'REGIONAL', icon: Network, color: '#a855f7' },
-    { id: 'bu-application', label: 'BU & APP', icon: Layers, color: '#00d4ff' },
-    { id: 'system-classification', label: 'SYSTEMS', icon: Cpu, color: '#a855f7' },
-    { id: 'security-coverage', label: 'SECURITY', icon: Shield, color: '#00d4ff' },
-    { id: 'compliance', label: 'COMPLIANCE', icon: FileSearch, color: '#a855f7' },
-    { id: 'domain-visibility', label: 'DOMAINS', icon: Database, color: '#00d4ff' },
-    { id: 'logging-standards', label: 'STANDARDS', icon: Activity, color: '#a855f7' },
+    { id: 'global-view', label: 'GLOBAL VIEW', icon: Globe, color: '#00d4ff', description: 'CMDB asset visibility globally' },
+    { id: 'infrastructure', label: 'INFRASTRUCTURE', icon: Server, color: '#a855f7', description: 'Host visibility by infrastructure type' },
+    { id: 'regional-country', label: 'REGIONAL', icon: Network, color: '#00d4ff', description: 'Geographic asset distribution' },
+    { id: 'bu-application', label: 'BUSINESS UNITS', icon: Layers, color: '#a855f7', description: 'BU, CIO, APM, Application Class visibility' },
+    { id: 'system-classification', label: 'SYSTEMS', icon: Cpu, color: '#00d4ff', description: 'System classification analysis' },
+    { id: 'security-coverage', label: 'SECURITY', icon: Shield, color: '#a855f7', description: 'EDR, Tanium, DLP agent coverage' },
+    { id: 'compliance', label: 'COMPLIANCE', icon: FileSearch, color: '#00d4ff', description: 'GSO and Splunk logging compliance' },
+    { id: 'domain-visibility', label: 'DOMAINS', icon: Database, color: '#a855f7', description: 'Asset visibility by hostname/domain' },
+    { id: 'logging-standards', label: 'STANDARDS', icon: Activity, color: '#00d4ff', description: 'Logging platform visibility analysis' }
   ];
 
-  // Pulse critical items when coverage is low
+  // Pulse critical items when CMDB coverage is low
   useEffect(() => {
     if (statusData?.isCritical) {
       const interval = setInterval(() => {
-        const criticalItems = ['dashboard', 'global-view', 'security-coverage'];
+        const criticalItems = ['global-view', 'security-coverage', 'compliance'];
         const randomItem = criticalItems[Math.floor(Math.random() * criticalItems.length)];
         setPulseAnimation(prev => ({ ...prev, [randomItem]: true }));
         
@@ -94,14 +105,14 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
                 </span>
               </h1>
               <p className="text-xs text-white/60 uppercase tracking-widest">
-                CMDB+
+                CMDB VISIBILITY
               </p>
             </div>
           </div>
         </div>
 
         {/* Navigation items */}
-        <div className="overflow-y-auto" style={{ height: 'calc(100% - 200px)' }}>
+        <div className="overflow-y-auto" style={{ height: 'calc(100% - 240px)' }}>
           <div className="p-3 space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -134,6 +145,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
                         }`
                       : 'none'
                   }}
+                  title={item.description}
                 >
                   {isPulsing && (
                     <div className="absolute inset-0 animate-ping">
@@ -183,7 +195,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
           <div className="bg-black/50 rounded-lg p-3 border border-white/10">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-white/60 uppercase">Real-Time Status</span>
+                <span className="text-xs text-white/60 uppercase">CMDB Status</span>
                 <div className="flex items-center gap-1">
                   <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
                     loading ? 'bg-yellow-400' : 
@@ -195,34 +207,40 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
                     statusData?.isLive ? (statusData?.isCritical ? 'text-red-400' : 'text-green-400') : 
                     'text-gray-400'
                   }`}>
-                    {loading ? 'SYNC' : statusData?.isLive ? (statusData?.isCritical ? 'ALERT' : 'LIVE') : 'OFFLINE'}
+                    {loading ? 'LOADING' : statusData?.isLive ? (statusData?.isCritical ? 'CRITICAL' : 'ONLINE') : 'OFFLINE'}
                   </span>
                 </div>
               </div>
               
               <div className="space-y-1 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-white/40">CMDB</span>
+                  <span className="text-white/40">REGISTRATION</span>
                   <span className={`${
                     loading ? 'text-gray-400' : 
-                    parseFloat(statusData?.cmdb || '0') < 50 ? 'text-red-400' : 'text-blue-400'
+                    statusData?.isCritical ? 'text-red-400' : 'text-cyan-400'
                   }`}>
-                    {loading ? '...' : statusData?.cmdb || '0%'}
+                    {loading ? '...' : statusData?.cmdb_registration || '0%'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-white/40">TANIUM</span>
+                  <span className="text-white/40">DATABASE</span>
                   <span className={`${
                     loading ? 'text-gray-400' :
-                    parseFloat(statusData?.tanium || '0') < 50 ? 'text-red-400' : 'text-green-400'
+                    statusData?.database_status === 'ONLINE' ? 'text-green-400' : 'text-red-400'
                   }`}>
-                    {loading ? '...' : statusData?.tanium || '0%'}
+                    {loading ? '...' : statusData?.database_status || 'OFFLINE'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/40">ASSETS</span>
                   <span className="text-purple-400">
-                    {loading ? '...' : statusData?.total?.toLocaleString() || '0'}
+                    {loading ? '...' : statusData?.total_assets?.toLocaleString() || '0'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/40">REGISTERED</span>
+                  <span className="text-cyan-400">
+                    {loading ? '...' : statusData?.registered_assets?.toLocaleString() || '0'}
                   </span>
                 </div>
               </div>
@@ -230,7 +248,20 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
               {!loading && statusData?.isCritical && (
                 <div className="mt-2 p-1.5 bg-red-500/10 border border-red-500/30 rounded">
                   <div className="text-[10px] text-red-400 font-bold">CRITICAL ALERT</div>
-                  <div className="text-[9px] text-red-400">Coverage below threshold</div>
+                  <div className="text-[9px] text-red-400">CMDB registration below 50%</div>
+                </div>
+              )}
+
+              {!loading && statusData?.compliance_status && (
+                <div className="mt-2 text-center">
+                  <div className="text-[9px] text-white/40">COMPLIANCE STATUS</div>
+                  <div className={`text-[10px] font-bold ${
+                    statusData.compliance_status === 'COMPLIANT' ? 'text-green-400' :
+                    statusData.compliance_status === 'PARTIAL_COMPLIANCE' ? 'text-yellow-400' :
+                    'text-red-400'
+                  }`}>
+                    {statusData.compliance_status}
+                  </div>
                 </div>
               )}
             </div>

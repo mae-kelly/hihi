@@ -1,27 +1,25 @@
-#!/usr/bin/env python3
-
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import duckdb
-import re
 import os
 import sys
-from collections import Counter, defaultdict
 import logging
 from datetime import datetime, timedelta
-
-app = Flask(__name__)
-CORS(app)
+from collections import Counter, defaultdict
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+app = Flask(__name__)
+CORS(app)
+
 def get_db_connection():
-    """Get database connection with multiple path attempts"""
+    """Get database connection with multiple fallback paths"""
     db_paths = [
         'universal_cmdb.db',
-        './universal_cmdb.db', 
+        './universal_cmdb.db',
         '../universal_cmdb.db',
         '/app/universal_cmdb.db',
         os.path.join(os.getcwd(), 'universal_cmdb.db')
@@ -32,15 +30,23 @@ def get_db_connection():
             if os.path.exists(db_path):
                 logger.info(f"Attempting to connect to: {db_path}")
                 conn = duckdb.connect(db_path, read_only=True)
-                return conn
+                
+                # Verify table exists and has data
+                tables = conn.execute("SHOW TABLES").fetchall()
+                if any('universal_cmdb' in str(table).lower() for table in tables):
+                    logger.info(f"Successfully connected to DuckDB: {db_path}")
+                    return conn
+                else:
+                    conn.close()
+                    
         except Exception as e:
-            logger.error(f"Failed to connect to {db_path}: {e}")
+            logger.warning(f"Failed to connect to {db_path}: {e}")
             continue
     
     raise Exception("Database file 'universal_cmdb.db' not found!")
 
 def verify_table_structure(conn):
-    """Verify the universal_cmdb table exists and has expected columns"""
+    """Verify and return table structure"""
     try:
         result = conn.execute("DESCRIBE universal_cmdb").fetchall()
         columns = [row[0] for row in result]
@@ -54,825 +60,48 @@ def verify_table_structure(conn):
         logger.error(f"Error verifying table structure: {e}")
         return [], 0
 
-# ============================================================================
-# GLOBAL VIEW - Overall visibility percentage across all hosts
-# ============================================================================
-@app.route('/api/global_visibility')
-def global_visibility():
-    """Calculate global visibility percentage - what % of hosts can we see"""
-    try:
-        conn = get_db_connection()
-        
-        # Total hosts in CMDB
-        total_hosts = conn.execute("SELECT COUNT(DISTINCT host_s) FROM universal_cmdb").fetchone()[0]
-        
-        # Hosts visible in logging platforms (Splunk or Chronicle/GSO)
-        visible_in_splunk = conn.execute("""
-            SELECT COUNT(DISTINCT host_s) FROM universal_cmdb 
-            WHERE LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-        """).fetchone()[0]
-        
-        visible_in_chronicle = conn.execute("""
-            SELECT COUNT(DISTINCT host_s) FROM universal_cmdb 
-            WHERE LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-        """).fetchone()[0]
-        
-        # Hosts visible in either platform
-        visible_anywhere = conn.execute("""
-            SELECT COUNT(DISTINCT host_s) FROM universal_cmdb 
-            WHERE (LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                   OR LOWER(logging_in_qso_s) IN ('enabled', 'partial'))
-        """).fetchone()[0]
-        
-        # Calculate percentages
-        visibility_percentage = (visible_anywhere / total_hosts * 100) if total_hosts > 0 else 0
-        splunk_percentage = (visible_in_splunk / total_hosts * 100) if total_hosts > 0 else 0
-        chronicle_percentage = (visible_in_chronicle / total_hosts * 100) if total_hosts > 0 else 0
-        
-        # Invisible hosts (critical metric)
-        invisible_hosts = total_hosts - visible_anywhere
-        
-        conn.close()
-        
-        return jsonify({
-            'total_hosts': total_hosts,
-            'visible_hosts': visible_anywhere,
-            'invisible_hosts': invisible_hosts,
-            'global_visibility_percentage': round(visibility_percentage, 2),
-            'splunk_visibility_percentage': round(splunk_percentage, 2),
-            'chronicle_visibility_percentage': round(chronicle_percentage, 2),
-            'visibility_gap_percentage': round(100 - visibility_percentage, 2),
-            'status': 'CRITICAL' if visibility_percentage < 50 else 'WARNING' if visibility_percentage < 80 else 'HEALTHY'
-        })
-        
-    except Exception as e:
-        logger.error(f"Global visibility error: {e}")
-        return jsonify({'error': str(e)}), 500
+# Country and region mapping dictionaries
+COUNTRY_MAPPING = {
+    'us': 'united states', 'usa': 'united states', 'america': 'united states',
+    'uk': 'united kingdom', 'gb': 'united kingdom', 'britain': 'united kingdom',
+    'de': 'germany', 'deu': 'germany', 'fr': 'france', 'fra': 'france',
+    'it': 'italy', 'ita': 'italy', 'es': 'spain', 'esp': 'spain',
+    'ca': 'canada', 'can': 'canada', 'mx': 'mexico', 'mex': 'mexico',
+    'jp': 'japan', 'jpn': 'japan', 'cn': 'china', 'chn': 'china',
+    'kr': 'south korea', 'kor': 'south korea', 'in': 'india', 'ind': 'india',
+    'au': 'australia', 'aus': 'australia', 'nz': 'new zealand',
+    'br': 'brazil', 'bra': 'brazil', 'ar': 'argentina', 'arg': 'argentina',
+    'sg': 'singapore', 'sgp': 'singapore', 'my': 'malaysia', 'mal': 'malaysia'
+}
 
-# ============================================================================
-# INFRASTRUCTURE VIEW - Visibility by infrastructure type
-# ============================================================================
-@app.route('/api/infrastructure_visibility')
-def infrastructure_visibility():
-    """Calculate visibility by infrastructure type (on-prem, cloud, etc)"""
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            SELECT 
-                COALESCE(infrastructure_type_s, 'unknown') as infra_type,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY infrastructure_type_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        infrastructure_breakdown = []
-        total_all = 0
-        visible_all = 0
-        
-        # Map infrastructure types to categories
-        infra_categories = {
-            'on_premise': ['physical', 'vmware', 'hyper-v'],
-            'cloud': ['aws_ec2', 'azure_vm', 'gcp_compute'],
-            'container': ['docker_container', 'kubernetes_pod', 'openshift'],
-            'hybrid': ['hybrid_cloud'],
-            'other': []
-        }
-        
-        category_data = defaultdict(lambda: {'total': 0, 'visible': 0})
-        
-        for infra_type, total, visible in result:
-            # Categorize
-            category = 'other'
-            for cat, types in infra_categories.items():
-                if infra_type in types:
-                    category = cat
-                    break
-            
-            category_data[category]['total'] += total
-            category_data[category]['visible'] += visible
-            total_all += total
-            visible_all += visible
-            
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            
-            infrastructure_breakdown.append({
-                'infrastructure_type': infra_type,
-                'category': category,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'invisible_hosts': total - visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 30 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        # Category summaries
-        category_summary = {}
-        for category, data in category_data.items():
-            if data['total'] > 0:
-                category_summary[category] = {
-                    'total_hosts': data['total'],
-                    'visible_hosts': data['visible'],
-                    'visibility_percentage': round(data['visible'] / data['total'] * 100, 2),
-                    'status': 'CRITICAL' if (data['visible'] / data['total'] * 100) < 30 else 'WARNING' if (data['visible'] / data['total'] * 100) < 70 else 'HEALTHY'
-                }
-        
-        overall_visibility = (visible_all / total_all * 100) if total_all > 0 else 0
-        
-        conn.close()
-        
-        return jsonify({
-            'overall_infrastructure_visibility': round(overall_visibility, 2),
-            'category_summary': category_summary,
-            'detailed_breakdown': infrastructure_breakdown,
-            'total_infrastructure_types': len(infrastructure_breakdown),
-            'critical_gaps': [item for item in infrastructure_breakdown if item['visibility_percentage'] < 30]
-        })
-        
-    except Exception as e:
-        logger.error(f"Infrastructure visibility error: {e}")
-        return jsonify({'error': str(e)}), 500
+REGION_MAPPING = {
+    'na': 'north america', 'emea': 'emea', 'eu': 'europe', 'apac': 'apac',
+    'latam': 'latam', 'south america': 'latam', 'central america': 'latam',
+    'north america': 'north america', 'europe': 'emea', 'middle east': 'emea',
+    'africa': 'emea', 'asia': 'apac', 'pacific': 'apac', 'asia pacific': 'apac'
+}
 
-# ============================================================================
-# REGIONAL/COUNTRY VIEW - Visibility by location
-# ============================================================================
-@app.route('/api/regional_visibility')
-def regional_visibility():
-    """Calculate visibility by region, country, data center, and cloud region"""
-    try:
-        conn = get_db_connection()
-        
-        # Regional visibility
-        regional_result = conn.execute("""
-            SELECT 
-                COALESCE(region_s, 'unknown') as region,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY region_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        # Country visibility
-        country_result = conn.execute("""
-            SELECT 
-                COALESCE(country_s, 'unknown') as country,
-                COALESCE(region_s, 'unknown') as region,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY country_s, region_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        # Data center visibility
-        datacenter_result = conn.execute("""
-            SELECT 
-                COALESCE(data_center_s, 'unknown') as data_center,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY data_center_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        # Cloud region visibility
-        cloud_region_result = conn.execute("""
-            SELECT 
-                COALESCE(cloud_region_s, 'on-premises') as cloud_region,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            WHERE cloud_region_s IS NOT NULL AND cloud_region_s != 'on-premises'
-            GROUP BY cloud_region_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        # Process results
-        regional_data = []
-        for region, total, visible in regional_result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            regional_data.append({
-                'region': region,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'invisible_hosts': total - visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        country_data = []
-        for country, region, total, visible in country_result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            country_data.append({
-                'country': country,
-                'region': region,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        datacenter_data = []
-        for dc, total, visible in datacenter_result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            datacenter_data.append({
-                'data_center': dc,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        cloud_region_data = []
-        for cloud_region, total, visible in cloud_region_result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            cloud_region_data.append({
-                'cloud_region': cloud_region,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        conn.close()
-        
-        return jsonify({
-            'regional_breakdown': regional_data,
-            'country_breakdown': country_data[:20],  # Top 20 countries
-            'datacenter_breakdown': datacenter_data,
-            'cloud_region_breakdown': cloud_region_data,
-            'worst_visibility_region': min(regional_data, key=lambda x: x['visibility_percentage']) if regional_data else None,
-            'best_visibility_region': max(regional_data, key=lambda x: x['visibility_percentage']) if regional_data else None
-        })
-        
-    except Exception as e:
-        logger.error(f"Regional visibility error: {e}")
-        return jsonify({'error': str(e)}), 500
+def normalize_country(country):
+    """Normalize country names"""
+    if not country or str(country).lower() in ['null', 'none', 'unknown', '']:
+        return 'unknown'
+    return COUNTRY_MAPPING.get(str(country).lower().strip(), str(country).lower())
 
-# ============================================================================
-# BUSINESS UNIT VIEW - Visibility by BU, CIO, APM, Application Class
-# ============================================================================
-@app.route('/api/business_unit_visibility')
-def business_unit_visibility():
-    """Calculate visibility by business unit, CIO, APM, and application class"""
-    try:
-        conn = get_db_connection()
-        
-        # Business Unit visibility
-        bu_result = conn.execute("""
-            SELECT 
-                COALESCE(business_unit_s, 'unknown') as business_unit,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY business_unit_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        # CIO visibility
-        cio_result = conn.execute("""
-            SELECT 
-                COALESCE(cio_s, 'unknown') as cio,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY cio_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        # APM visibility
-        apm_result = conn.execute("""
-            SELECT 
-                COALESCE(apm_s, 'none') as apm,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY apm_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        # Application Class visibility (using class_s)
-        class_result = conn.execute("""
-            SELECT 
-                COALESCE(class_s, 'unclassified') as app_class,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY class_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        # Process results
-        bu_data = []
-        for bu, total, visible in bu_result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            bu_data.append({
-                'business_unit': bu,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'invisible_hosts': total - visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        cio_data = []
-        for cio, total, visible in cio_result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            cio_data.append({
-                'cio': cio,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        apm_data = []
-        for apm, total, visible in apm_result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            apm_data.append({
-                'apm': apm,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        class_data = []
-        for app_class, total, visible in class_result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            class_data.append({
-                'application_class': app_class,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        conn.close()
-        
-        return jsonify({
-            'business_unit_breakdown': bu_data,
-            'cio_breakdown': cio_data,
-            'apm_breakdown': apm_data,
-            'application_class_breakdown': class_data,
-            'worst_visibility_bu': min(bu_data, key=lambda x: x['visibility_percentage']) if bu_data else None,
-            'best_visibility_bu': max(bu_data, key=lambda x: x['visibility_percentage']) if bu_data else None
-        })
-        
-    except Exception as e:
-        logger.error(f"Business unit visibility error: {e}")
-        return jsonify({'error': str(e)}), 500
+def normalize_region(region):
+    """Normalize region names"""
+    if not region or str(region).lower() in ['null', 'none', 'unknown', '']:
+        return 'unknown'
+    return REGION_MAPPING.get(str(region).lower().strip(), str(region).lower())
 
-# ============================================================================
-# SYSTEM CLASSIFICATION - Visibility by system type
-# ============================================================================
-@app.route('/api/system_classification_visibility')
-def system_classification_visibility():
-    """Calculate visibility by system classification"""
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            SELECT 
-                COALESCE(system_classification_s, 'unknown') as system_class,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY system_classification_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        # Categorize systems
-        system_categories = {
-            'windows_servers': ['windows_server_2019', 'windows_server_2016', 'windows_server_2012', 'windows_server_2008'],
-            'linux_servers': ['linux_ubuntu_20.04', 'linux_rhel_8', 'linux_centos_7', 'linux_centos_6'],
-            'windows_workstations': ['windows_10_enterprise', 'windows_11_enterprise'],
-            'mac_workstations': ['macos_monterey'],
-            'virtualization': ['vmware_esxi_7', 'hyper-v'],
-            'containers': ['docker_container', 'kubernetes_node'],
-            'network_appliances': ['firewall', 'router', 'switch', 'load_balancer'],
-            'databases': ['oracle', 'sql_server', 'mysql', 'postgresql'],
-            'mainframes': ['ibm_mainframe', 'as400'],
-            'unix_systems': ['aix', 'solaris', 'hp-ux']
-        }
-        
-        category_data = defaultdict(lambda: {'total': 0, 'visible': 0, 'systems': []})
-        
-        system_breakdown = []
-        for system_class, total, visible in result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            
-            # Find category
-            category = 'other'
-            for cat, systems in system_categories.items():
-                if any(sys in system_class.lower() for sys in systems):
-                    category = cat
-                    break
-            
-            category_data[category]['total'] += total
-            category_data[category]['visible'] += visible
-            category_data[category]['systems'].append(system_class)
-            
-            system_breakdown.append({
-                'system_classification': system_class,
-                'category': category,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'invisible_hosts': total - visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-        
-        # Category summaries
-        category_summary = {}
-        for category, data in category_data.items():
-            if data['total'] > 0:
-                visibility_pct = (data['visible'] / data['total'] * 100)
-                category_summary[category] = {
-                    'total_hosts': data['total'],
-                    'visible_hosts': data['visible'],
-                    'visibility_percentage': round(visibility_pct, 2),
-                    'system_count': len(data['systems']),
-                    'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-                }
-        
-        conn.close()
-        
-        return jsonify({
-            'category_summary': category_summary,
-            'detailed_breakdown': system_breakdown,
-            'total_system_types': len(system_breakdown),
-            'critical_systems': [item for item in system_breakdown if item['visibility_percentage'] < 30]
-        })
-        
-    except Exception as e:
-        logger.error(f"System classification visibility error: {e}")
-        return jsonify({'error': str(e)}), 500
+def calculate_security_score(cmdb_pct, tanium_pct):
+    """Calculate combined security score"""
+    if cmdb_pct == 0 and tanium_pct == 0:
+        return 0
+    return round((cmdb_pct + tanium_pct) / 2, 2)
 
-# ============================================================================
-# SECURITY CONTROL COVERAGE - EDR, Tanium, DLP agent coverage
-# ============================================================================
-@app.route('/api/security_control_coverage')
-def security_control_coverage():
-    """Calculate security control coverage (EDR, Tanium, DLP)"""
-    try:
-        conn = get_db_connection()
-        
-        total_hosts = conn.execute("SELECT COUNT(DISTINCT host_s) FROM universal_cmdb").fetchone()[0]
-        
-        # EDR Coverage (CrowdStrike)
-        edr_coverage = conn.execute("""
-            SELECT 
-                COUNT(DISTINCT CASE WHEN LOWER(present_in_crowdstrike_s) = 'enrolled' THEN host_s END) as enrolled,
-                COUNT(DISTINCT CASE WHEN LOWER(edr_coverage_s) NOT IN ('not_protected', '') AND edr_coverage_s IS NOT NULL THEN host_s END) as edr_protected
-            FROM universal_cmdb
-        """).fetchone()
-        
-        # Tanium Coverage
-        tanium_coverage = conn.execute("""
-            SELECT 
-                COUNT(DISTINCT CASE WHEN LOWER(tanium_coverage_s) = 'managed' THEN host_s END) as managed,
-                COUNT(DISTINCT CASE WHEN LOWER(tanium_coverage_s) IN ('managed', 'maintenance_mode') THEN host_s END) as total_managed
-            FROM universal_cmdb
-        """).fetchone()
-        
-        # DLP Coverage
-        dlp_coverage = conn.execute("""
-            SELECT 
-                COUNT(DISTINCT CASE WHEN LOWER(dlp_agent_coverage_s) NOT IN ('not_covered', '') AND dlp_agent_coverage_s IS NOT NULL THEN host_s END) as dlp_protected
-            FROM universal_cmdb
-        """).fetchone()[0]
-        
-        # Calculate percentages
-        edr_percentage = (edr_coverage[1] / total_hosts * 100) if total_hosts > 0 else 0
-        tanium_percentage = (tanium_coverage[0] / total_hosts * 100) if total_hosts > 0 else 0
-        dlp_percentage = (dlp_coverage / total_hosts * 100) if total_hosts > 0 else 0
-        
-        # Combined coverage (hosts with all three)
-        all_controls = conn.execute("""
-            SELECT COUNT(DISTINCT host_s) FROM universal_cmdb
-            WHERE LOWER(present_in_crowdstrike_s) = 'enrolled'
-            AND LOWER(tanium_coverage_s) = 'managed'
-            AND LOWER(dlp_agent_coverage_s) NOT IN ('not_covered', '')
-            AND dlp_agent_coverage_s IS NOT NULL
-        """).fetchone()[0]
-        
-        all_controls_percentage = (all_controls / total_hosts * 100) if total_hosts > 0 else 0
-        
-        # EDR vendor breakdown
-        edr_vendors = conn.execute("""
-            SELECT 
-                COALESCE(edr_coverage_s, 'not_protected') as vendor,
-                COUNT(DISTINCT host_s) as host_count
-            FROM universal_cmdb
-            GROUP BY edr_coverage_s
-            ORDER BY host_count DESC
-        """).fetchall()
-        
-        # DLP vendor breakdown
-        dlp_vendors = conn.execute("""
-            SELECT 
-                COALESCE(dlp_agent_coverage_s, 'not_covered') as vendor,
-                COUNT(DISTINCT host_s) as host_count
-            FROM universal_cmdb
-            GROUP BY dlp_agent_coverage_s
-            ORDER BY host_count DESC
-        """).fetchall()
-        
-        edr_vendor_breakdown = []
-        for vendor, count in edr_vendors:
-            if vendor and vendor != 'not_protected':
-                edr_vendor_breakdown.append({
-                    'vendor': vendor,
-                    'host_count': count,
-                    'percentage': round(count / total_hosts * 100, 2)
-                })
-        
-        dlp_vendor_breakdown = []
-        for vendor, count in dlp_vendors:
-            if vendor and vendor != 'not_covered':
-                dlp_vendor_breakdown.append({
-                    'vendor': vendor,
-                    'host_count': count,
-                    'percentage': round(count / total_hosts * 100, 2)
-                })
-        
-        conn.close()
-        
-        return jsonify({
-            'total_hosts': total_hosts,
-            'edr_coverage': {
-                'protected_hosts': edr_coverage[1],
-                'unprotected_hosts': total_hosts - edr_coverage[1],
-                'coverage_percentage': round(edr_percentage, 2),
-                'vendor_breakdown': edr_vendor_breakdown,
-                'status': 'CRITICAL' if edr_percentage < 70 else 'WARNING' if edr_percentage < 90 else 'HEALTHY'
-            },
-            'tanium_coverage': {
-                'managed_hosts': tanium_coverage[0],
-                'unmanaged_hosts': total_hosts - tanium_coverage[0],
-                'coverage_percentage': round(tanium_percentage, 2),
-                'status': 'CRITICAL' if tanium_percentage < 70 else 'WARNING' if tanium_percentage < 90 else 'HEALTHY'
-            },
-            'dlp_coverage': {
-                'protected_hosts': dlp_coverage,
-                'unprotected_hosts': total_hosts - dlp_coverage,
-                'coverage_percentage': round(dlp_percentage, 2),
-                'vendor_breakdown': dlp_vendor_breakdown,
-                'status': 'CRITICAL' if dlp_percentage < 50 else 'WARNING' if dlp_percentage < 80 else 'HEALTHY'
-            },
-            'all_controls_coverage': {
-                'fully_protected_hosts': all_controls,
-                'partially_protected_hosts': total_hosts - all_controls,
-                'coverage_percentage': round(all_controls_percentage, 2),
-                'status': 'CRITICAL' if all_controls_percentage < 40 else 'WARNING' if all_controls_percentage < 70 else 'HEALTHY'
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Security control coverage error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-# ============================================================================
-# LOGGING COMPLIANCE - Splunk and Chronicle visibility
-# ============================================================================
-@app.route('/api/logging_compliance')
-def logging_compliance():
-    """Calculate logging compliance (Splunk and Chronicle)"""
-    try:
-        conn = get_db_connection()
-        
-        total_hosts = conn.execute("SELECT COUNT(DISTINCT host_s) FROM universal_cmdb").fetchone()[0]
-        
-        # Splunk coverage breakdown
-        splunk_result = conn.execute("""
-            SELECT 
-                COALESCE(logging_in_splunk_s, 'not_configured') as splunk_status,
-                COUNT(DISTINCT host_s) as host_count
-            FROM universal_cmdb
-            GROUP BY logging_in_splunk_s
-        """).fetchall()
-        
-        # Chronicle/QSO coverage breakdown
-        chronicle_result = conn.execute("""
-            SELECT 
-                COALESCE(logging_in_qso_s, 'not_configured') as chronicle_status,
-                COUNT(DISTINCT host_s) as host_count
-            FROM universal_cmdb
-            GROUP BY logging_in_qso_s
-        """).fetchall()
-        
-        # Calculate visible hosts
-        splunk_visible = 0
-        splunk_breakdown = []
-        for status, count in splunk_result:
-            is_visible = status.lower() in ['forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer']
-            if is_visible:
-                splunk_visible += count
-            splunk_breakdown.append({
-                'status': status,
-                'host_count': count,
-                'percentage': round(count / total_hosts * 100, 2),
-                'is_compliant': is_visible
-            })
-        
-        chronicle_visible = 0
-        chronicle_breakdown = []
-        for status, count in chronicle_result:
-            is_visible = status.lower() in ['enabled', 'partial']
-            if is_visible:
-                chronicle_visible += count
-            chronicle_breakdown.append({
-                'status': status,
-                'host_count': count,
-                'percentage': round(count / total_hosts * 100, 2),
-                'is_compliant': is_visible
-            })
-        
-        # Both platforms
-        both_visible = conn.execute("""
-            SELECT COUNT(DISTINCT host_s) FROM universal_cmdb
-            WHERE LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-            AND LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-        """).fetchone()[0]
-        
-        # Either platform
-        either_visible = conn.execute("""
-            SELECT COUNT(DISTINCT host_s) FROM universal_cmdb
-            WHERE LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-            OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-        """).fetchone()[0]
-        
-        # Neither platform
-        neither_visible = total_hosts - either_visible
-        
-        splunk_percentage = (splunk_visible / total_hosts * 100) if total_hosts > 0 else 0
-        chronicle_percentage = (chronicle_visible / total_hosts * 100) if total_hosts > 0 else 0
-        both_percentage = (both_visible / total_hosts * 100) if total_hosts > 0 else 0
-        either_percentage = (either_visible / total_hosts * 100) if total_hosts > 0 else 0
-        
-        conn.close()
-        
-        return jsonify({
-            'total_hosts': total_hosts,
-            'splunk_compliance': {
-                'compliant_hosts': splunk_visible,
-                'non_compliant_hosts': total_hosts - splunk_visible,
-                'compliance_percentage': round(splunk_percentage, 2),
-                'status_breakdown': splunk_breakdown,
-                'status': 'CRITICAL' if splunk_percentage < 50 else 'WARNING' if splunk_percentage < 80 else 'HEALTHY'
-            },
-            'chronicle_compliance': {
-                'compliant_hosts': chronicle_visible,
-                'non_compliant_hosts': total_hosts - chronicle_visible,
-                'compliance_percentage': round(chronicle_percentage, 2),
-                'status_breakdown': chronicle_breakdown,
-                'status': 'CRITICAL' if chronicle_percentage < 50 else 'WARNING' if chronicle_percentage < 80 else 'HEALTHY'
-            },
-            'combined_compliance': {
-                'both_platforms': {
-                    'host_count': both_visible,
-                    'percentage': round(both_percentage, 2)
-                },
-                'either_platform': {
-                    'host_count': either_visible,
-                    'percentage': round(either_percentage, 2)
-                },
-                'neither_platform': {
-                    'host_count': neither_visible,
-                    'percentage': round((neither_visible / total_hosts * 100), 2)
-                },
-                'overall_status': 'CRITICAL' if either_percentage < 50 else 'WARNING' if either_percentage < 80 else 'HEALTHY'
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Logging compliance error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-# ============================================================================
-# DOMAIN VISIBILITY - Visibility by domain (tdc, lead, etc)
-# ============================================================================
-@app.route('/api/domain_visibility')
-def domain_visibility():
-    """Calculate visibility by domain"""
-    try:
-        conn = get_db_connection()
-        
-        result = conn.execute("""
-            SELECT 
-                COALESCE(domain_s, 'unknown') as domain,
-                COUNT(DISTINCT host_s) as total_hosts,
-                COUNT(DISTINCT CASE 
-                    WHEN LOWER(logging_in_splunk_s) IN ('forwarding', 'heavy_forwarder', 'universal_forwarder', 'deployment_server', 'indexer')
-                    OR LOWER(logging_in_qso_s) IN ('enabled', 'partial')
-                    THEN host_s END) as visible_hosts
-            FROM universal_cmdb
-            GROUP BY domain_s
-            ORDER BY total_hosts DESC
-        """).fetchall()
-        
-        domain_breakdown = []
-        total_all = 0
-        visible_all = 0
-        
-        # Identify TDC and LEAD domains
-        tdc_total = 0
-        tdc_visible = 0
-        lead_total = 0
-        lead_visible = 0
-        
-        for domain, total, visible in result:
-            visibility_pct = (visible / total * 100) if total > 0 else 0
-            
-            domain_breakdown.append({
-                'domain': domain,
-                'total_hosts': total,
-                'visible_hosts': visible,
-                'invisible_hosts': total - visible,
-                'visibility_percentage': round(visibility_pct, 2),
-                'status': 'CRITICAL' if visibility_pct < 40 else 'WARNING' if visibility_pct < 70 else 'HEALTHY'
-            })
-            
-            total_all += total
-            visible_all += visible
-            
-            # Check for TDC and LEAD domains
-            if 'tdc' in domain.lower():
-                tdc_total += total
-                tdc_visible += visible
-            elif 'lead' in domain.lower() or 'fead' in domain.lower():
-                lead_total += total
-                lead_visible += visible
-        
-        overall_visibility = (visible_all / total_all * 100) if total_all > 0 else 0
-        tdc_visibility = (tdc_visible / tdc_total * 100) if tdc_total > 0 else 0
-        lead_visibility = (lead_visible / lead_total * 100) if lead_total > 0 else 0
-        
-        conn.close()
-        
-        return jsonify({
-            'overall_domain_visibility': round(overall_visibility, 2),
-            'tdc_visibility': {
-                'total_hosts': tdc_total,
-                'visible_hosts': tdc_visible,
-                'visibility_percentage': round(tdc_visibility, 2),
-                'status': 'CRITICAL' if tdc_visibility < 50 else 'WARNING' if tdc_visibility < 80 else 'HEALTHY'
-            },
-            'lead_visibility': {
-                'total_hosts': lead_total,
-                'visible_hosts': lead_visible,
-                'visibility_percentage': round(lead_visibility, 2),
-                'status': 'CRITICAL' if lead_visibility < 50 else 'WARNING' if lead_visibility < 80 else 'HEALTHY'
-            },
-            'domain_breakdown': domain_breakdown,
-            'total_domains': len(domain_breakdown),
-            'critical_domains': [d for d in domain_breakdown if d['visibility_percentage'] < 40]
-        })
-        
-    except Exception as e:
-        logger.error(f"Domain visibility error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-# ============================================================================
-# Legacy endpoints for compatibility
-# ============================================================================
 @app.route('/api/database_status')
 def database_status():
-    """Check database connectivity and return basic stats"""
+    """Get database connection status and basic info"""
     try:
         conn = get_db_connection()
         columns, row_count = verify_table_structure(conn)
@@ -889,20 +118,508 @@ def database_status():
         logger.error(f"Database status error: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/cmdb_presence')
+def cmdb_presence():
+    """CMDB registration analysis using actual column names"""
+    try:
+        conn = get_db_connection()
+        
+        # Count total records and registered records
+        total_query = "SELECT COUNT(*) FROM universal_cmdb"
+        total_count = conn.execute(total_query).fetchone()[0]
+        
+        # Count CMDB registered (present_in_cmdb_s = 'yes')
+        registered_query = """
+        SELECT COUNT(*) FROM universal_cmdb 
+        WHERE LOWER(present_in_cmdb_s) = 'yes'
+        """
+        registered_count = conn.execute(registered_query).fetchone()[0]
+        
+        registration_rate = (registered_count / total_count * 100) if total_count > 0 else 0
+        
+        # Regional breakdown
+        regional_query = """
+        SELECT 
+            COALESCE(region_s, 'unknown') as region,
+            COUNT(*) as total,
+            SUM(CASE WHEN LOWER(present_in_cmdb_s) = 'yes' THEN 1 ELSE 0 END) as registered
+        FROM universal_cmdb
+        GROUP BY region_s
+        ORDER BY total DESC
+        """
+        
+        regional_results = conn.execute(regional_query).fetchall()
+        regional_compliance = {}
+        
+        for region, total, registered in regional_results:
+            normalized_region = normalize_region(region)
+            compliance_pct = (registered / total * 100) if total > 0 else 0
+            status = 'EXCELLENT' if compliance_pct >= 95 else 'GOOD' if compliance_pct >= 85 else 'POOR'
+            
+            regional_compliance[normalized_region] = {
+                'registered': registered,
+                'total': total,
+                'compliance_percentage': round(compliance_pct, 2),
+                'governance_status': status
+            }
+        
+        # Compliance status
+        compliance_status = 'COMPLIANT' if registration_rate >= 90 else 'PARTIAL_COMPLIANCE' if registration_rate >= 70 else 'NON_COMPLIANT'
+        
+        conn.close()
+        
+        return jsonify({
+            'cmdb_registered': registered_count,
+            'total_assets': total_count,
+            'registration_rate': round(registration_rate, 2),
+            'status_breakdown': {'registered': registered_count, 'not_registered': total_count - registered_count},
+            'regional_compliance': regional_compliance,
+            'compliance_analysis': {
+                'compliance_status': compliance_status,
+                'improvement_needed': max(0, 90 - registration_rate),
+                'governance_maturity': 'MATURE' if registration_rate >= 95 else 'DEVELOPING' if registration_rate >= 85 else 'IMMATURE'
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"CMDB presence error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/infrastructure_type')
+def infrastructure_type_metrics():
+    """Analyze infrastructure types using actual column names"""
+    try:
+        conn = get_db_connection()
+        
+        query = """
+        SELECT 
+            COALESCE(infrastructure_type_s, 'unknown') as infrastructure_type,
+            COUNT(*) as frequency,
+            COALESCE(region_s, 'unknown') as region
+        FROM universal_cmdb
+        GROUP BY infrastructure_type_s, region_s
+        ORDER BY frequency DESC
+        """
+        
+        result = conn.execute(query).fetchall()
+        conn.close()
+        
+        if not result:
+            return jsonify({'error': 'No infrastructure type data found'}), 500
+        
+        # Process data
+        infrastructure_matrix = defaultdict(int)
+        infrastructure_by_region = defaultdict(lambda: defaultdict(int))
+        total_count = sum(row[1] for row in result)
+        
+        for infra_type, frequency, region in result:
+            normalized_region = normalize_region(region)
+            infrastructure_matrix[infra_type] += frequency
+            infrastructure_by_region[normalized_region][infra_type] += frequency
+        
+        detailed_data = []
+        for infra_type, frequency in infrastructure_matrix.items():
+            percentage = round(frequency / total_count * 100, 2) if total_count > 0 else 0
+            threat_level = 'CRITICAL' if percentage > 40 else 'HIGH' if percentage > 25 else 'MEDIUM' if percentage > 10 else 'LOW'
+            
+            detailed_data.append({
+                'type': infra_type,
+                'frequency': frequency,
+                'percentage': percentage,
+                'threat_level': threat_level
+            })
+        
+        detailed_data.sort(key=lambda x: x['frequency'], reverse=True)
+        
+        # Calculate modernization score
+        modernization_score = 0
+        legacy_keywords = ['legacy', 'mainframe', 'unix', 'solaris', 'physical']
+        cloud_keywords = ['cloud', 'saas', 'paas', 'aws', 'azure', 'gcp', 'kubernetes']
+        
+        for item in detailed_data:
+            if any(keyword in item['type'].lower() for keyword in cloud_keywords):
+                modernization_score += item['percentage']
+            elif any(keyword in item['type'].lower() for keyword in legacy_keywords):
+                modernization_score -= item['percentage'] * 0.5
+        
+        modernization_percentage = max(0, min(100, modernization_score))
+        
+        return jsonify({
+            'infrastructure_matrix': dict(infrastructure_matrix),
+            'detailed_data': detailed_data,
+            'regional_analysis': dict(infrastructure_by_region),
+            'total_instances': total_count,
+            'modernization_analysis': {
+                'modernization_score': round(modernization_score, 2),
+                'modernization_percentage': round(modernization_percentage, 2),
+                'legacy_systems': [item for item in detailed_data if any(k in item['type'].lower() for k in legacy_keywords)],
+                'cloud_adoption': [item for item in detailed_data if any(k in item['type'].lower() for k in cloud_keywords)]
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Infrastructure type error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/region_metrics')
+def region_metrics():
+    """Comprehensive regional analysis using actual column names"""
+    try:
+        conn = get_db_connection()
+        
+        query = """
+        SELECT 
+            COALESCE(region_s, 'unknown') as region,
+            COUNT(*) as frequency,
+            COALESCE(infrastructure_type_s, 'unknown') as infrastructure_type,
+            COALESCE(present_in_cmdb_s, 'unknown') as cmdb_status,
+            COALESCE(tanium_coverage_s, 'unknown') as tanium_status
+        FROM universal_cmdb
+        GROUP BY region_s, infrastructure_type_s, present_in_cmdb_s, tanium_coverage_s
+        ORDER BY frequency DESC
+        """
+        
+        result = conn.execute(query).fetchall()
+        conn.close()
+        
+        if not result:
+            return jsonify({'error': 'No regional data found'}), 500
+        
+        # Process regional data
+        region_counter = defaultdict(int)
+        region_details = defaultdict(lambda: {
+            'total_assets': 0,
+            'infrastructure_types': defaultdict(int),
+            'cmdb_registered': 0,
+            'tanium_deployed': 0
+        })
+        
+        for region, frequency, infra_type, cmdb_status, tanium_status in result:
+            normalized_region = normalize_region(region)
+            region_counter[normalized_region] += frequency
+            
+            details = region_details[normalized_region]
+            details['total_assets'] += frequency
+            details['infrastructure_types'][infra_type] += frequency
+            
+            if str(cmdb_status).lower() == 'yes':
+                details['cmdb_registered'] += frequency
+            if str(tanium_status).lower() in ['managed', 'deployed']:
+                details['tanium_deployed'] += frequency
+        
+        # Calculate analytics
+        regional_analytics = []
+        for region, count in region_counter.items():
+            details = region_details[region]
+            total_assets = details['total_assets']
+            
+            cmdb_percentage = round((details['cmdb_registered'] / total_assets * 100), 2) if total_assets > 0 else 0
+            tanium_percentage = round((details['tanium_deployed'] / total_assets * 100), 2) if total_assets > 0 else 0
+            security_score = calculate_security_score(cmdb_percentage, tanium_percentage)
+            
+            risk_category = 'HIGH' if security_score < 40 else 'MEDIUM' if security_score < 70 else 'LOW'
+            
+            regional_analytics.append({
+                'region': region,
+                'count': count,
+                'percentage': round(count / sum(region_counter.values()) * 100, 2),
+                'cmdb_coverage': cmdb_percentage,
+                'tanium_coverage': tanium_percentage,
+                'security_score': security_score,
+                'risk_category': risk_category,
+                'infrastructure_diversity': len(details['infrastructure_types']),
+                'infrastructure_types': list(details['infrastructure_types'].keys())
+            })
+        
+        regional_analytics.sort(key=lambda x: x['count'], reverse=True)
+        
+        # Threat assessment
+        threat_intelligence = {
+            'highest_risk_region': min(regional_analytics, key=lambda x: x['security_score'])['region'] if regional_analytics else 'unknown',
+            'most_secure_region': max(regional_analytics, key=lambda x: x['security_score'])['region'] if regional_analytics else 'unknown',
+            'geographic_balance': max(regional_analytics, key=lambda x: x['percentage'])['percentage'] - min(regional_analytics, key=lambda x: x['percentage'])['percentage'] if regional_analytics else 0
+        }
+        
+        return jsonify({
+            'global_surveillance': region_counter,
+            'region_details': regional_analytics,
+            'regional_analytics': regional_analytics,
+            'regional_infrastructure': dict(region_details),
+            'threat_intelligence': threat_intelligence
+        })
+        
+    except Exception as e:
+        logger.error(f"Region metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/country_metrics')
+def country_metrics():
+    """Country-level intelligence analysis using actual column names"""
+    try:
+        conn = get_db_connection()
+        
+        query = """
+        SELECT 
+            COALESCE(country_s, 'unknown') as country,
+            COUNT(*) as frequency,
+            COALESCE(region_s, 'unknown') as region,
+            COALESCE(present_in_cmdb_s, 'unknown') as cmdb_status,
+            COALESCE(tanium_coverage_s, 'unknown') as tanium_status
+        FROM universal_cmdb
+        GROUP BY country_s, region_s, present_in_cmdb_s, tanium_coverage_s
+        ORDER BY frequency DESC
+        """
+        
+        result = conn.execute(query).fetchall()
+        conn.close()
+        
+        country_counter = Counter()
+        country_regional_map = {}
+        country_security_scores = {}
+        
+        for country, frequency, region, cmdb_status, tanium_status in result:
+            normalized_country = normalize_country(country)
+            normalized_region = normalize_region(region)
+            
+            country_counter[normalized_country] += frequency
+            country_regional_map[normalized_country] = normalized_region
+            
+            # Initialize if not exists
+            if normalized_country not in country_security_scores:
+                country_security_scores[normalized_country] = {'cmdb': 0, 'tanium': 0, 'total': 0}
+            
+            country_security_scores[normalized_country]['total'] += frequency
+            if str(cmdb_status).lower() == 'yes':
+                country_security_scores[normalized_country]['cmdb'] += frequency
+            if str(tanium_status).lower() in ['managed', 'deployed']:
+                country_security_scores[normalized_country]['tanium'] += frequency
+        
+        # Calculate country analysis
+        country_analysis = []
+        total_assets = sum(country_counter.values())
+        
+        for country, count in country_counter.most_common():
+            security_data = country_security_scores.get(country, {'cmdb': 0, 'tanium': 0, 'total': count})
+            
+            cmdb_coverage = (security_data['cmdb'] / security_data['total'] * 100) if security_data['total'] > 0 else 0
+            tanium_coverage = (security_data['tanium'] / security_data['total'] * 100) if security_data['total'] > 0 else 0
+            overall_security = calculate_security_score(cmdb_coverage, tanium_coverage)
+            
+            threat_level = 'CRITICAL' if overall_security < 25 else 'HIGH' if overall_security < 50 else 'MEDIUM' if overall_security < 75 else 'LOW'
+            
+            country_analysis.append({
+                'country': country,
+                'count': count,
+                'percentage': round(count / total_assets * 100, 2),
+                'region': country_regional_map.get(country, 'unknown'),
+                'security_score': round(overall_security, 2),
+                'threat_level': threat_level
+            })
+        
+        # Threat intelligence
+        threat_intelligence = {
+            'highest_threat_countries': [c for c in country_analysis if c['threat_level'] == 'CRITICAL'][:5],
+            'most_secure_countries': [c for c in country_analysis if c['threat_level'] == 'LOW'][:5],
+            'geographic_concentration': country_analysis[0]['percentage'] if country_analysis else 0,
+            'countries_at_risk': len([c for c in country_analysis if c['threat_level'] in ['CRITICAL', 'HIGH']])
+        }
+        
+        return jsonify({
+            'total_countries': len(country_counter),
+            'country_analysis': country_analysis,
+            'country_distribution': dict(country_counter.most_common()),
+            'threat_intelligence': threat_intelligence
+        })
+        
+    except Exception as e:
+        logger.error(f"Country metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/security_control_coverage')
+def security_control_coverage():
+    """Security control coverage analysis using actual column names"""
+    try:
+        conn = get_db_connection()
+        
+        # Total hosts
+        total_hosts = conn.execute("SELECT COUNT(*) FROM universal_cmdb").fetchone()[0]
+        
+        # EDR Coverage (edr_coverage_s)
+        edr_query = """
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN edr_coverage_s IN ('sentinelone', 'crowdstrike', 'defender') THEN 1 ELSE 0 END) as protected
+        FROM universal_cmdb
+        """
+        edr_result = conn.execute(edr_query).fetchone()
+        edr_coverage = (edr_result[1] / edr_result[0] * 100) if edr_result[0] > 0 else 0
+        edr_status = 'GOOD' if edr_coverage > 70 else 'WARNING' if edr_coverage > 40 else 'CRITICAL'
+        
+        # Tanium Coverage (tanium_coverage_s)
+        tanium_query = """
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN tanium_coverage_s = 'managed' THEN 1 ELSE 0 END) as managed
+        FROM universal_cmdb
+        """
+        tanium_result = conn.execute(tanium_query).fetchone()
+        tanium_coverage = (tanium_result[1] / tanium_result[0] * 100) if tanium_result[0] > 0 else 0
+        tanium_status = 'GOOD' if tanium_coverage > 70 else 'WARNING' if tanium_coverage > 40 else 'CRITICAL'
+        
+        # DLP Coverage (dlp_agent_coverage_s)
+        dlp_query = """
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN dlp_agent_coverage_s IN ('forcepoint', 'symantec', 'mcafee') THEN 1 ELSE 0 END) as protected
+        FROM universal_cmdb
+        """
+        dlp_result = conn.execute(dlp_query).fetchone()
+        dlp_coverage = (dlp_result[1] / dlp_result[0] * 100) if dlp_result[0] > 0 else 0
+        dlp_status = 'GOOD' if dlp_coverage > 70 else 'WARNING' if dlp_coverage > 40 else 'CRITICAL'
+        
+        # All controls coverage
+        all_controls_query = """
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE 
+                WHEN edr_coverage_s IN ('sentinelone', 'crowdstrike', 'defender')
+                AND tanium_coverage_s = 'managed'
+                AND dlp_agent_coverage_s IN ('forcepoint', 'symantec', 'mcafee')
+                THEN 1 ELSE 0 
+            END) as fully_protected
+        FROM universal_cmdb
+        """
+        all_result = conn.execute(all_controls_query).fetchone()
+        all_coverage = (all_result[1] / all_result[0] * 100) if all_result[0] > 0 else 0
+        all_status = 'GOOD' if all_coverage > 50 else 'WARNING' if all_coverage > 25 else 'CRITICAL'
+        
+        conn.close()
+        
+        return jsonify({
+            'total_hosts': total_hosts,
+            'edr_coverage': {
+                'coverage_percentage': round(edr_coverage, 2),
+                'protected_hosts': edr_result[1],
+                'status': edr_status
+            },
+            'tanium_coverage': {
+                'coverage_percentage': round(tanium_coverage, 2),
+                'managed_hosts': tanium_result[1],
+                'status': tanium_status
+            },
+            'dlp_coverage': {
+                'coverage_percentage': round(dlp_coverage, 2),
+                'protected_hosts': dlp_result[1],
+                'status': dlp_status
+            },
+            'all_controls_coverage': {
+                'coverage_percentage': round(all_coverage, 2),
+                'fully_protected_hosts': all_result[1],
+                'status': all_status
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Security control coverage error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/host_search')
+def host_search():
+    """Enhanced host search functionality using actual column names"""
+    search_term = request.args.get('q', '')
+    if not search_term:
+        return jsonify({'error': 'Search term required'}), 400
+    
+    try:
+        conn = get_db_connection()
+        
+        # Build search query with actual column names
+        search_query = f"""
+        SELECT 
+            COALESCE(host_s, 'unknown') as host,
+            COALESCE(region_s, 'unknown') as region,
+            COALESCE(country_s, 'unknown') as country,
+            COALESCE(infrastructure_type_s, 'unknown') as infrastructure_type,
+            COALESCE(source_tables_s, 'none') as source_tables,
+            COALESCE(domain_s, 'none') as domain,
+            COALESCE(data_center_s, 'unknown') as data_center,
+            COALESCE(present_in_cmdb_s, 'unknown') as present_in_cmdb,
+            COALESCE(tanium_coverage_s, 'unknown') as tanium_coverage,
+            COALESCE(business_unit_s, 'unknown') as business_unit,
+            COALESCE(system_classification_s, 'unknown') as system,
+            COALESCE(class_s, 'unknown') as class
+        FROM universal_cmdb
+        WHERE LOWER(COALESCE(host_s, '')) LIKE LOWER('%{search_term}%')
+           OR LOWER(COALESCE(source_tables_s, '')) LIKE LOWER('%{search_term}%')
+           OR LOWER(COALESCE(domain_s, '')) LIKE LOWER('%{search_term}%')
+        ORDER BY host_s
+        LIMIT 500
+        """
+        
+        result = conn.execute(search_query).fetchall()
+        conn.close()
+        
+        hosts = []
+        for row in result:
+            host_data = {
+                'host': row[0],
+                'region': row[1],
+                'country': row[2],
+                'infrastructure_type': row[3],
+                'source_tables': row[4],
+                'domain': row[5],
+                'data_center': row[6],
+                'present_in_cmdb': row[7],
+                'tanium_coverage': row[8],
+                'business_unit': row[9],
+                'system': row[10],
+                'class': row[11]
+            }
+            hosts.append(host_data)
+        
+        # Calculate search analytics
+        search_analytics = {
+            'regions': list(set([h['region'] for h in hosts if h['region'] != 'unknown'])),
+            'countries': list(set([h['country'] for h in hosts if h['country'] != 'unknown'])),
+            'infrastructure_types': list(set([h['infrastructure_type'] for h in hosts if h['infrastructure_type'] != 'unknown'])),
+            'business_units': list(set([h['business_unit'] for h in hosts if h['business_unit'] != 'unknown'])),
+            'data_centers': list(set([h['data_center'] for h in hosts if h['data_center'] != 'unknown'])),
+            'cmdb_registered': len([h for h in hosts if 'yes' in str(h['present_in_cmdb']).lower()]),
+            'tanium_deployed': len([h for h in hosts if h['tanium_coverage'] == 'managed']),
+            'security_coverage': 0
+        }
+        
+        if hosts:
+            search_analytics['security_coverage'] = round(
+                (search_analytics['cmdb_registered'] + search_analytics['tanium_deployed']) / (2 * len(hosts)) * 100, 2
+            )
+        
+        return jsonify({
+            'hosts': hosts,
+            'total_found': len(hosts),
+            'search_term': search_term,
+            'search_summary': search_analytics,
+            'drill_down_available': len(hosts) > 100,
+            'search_scope': {
+                'searched_fields': ['host_s', 'source_tables_s', 'domain_s'],
+                'result_limit': 500,
+                'total_matches': len(hosts)
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Host search error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     try:
         conn = get_db_connection()
         columns, row_count = verify_table_structure(conn)
         conn.close()
-        
-        logger.info(f"✅ Database connection successful!")
-        logger.info(f"Location: universal_cmdb.db")
-        logger.info(f"Found {row_count:,} rows with {len(columns)} columns")
-        logger.info(f"🚀 Starting Flask server on http://localhost:5000")
-        
+        logger.info(f"✅ Database connection successful! Found {row_count} rows with {len(columns)} columns.")
+        print(f"🚀 Starting Flask server on http://localhost:5000")
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")
-        print(f"Please ensure your 'universal_cmdb.db' file exists in the project directory")
-        sys.exit(1)
-    
+        print(f"⚠️  Please ensure your 'universal_cmdb.db' file exists in the project directory")
+        
     app.run(debug=True, host='0.0.0.0', port=5000)

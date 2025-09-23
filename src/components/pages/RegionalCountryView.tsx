@@ -5,7 +5,7 @@ import * as THREE from 'three';
 const RegionalCountryView: React.FC = () => {
   const [regionalData, setRegionalData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'region' | 'country' | 'datacenter' | 'cloud'>('region');
+  const [viewMode, setViewMode] = useState<'region' | 'country'>('region');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const globeRef = useRef<HTMLDivElement>(null);
   const heatmapRef = useRef<HTMLCanvasElement>(null);
@@ -18,12 +18,26 @@ const RegionalCountryView: React.FC = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/regional_visibility');
-        if (!response.ok) throw new Error('Failed to fetch regional data');
-        const data = await response.json();
-        setRegionalData(data);
+        const [regionResponse, countryResponse] = await Promise.all([
+          fetch('http://localhost:5000/api/region_metrics'),
+          fetch('http://localhost:5000/api/country_metrics')
+        ]);
+
+        const regionData = await regionResponse.json();
+        const countryData = await countryResponse.json();
+
+        setRegionalData({
+          regional_breakdown: regionData.regional_analytics || [],
+          country_breakdown: countryData.country_analysis || [],
+          threat_intelligence: regionData.threat_intelligence || countryData.threat_intelligence || {}
+        });
       } catch (error) {
         console.error('Error:', error);
+        setRegionalData({
+          regional_breakdown: [],
+          country_breakdown: [],
+          threat_intelligence: {}
+        });
       } finally {
         setLoading(false);
       }
@@ -86,18 +100,9 @@ const RegionalCountryView: React.FC = () => {
     const connections: THREE.Line[] = [];
     
     const getLocationData = () => {
-      switch (viewMode) {
-        case 'region':
-          return regionalData.regional_breakdown || [];
-        case 'country':
-          return regionalData.country_breakdown || [];
-        case 'datacenter':
-          return regionalData.datacenter_breakdown || [];
-        case 'cloud':
-          return regionalData.cloud_region_breakdown || [];
-        default:
-          return [];
-      }
+      return viewMode === 'region' 
+        ? regionalData.regional_breakdown || []
+        : regionalData.country_breakdown || [];
     };
 
     const getCoordinates = (location: any) => {
@@ -105,41 +110,37 @@ const RegionalCountryView: React.FC = () => {
       const regionCoords: Record<string, { lat: number; lon: number }> = {
         'north america': { lat: 45, lon: -100 },
         'europe': { lat: 50, lon: 10 },
+        'emea': { lat: 30, lon: 20 },
         'asia pacific': { lat: 25, lon: 105 },
         'asia': { lat: 30, lon: 90 },
+        'apac': { lat: 10, lon: 120 },
         'latin america': { lat: -15, lon: -60 },
+        'latam': { lat: -15, lon: -60 },
         'middle east': { lat: 25, lon: 45 },
         'africa': { lat: 0, lon: 20 },
         'oceania': { lat: -25, lon: 135 }
       };
 
       const countryCoords: Record<string, { lat: number; lon: number }> = {
-        'us': { lat: 40, lon: -100 },
         'united states': { lat: 40, lon: -100 },
-        'uk': { lat: 51, lon: 0 },
-        'de': { lat: 51, lon: 10 },
-        'jp': { lat: 35, lon: 139 },
-        'cn': { lat: 35, lon: 105 },
-        'au': { lat: -25, lon: 135 },
-        'ca': { lat: 60, lon: -95 },
-        'br': { lat: -15, lon: -47 },
-        'in': { lat: 20, lon: 77 }
+        'canada': { lat: 60, lon: -95 },
+        'mexico': { lat: 23, lon: -102 },
+        'united kingdom': { lat: 54, lon: -2 },
+        'germany': { lat: 51, lon: 10 },
+        'france': { lat: 46, lon: 2 },
+        'italy': { lat: 42, lon: 12 },
+        'spain': { lat: 40, lon: -4 },
+        'japan': { lat: 36, lon: 138 },
+        'china': { lat: 35, lon: 105 },
+        'australia': { lat: -25, lon: 133 },
+        'brazil': { lat: -14, lon: -51 },
+        'india': { lat: 20, lon: 77 },
+        'singapore': { lat: 1, lon: 103 }
       };
 
-      const cloudRegions: Record<string, { lat: number; lon: number }> = {
-        'us-east-1': { lat: 39, lon: -77 },
-        'us-west-2': { lat: 45, lon: -122 },
-        'eu-west-1': { lat: 53, lon: -6 },
-        'ap-southeast-1': { lat: 1, lon: 103 },
-        'ap-northeast-1': { lat: 35, lon: 139 }
-      };
-
-      const name = location.region || location.country || location.data_center || location.cloud_region || '';
-      const lowerName = name.toLowerCase();
+      const name = (location.region || location.country || '').toLowerCase();
       
-      return regionCoords[lowerName] || 
-             countryCoords[lowerName] || 
-             cloudRegions[lowerName] || 
+      return regionCoords[name] || countryCoords[name] || 
              { lat: Math.random() * 180 - 90, lon: Math.random() * 360 - 180 };
     };
 
@@ -158,13 +159,17 @@ const RegionalCountryView: React.FC = () => {
       const markerGroup = new THREE.Group();
       markerGroup.position.set(x * 1.05, y * 1.05, z * 1.05);
       
-      // Marker cone
-      const markerSize = Math.log(location.total_hosts / 1000 + 1) * 2;
+      // Marker cone - size based on count/assets
+      const assetCount = location.count || location.total_assets || 1;
+      const markerSize = Math.log(assetCount / 1000 + 1) * 2;
       const markerGeometry = new THREE.ConeGeometry(markerSize, markerSize * 2, 8);
+      
+      // Color based on security score or percentage
+      const score = location.security_score || location.percentage || 0;
       const markerMaterial = new THREE.MeshPhongMaterial({
-        color: location.status === 'CRITICAL' ? 0xa855f7 :
-               location.status === 'WARNING' ? 0xffaa00 : 0x00d4ff,
-        emissive: location.status === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
+        color: score < 30 ? 0xa855f7 :
+               score < 60 ? 0xffaa00 : 0x00d4ff,
+        emissive: score < 30 ? 0xa855f7 : 0x00d4ff,
         emissiveIntensity: 0.3
       });
       
@@ -177,9 +182,9 @@ const RegionalCountryView: React.FC = () => {
       const ringRadius = markerSize * 2;
       const ringGeometry = new THREE.RingGeometry(ringRadius, ringRadius + 1, 32);
       const ringMaterial = new THREE.MeshBasicMaterial({
-        color: location.visibility_percentage < 30 ? 0xa855f7 : 0x00d4ff,
+        color: score < 30 ? 0xa855f7 : 0x00d4ff,
         transparent: true,
-        opacity: location.visibility_percentage / 100,
+        opacity: score / 100,
         side: THREE.DoubleSide
       });
       
@@ -188,7 +193,7 @@ const RegionalCountryView: React.FC = () => {
       markerGroup.add(ring);
       
       // Pulse effect for critical locations
-      if (location.status === 'CRITICAL') {
+      if (score < 30) {
         const pulseGeometry = new THREE.SphereGeometry(markerSize * 3, 16, 16);
         const pulseMaterial = new THREE.MeshBasicMaterial({
           color: 0xa855f7,
@@ -205,39 +210,6 @@ const RegionalCountryView: React.FC = () => {
       markers.push(markerGroup);
       scene.add(markerGroup);
     });
-
-    // Add connections between locations
-    if (viewMode === 'region' && markers.length > 1) {
-      for (let i = 0; i < markers.length - 1; i++) {
-        for (let j = i + 1; j < Math.min(i + 3, markers.length); j++) {
-          const start = markers[i].position;
-          const end = markers[j].position;
-          
-          // Create curved connection
-          const mid = new THREE.Vector3(
-            (start.x + end.x) / 2,
-            (start.y + end.y) / 2,
-            (start.z + end.z) / 2
-          );
-          mid.multiplyScalar(1.2);
-          
-          const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
-          const points = curve.getPoints(50);
-          const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-          
-          const lineMaterial = new THREE.LineBasicMaterial({
-            color: 0x00d4ff,
-            transparent: true,
-            opacity: 0.3,
-            linewidth: 1
-          });
-          
-          const line = new THREE.Line(lineGeometry, lineMaterial);
-          connections.push(line);
-          scene.add(line);
-        }
-      }
-    }
 
     // Add data flow particles
     const particleCount = 500;
@@ -344,12 +316,6 @@ const RegionalCountryView: React.FC = () => {
         });
       });
       
-      // Rotate connections
-      connections.forEach(connection => {
-        connection.rotation.y = rotation.y;
-        connection.rotation.x = rotation.x;
-      });
-      
       // Animate particles
       particles.rotation.y += 0.0005;
       
@@ -390,23 +356,20 @@ const RegionalCountryView: React.FC = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const data = viewMode === 'region' ? regionalData.regional_breakdown :
-                  viewMode === 'country' ? regionalData.country_breakdown :
-                  viewMode === 'datacenter' ? regionalData.datacenter_breakdown :
-                  regionalData.cloud_region_breakdown || [];
-
+      const data = viewMode === 'region' ? regionalData.regional_breakdown : regionalData.country_breakdown || [];
       const barHeight = canvas.height / Math.min(data.length, 10);
       
       data.slice(0, 10).forEach((item: any, index: number) => {
         const y = index * barHeight;
-        const width = (canvas.width - 150) * (item.visibility_percentage / 100);
+        const score = item.security_score || item.percentage || 0;
+        const width = (canvas.width - 150) * (score / 100);
         
         // Bar gradient
         const gradient = ctx.createLinearGradient(0, y, width, y);
-        if (item.status === 'CRITICAL') {
+        if (score < 30) {
           gradient.addColorStop(0, '#a855f7');
           gradient.addColorStop(1, '#ff00ff');
-        } else if (item.status === 'WARNING') {
+        } else if (score < 60) {
           gradient.addColorStop(0, '#ffaa00');
           gradient.addColorStop(1, '#ff8800');
         } else {
@@ -421,14 +384,14 @@ const RegionalCountryView: React.FC = () => {
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 10px monospace';
         ctx.fillText(
-          (item.region || item.country || item.data_center || item.cloud_region || '').substring(0, 20),
+          (item.region || item.country || '').substring(0, 20),
           5,
           y + barHeight / 2
         );
         
-        // Percentage
-        ctx.fillStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
-        ctx.fillText(`${item.visibility_percentage.toFixed(1)}%`, width + 5, y + barHeight / 2);
+        // Score/Percentage
+        ctx.fillStyle = score < 30 ? '#a855f7' : '#00d4ff';
+        ctx.fillText(`${score.toFixed(1)}%`, width + 5, y + barHeight / 2);
       });
 
       requestAnimationFrame(animate);
@@ -442,7 +405,7 @@ const RegionalCountryView: React.FC = () => {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-lg font-bold text-cyan-400">MAPPING GLOBAL VISIBILITY</div>
+          <div className="mt-4 text-lg font-bold text-cyan-400">ANALYZING GEOGRAPHIC VISIBILITY</div>
         </div>
       </div>
     );
@@ -450,24 +413,20 @@ const RegionalCountryView: React.FC = () => {
 
   if (!regionalData) return null;
 
-  const currentData = viewMode === 'region' ? regionalData.regional_breakdown :
-                      viewMode === 'country' ? regionalData.country_breakdown :
-                      viewMode === 'datacenter' ? regionalData.datacenter_breakdown :
-                      regionalData.cloud_region_breakdown || [];
-
-  const avgVisibility = currentData.reduce((sum: number, item: any) => sum + item.visibility_percentage, 0) / currentData.length || 0;
-  const criticalCount = currentData.filter((item: any) => item.status === 'CRITICAL').length;
+  const currentData = viewMode === 'region' ? regionalData.regional_breakdown : regionalData.country_breakdown || [];
+  const avgScore = currentData.reduce((sum: number, item: any) => sum + (item.security_score || item.percentage || 0), 0) / currentData.length || 0;
+  const criticalCount = currentData.filter((item: any) => (item.security_score || item.percentage || 0) < 30).length;
 
   return (
     <div className="h-full flex flex-col p-4">
       {/* Critical Alert */}
-      {avgVisibility < 30 && (
+      {avgScore < 30 && (
         <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
             <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
             <span className="text-white text-sm">
-              {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)} visibility at {avgVisibility.toFixed(1)}%
+              Geographic visibility at {avgScore.toFixed(1)}% - {criticalCount} critical locations
             </span>
           </div>
         </div>
@@ -478,27 +437,33 @@ const RegionalCountryView: React.FC = () => {
         <div className="col-span-8">
           <div className="h-full glass-panel rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-cyan-400">GEOGRAPHIC VISIBILITY MAP</h2>
+              <h2 className="text-lg font-bold text-cyan-400 flex items-center gap-2">
+                <Globe className="w-5 h-5" />
+                GEOGRAPHIC ASSET VISIBILITY
+              </h2>
               <div className="flex gap-2">
-                {[
-                  { key: 'region', label: 'REGIONS', icon: Globe },
-                  { key: 'country', label: 'COUNTRIES', icon: MapPin },
-                  { key: 'datacenter', label: 'DATA CENTERS', icon: Building },
-                  { key: 'cloud', label: 'CLOUD', icon: Cloud }
-                ].map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    onClick={() => setViewMode(key as any)}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition-all ${
-                      viewMode === key
-                        ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
-                        : 'bg-gray-900/50 border border-gray-700 text-gray-400 hover:border-gray-500'
-                    }`}
-                  >
-                    <Icon className="w-3 h-3" />
-                    {label}
-                  </button>
-                ))}
+                <button
+                  onClick={() => setViewMode('region')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition-all ${
+                    viewMode === 'region'
+                      ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                      : 'bg-gray-900/50 border border-gray-700 text-gray-400 hover:border-gray-500'
+                  }`}
+                >
+                  <Globe className="w-3 h-3" />
+                  REGIONS
+                </button>
+                <button
+                  onClick={() => setViewMode('country')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition-all ${
+                    viewMode === 'country'
+                      ? 'bg-cyan-500/20 border border-cyan-500 text-cyan-400'
+                      : 'bg-gray-900/50 border border-gray-700 text-gray-400 hover:border-gray-500'
+                  }`}
+                >
+                  <MapPin className="w-3 h-3" />
+                  COUNTRIES
+                </button>
               </div>
             </div>
             
@@ -506,20 +471,20 @@ const RegionalCountryView: React.FC = () => {
             
             <div className="mt-3 flex items-center justify-between text-xs">
               <div className="text-gray-400">
-                🖱️ Drag to rotate • Scroll to zoom
+                🖱️ Drag to rotate • Scroll to zoom • View by {viewMode}
               </div>
               <div className="flex gap-3">
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
-                  <span className="text-gray-400">Good</span>
+                  <span className="text-gray-400">Good (&gt;60%)</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                  <span className="text-gray-400">Warning</span>
+                  <span className="text-gray-400">Warning (30-60%)</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                  <span className="text-gray-400">Critical</span>
+                  <span className="text-gray-400">Critical (&lt;30%)</span>
                 </div>
               </div>
             </div>
@@ -533,11 +498,11 @@ const RegionalCountryView: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-3xl font-bold">
-                  <span className={avgVisibility < 30 ? 'text-purple-400' : avgVisibility < 60 ? 'text-yellow-400' : 'text-cyan-400'}>
-                    {avgVisibility.toFixed(1)}%
+                  <span className={avgScore < 30 ? 'text-purple-400' : avgScore < 60 ? 'text-yellow-400' : 'text-cyan-400'}>
+                    {avgScore.toFixed(1)}%
                   </span>
                 </div>
-                <div className="text-xs text-gray-400 uppercase">Avg Visibility</div>
+                <div className="text-xs text-gray-400 uppercase">Avg Coverage</div>
               </div>
               <div>
                 <div className="text-3xl font-bold text-purple-400">
@@ -556,84 +521,101 @@ const RegionalCountryView: React.FC = () => {
 
           {/* Location Cards */}
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {currentData.slice(0, 10).map((item: any) => (
-              <div
-                key={item.region || item.country || item.data_center || item.cloud_region}
-                className={`glass-panel rounded-lg p-3 cursor-pointer transition-all hover:scale-102 ${
-                  selectedLocation === (item.region || item.country || item.data_center || item.cloud_region)
-                    ? 'border-cyan-400'
-                    : ''
-                }`}
-                onClick={() => setSelectedLocation(item.region || item.country || item.data_center || item.cloud_region)}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-bold text-white">
-                      {(item.region || item.country || item.data_center || item.cloud_region || '').substring(0, 25)}
+            {currentData.slice(0, 10).map((item: any, index: number) => {
+              const name = item.region || item.country || 'Unknown';
+              const score = item.security_score || item.percentage || 0;
+              const count = item.count || item.total_assets || 0;
+              
+              return (
+                <div
+                  key={`${viewMode}-${index}`}
+                  className={`glass-panel rounded-lg p-3 cursor-pointer transition-all hover:scale-102 ${
+                    selectedLocation === name ? 'border-cyan-400' : ''
+                  }`}
+                  onClick={() => setSelectedLocation(name)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-bold text-white truncate max-w-[120px]">
+                        {name}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {count.toLocaleString()} assets
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-400">
-                      {item.total_hosts.toLocaleString()} hosts
+                    <div className="text-right">
+                      <div className={`text-2xl font-bold ${
+                        score < 30 ? 'text-purple-400' :
+                        score < 60 ? 'text-yellow-400' :
+                        'text-cyan-400'
+                      }`}>
+                        {score.toFixed(1)}%
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className={`text-2xl font-bold ${
-                      item.status === 'CRITICAL' ? 'text-purple-400' :
-                      item.status === 'WARNING' ? 'text-yellow-400' :
+                  
+                  {/* Coverage Bar */}
+                  <div className="mt-2 h-2 bg-black/50 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full transition-all duration-500"
+                      style={{
+                        width: `${score}%`,
+                        background: score < 30 
+                          ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
+                          : score < 60
+                          ? 'linear-gradient(90deg, #ffaa00, #ff8800)'
+                          : 'linear-gradient(90deg, #00d4ff, #0099ff)'
+                      }}
+                    />
+                  </div>
+                  
+                  <div className="mt-2 flex justify-between items-center">
+                    <span className="text-xs text-cyan-400">
+                      <Eye className="w-3 h-3 inline mr-1" />
+                      {item.cmdb_coverage?.toFixed(1) || score.toFixed(1)}% CMDB
+                    </span>
+                    <span className={`text-xs font-bold ${
+                      item.threat_level === 'CRITICAL' || score < 30 ? 'text-purple-400' :
+                      item.threat_level === 'WARNING' || score < 60 ? 'text-yellow-400' :
                       'text-cyan-400'
                     }`}>
-                      {item.visibility_percentage.toFixed(1)}%
-                    </div>
+                      {item.threat_level || (score < 30 ? 'CRITICAL' : score < 60 ? 'WARNING' : 'GOOD')}
+                    </span>
                   </div>
                 </div>
-                
-                {/* Visibility Bar */}
-                <div className="mt-2 h-2 bg-black/50 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full transition-all duration-500"
-                    style={{
-                      width: `${item.visibility_percentage}%`,
-                      background: item.status === 'CRITICAL' 
-                        ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
-                        : item.status === 'WARNING'
-                        ? 'linear-gradient(90deg, #ffaa00, #ff8800)'
-                        : 'linear-gradient(90deg, #00d4ff, #0099ff)'
-                    }}
-                  />
-                </div>
-                
-                <div className="mt-2 flex justify-between items-center">
-                  <span className="text-xs text-cyan-400">
-                    <Eye className="w-3 h-3 inline mr-1" />
-                    {item.visible_hosts.toLocaleString()} visible
-                  </span>
-                  <span className={`text-xs font-bold ${
-                    item.status === 'CRITICAL' ? 'text-purple-400' :
-                    item.status === 'WARNING' ? 'text-yellow-400' :
-                    'text-cyan-400'
-                  }`}>
-                    {item.status}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          {/* Best/Worst Locations */}
-          {regionalData.worst_visibility_region && regionalData.best_visibility_region && (
+          {/* Threat Intelligence Summary */}
+          {regionalData.threat_intelligence && (
             <div className="glass-panel rounded-xl p-3">
+              <h3 className="text-sm font-bold text-white mb-2">THREAT INTELLIGENCE</h3>
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-gray-400">BEST</span>
-                  <span className="text-xs font-bold text-cyan-400">
-                    {regionalData.best_visibility_region.region} - {regionalData.best_visibility_region.visibility_percentage.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-gray-400">WORST</span>
-                  <span className="text-xs font-bold text-purple-400">
-                    {regionalData.worst_visibility_region.region} - {regionalData.worst_visibility_region.visibility_percentage.toFixed(1)}%
-                  </span>
-                </div>
+                {regionalData.threat_intelligence.highest_risk_region && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-400">HIGHEST RISK</span>
+                    <span className="text-xs font-bold text-purple-400">
+                      {regionalData.threat_intelligence.highest_risk_region}
+                    </span>
+                  </div>
+                )}
+                {regionalData.threat_intelligence.most_secure_region && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-400">MOST SECURE</span>
+                    <span className="text-xs font-bold text-cyan-400">
+                      {regionalData.threat_intelligence.most_secure_region}
+                    </span>
+                  </div>
+                )}
+                {regionalData.threat_intelligence.geographic_balance && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-400">BALANCE SCORE</span>
+                    <span className="text-xs font-bold text-white">
+                      {regionalData.threat_intelligence.geographic_balance.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
