@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Building, Users, Eye, AlertTriangle, Activity, Briefcase, Target, Database } from 'lucide-react';
+import { Building, Users, Eye, AlertTriangle, Activity, Briefcase, Target, Database, Network, Shield, Layers, GitBranch, X, ChevronRight } from 'lucide-react';
 import * as THREE from 'three';
 
 const BUandApplicationView = () => {
@@ -8,14 +8,18 @@ const BUandApplicationView = () => {
   const [loading, setLoading] = useState(true);
   const [selectedView, setSelectedView] = useState('bu');
   const [selectedItem, setSelectedItem] = useState(null);
+  const [hoveredNode, setHoveredNode] = useState(null);
+  const [detailPanel, setDetailPanel] = useState(false);
+  const [searchResults, setSearchResults] = useState(null);
   const hierarchyRef = useRef(null);
-  const sankeyRef = useRef(null);
-  const bubbleRef = useRef(null);
+  const treemapRef = useRef(null);
+  const flowRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
   const frameRef = useRef(null);
-  const sankeyFrameRef = useRef(null);
-  const bubbleFrameRef = useRef(null);
+  const nodesRef = useRef([]);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const mouseRef = useRef(new THREE.Vector2());
 
   useEffect(() => {
     const fetchData = async () => {
@@ -33,7 +37,7 @@ const BUandApplicationView = () => {
         const buData = await buResponse.json();
         const cioDataRaw = await cioResponse.json();
 
-        // Process and set business unit data
+        // Process business unit data
         setBusinessData({
           business_unit_breakdown: Object.entries(buData.business_intelligence || {}).map(([name, count]) => {
             const analytics = buData.bu_security_analysis?.[name] || {};
@@ -48,7 +52,9 @@ const BUandApplicationView = () => {
               regions: analytics.regions || [],
               infrastructure_types: analytics.infrastructure_types || [],
               cmdb_coverage: analytics.cmdb_coverage || 0,
-              tanium_coverage: analytics.tanium_coverage || 0
+              tanium_coverage: analytics.tanium_coverage || 0,
+              geographic_spread: analytics.geographic_spread || 0,
+              infrastructure_diversity: analytics.infrastructure_diversity || 0
             };
           }).sort((a, b) => b.total_hosts - a.total_hosts),
           total_assets: buData.organizational_analytics?.total_assets || 0,
@@ -57,7 +63,7 @@ const BUandApplicationView = () => {
           risk_assessment: buData.organizational_analytics?.risk_assessment || {}
         });
 
-        // Process and set CIO data
+        // Process CIO data
         setCioData({
           cio_breakdown: Object.entries(cioDataRaw.operative_intelligence || {}).map(([name, count]) => {
             const analytics = cioDataRaw.leadership_analysis?.[name] || {};
@@ -83,17 +89,6 @@ const BUandApplicationView = () => {
 
       } catch (error) {
         console.error('Error:', error);
-        setBusinessData({
-          business_unit_breakdown: [],
-          total_assets: 0,
-          security_leaders: [],
-          vulnerable_units: []
-        });
-        setCioData({
-          cio_breakdown: [],
-          total_assets: 0,
-          executive_summary: {}
-        });
       } finally {
         setLoading(false);
       }
@@ -104,7 +99,19 @@ const BUandApplicationView = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // 3D Organizational Hierarchy Visualization
+  const searchUnitHosts = async (unitName) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/host_search?q=${unitName}`);
+      const data = await response.json();
+      setSearchResults(data);
+      return data;
+    } catch (error) {
+      console.error('Search error:', error);
+      return null;
+    }
+  };
+
+  // 3D Organizational Hierarchy - Tree structure for BU/CIO relationships
   useEffect(() => {
     if (!hierarchyRef.current || !businessData || !cioData || loading) return;
 
@@ -137,42 +144,50 @@ const BUandApplicationView = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     hierarchyRef.current.appendChild(renderer.domElement);
 
-    const nodes = [];
+    nodesRef.current = [];
     const connections = [];
     
-    // Get data based on selected view
+    // Get data based on view
     const viewData = selectedView === 'bu' 
       ? businessData.business_unit_breakdown || []
       : cioData.cio_breakdown || [];
     
     const maxHosts = Math.max(...viewData.map(d => d.total_hosts), 1);
     
-    // Central core
-    const coreGeometry = new THREE.IcosahedronGeometry(10, 2);
+    // Central organization node
+    const coreGeometry = new THREE.OctahedronGeometry(12, 2);
     const coreMaterial = new THREE.MeshPhongMaterial({
       color: 0x00d4ff,
       emissive: 0x00d4ff,
       emissiveIntensity: 0.2,
-      wireframe: true,
+      wireframe: false,
       transparent: true,
       opacity: 0.8
     });
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
     scene.add(core);
     
-    // Create nodes for each business unit/CIO
+    // Create hierarchical levels
+    const levels = 3;
+    const itemsPerLevel = Math.ceil(viewData.length / levels);
+    
     viewData.slice(0, 20).forEach((item, index) => {
-      const angle = (index / Math.min(viewData.length, 20)) * Math.PI * 2;
-      const radius = 60;
+      const level = Math.floor(index / itemsPerLevel);
+      const levelRadius = 30 + level * 40;
+      const angleInLevel = (index % itemsPerLevel) / itemsPerLevel * Math.PI * 2;
+      const verticalOffset = (level - 1) * 30;
+      
+      const x = Math.cos(angleInLevel) * levelRadius;
+      const z = Math.sin(angleInLevel) * levelRadius;
+      const y = verticalOffset;
       
       const nodeGroup = new THREE.Group();
       
-      // Node size based on total hosts
-      const nodeSize = 5 + (item.total_hosts / maxHosts) * 15;
+      // Node size based on hosts
+      const nodeSize = 4 + (item.total_hosts / maxHosts) * 10;
       
-      // Node geometry
+      // Main node sphere
       const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
-      
       const nodeMaterial = new THREE.MeshPhongMaterial({
         color: item.status === 'CRITICAL' ? 0xa855f7 :
                item.status === 'WARNING' ? 0xffaa00 : 0x00d4ff,
@@ -183,9 +198,11 @@ const BUandApplicationView = () => {
       });
       
       const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+      node.userData = item;
+      nodesRef.current.push(node);
       nodeGroup.add(node);
       
-      // Visibility indicator sphere inside
+      // Visibility indicator (inner sphere)
       const visRadius = nodeSize * (item.visibility_percentage / 100);
       const visGeometry = new THREE.SphereGeometry(visRadius, 12, 12);
       const visMaterial = new THREE.MeshPhongMaterial({
@@ -199,21 +216,27 @@ const BUandApplicationView = () => {
       const visSphere = new THREE.Mesh(visGeometry, visMaterial);
       nodeGroup.add(visSphere);
       
-      // Position node
-      nodeGroup.position.x = Math.cos(angle) * radius;
-      nodeGroup.position.z = Math.sin(angle) * radius;
-      nodeGroup.position.y = (Math.random() - 0.5) * 20;
+      // Add organizational rings for structure
+      const ringGeometry = new THREE.RingGeometry(nodeSize + 2, nodeSize + 3, 32);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: item.status === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide
+      });
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.lookAt(camera.position);
+      nodeGroup.add(ring);
       
-      nodeGroup.userData = item;
-      nodes.push(nodeGroup);
+      nodeGroup.position.set(x, y, z);
       scene.add(nodeGroup);
       
-      // Connection to center
-      const points = [
-        new THREE.Vector3(0, 0, 0),
-        nodeGroup.position
-      ];
-      const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+      // Connection to core or parent level
+      const connectionPoints = level === 0 
+        ? [new THREE.Vector3(0, 0, 0), new THREE.Vector3(x, y, z)]
+        : [new THREE.Vector3(x * 0.5, (level - 1) * 30, z * 0.5), new THREE.Vector3(x, y, z)];
+      
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints(connectionPoints);
       const lineMaterial = new THREE.LineBasicMaterial({
         color: item.status === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
         transparent: true,
@@ -224,7 +247,7 @@ const BUandApplicationView = () => {
       scene.add(line);
     });
     
-    // Add particles
+    // Add data flow particles
     const particleCount = 500;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
@@ -262,6 +285,50 @@ const BUandApplicationView = () => {
     camera.position.set(100, 80, 150);
     camera.lookAt(0, 0, 0);
     
+    // Mouse interaction
+    const handleMouseMove = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(nodesRef.current);
+      
+      nodesRef.current.forEach(node => {
+        node.scale.setScalar(1);
+      });
+      
+      if (intersects.length > 0) {
+        const hoveredNode = intersects[0].object;
+        hoveredNode.scale.setScalar(1.2);
+        setHoveredNode(hoveredNode.userData);
+        document.body.style.cursor = 'pointer';
+      } else {
+        setHoveredNode(null);
+        document.body.style.cursor = 'default';
+      }
+    };
+
+    const handleClick = async (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(nodesRef.current);
+      
+      if (intersects.length > 0) {
+        const clickedNode = intersects[0].object;
+        const unitName = clickedNode.userData.business_unit || clickedNode.userData.cio;
+        await searchUnitHosts(unitName);
+        setSelectedItem(clickedNode.userData);
+        setDetailPanel(true);
+      }
+    };
+
+    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    renderer.domElement.addEventListener('click', handleClick);
+    
     // Animation
     const animate = () => {
       if (!sceneRef.current) return;
@@ -269,11 +336,6 @@ const BUandApplicationView = () => {
       
       core.rotation.x += 0.005;
       core.rotation.y += 0.005;
-      
-      nodes.forEach((nodeGroup, index) => {
-        nodeGroup.rotation.y += 0.01;
-        nodeGroup.position.y += Math.sin(Date.now() * 0.001 + index) * 0.05;
-      });
       
       particles.rotation.y += 0.001;
       
@@ -287,17 +349,9 @@ const BUandApplicationView = () => {
     
     animate();
 
-    const handleResize = () => {
-      if (!hierarchyRef.current || !camera || !renderer) return;
-      camera.aspect = hierarchyRef.current.clientWidth / hierarchyRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(hierarchyRef.current.clientWidth, hierarchyRef.current.clientHeight);
-    };
-    
-    window.addEventListener('resize', handleResize);
-    
     return () => {
-      window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('click', handleClick);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       if (rendererRef.current) {
         rendererRef.current.dispose();
@@ -308,9 +362,9 @@ const BUandApplicationView = () => {
     };
   }, [businessData, cioData, selectedView, loading]);
 
-  // Sankey Diagram for visibility flow
+  // Interactive Treemap for BU distribution
   useEffect(() => {
-    const canvas = sankeyRef.current;
+    const canvas = treemapRef.current;
     if (!canvas || !businessData || !cioData) return;
 
     const ctx = canvas.getContext('2d');
@@ -319,59 +373,95 @@ const BUandApplicationView = () => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
-    const animate = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    const data = selectedView === 'bu' 
+      ? businessData.business_unit_breakdown?.slice(0, 10) || []
+      : cioData.cio_breakdown?.slice(0, 10) || [];
+    
+    const total = data.reduce((sum, item) => sum + item.total_hosts, 1);
+
+    const drawTreemap = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const viewData = selectedView === 'bu' ? businessData.business_unit_breakdown :
-                      cioData.cio_breakdown || [];
-
-      const flowHeight = canvas.height / Math.min(viewData.length || 1, 10);
+      let currentX = 2;
+      let currentY = 2;
+      let rowHeight = canvas.height - 4;
       
-      viewData.slice(0, 10).forEach((item, index) => {
-        const y = index * flowHeight + flowHeight / 2;
-        const flowWidth = (canvas.width * 0.7) * (item.percentage / 100);
+      data.forEach((item, index) => {
+        const width = ((item.total_hosts / total) * (canvas.width - 4));
         
-        ctx.strokeStyle = item.status === 'CRITICAL' ? '#a855f7' :
-                         item.status === 'WARNING' ? '#ffaa00' : '#00d4ff';
-        ctx.lineWidth = flowHeight * 0.6;
-        ctx.globalAlpha = 0.6;
-        ctx.lineCap = 'round';
+        // Draw rectangle with gradient
+        const gradient = ctx.createLinearGradient(currentX, currentY, currentX + width, currentY + rowHeight);
         
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(flowWidth, y);
-        ctx.stroke();
-        
-        ctx.globalAlpha = 1;
-        
-        // Label
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 10px monospace';
-        ctx.fillText(
-          `${(item.business_unit || item.cio || '').substring(0, 20)}`,
-          5,
-          y - flowHeight / 4
-        );
-        
-        // Percentage
-        ctx.fillStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
-        ctx.fillText(`${item.percentage?.toFixed(1)}%`, flowWidth + 10, y);
-      });
+        if (item.status === 'CRITICAL') {
+          gradient.addColorStop(0, 'rgba(168, 85, 247, 0.8)');
+          gradient.addColorStop(1, 'rgba(168, 85, 247, 0.3)');
+        } else if (item.status === 'WARNING') {
+          gradient.addColorStop(0, 'rgba(255, 170, 0, 0.8)');
+          gradient.addColorStop(1, 'rgba(255, 170, 0, 0.3)');
+        } else {
+          gradient.addColorStop(0, 'rgba(0, 212, 255, 0.8)');
+          gradient.addColorStop(1, 'rgba(0, 212, 255, 0.3)');
+        }
 
-      sankeyFrameRef.current = requestAnimationFrame(animate);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(currentX, currentY, width - 2, rowHeight);
+
+        // Border
+        ctx.strokeStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(currentX, currentY, width - 2, rowHeight);
+
+        // Text if space allows
+        if (width > 40) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          const name = (item.business_unit || item.cio || '').substring(0, Math.floor(width / 8));
+          ctx.fillText(name, currentX + width / 2, currentY + rowHeight / 2 - 10);
+          
+          ctx.font = 'bold 14px monospace';
+          ctx.fillStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
+          ctx.fillText(`${item.visibility_percentage.toFixed(0)}%`, currentX + width / 2, currentY + rowHeight / 2 + 10);
+        }
+
+        currentX += width;
+      });
     };
 
-    animate();
+    const handleCanvasClick = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      
+      // Determine which section was clicked
+      let currentX = 2;
+      const total = data.reduce((sum, item) => sum + item.total_hosts, 1);
+      
+      for (const item of data) {
+        const width = ((item.total_hosts / total) * (canvas.width - 4));
+        if (x >= currentX && x < currentX + width) {
+          setSelectedItem(item);
+          searchUnitHosts(item.business_unit || item.cio);
+          setDetailPanel(true);
+          break;
+        }
+        currentX += width;
+      }
+    };
+
+    canvas.addEventListener('click', handleCanvasClick);
+    drawTreemap();
 
     return () => {
-      if (sankeyFrameRef.current) cancelAnimationFrame(sankeyFrameRef.current);
+      canvas.removeEventListener('click', handleCanvasClick);
     };
   }, [businessData, cioData, selectedView]);
 
-  // Bubble Chart
+  // Organization Flow visualization
   useEffect(() => {
-    const canvas = bubbleRef.current;
+    const canvas = flowRef.current;
     if (!canvas || !businessData || !cioData) return;
 
     const ctx = canvas.getContext('2d');
@@ -380,73 +470,53 @@ const BUandApplicationView = () => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 
-    const viewData = selectedView === 'bu' ? businessData.business_unit_breakdown :
-                    cioData.cio_breakdown || [];
-
-    const bubbles = viewData.slice(0, 10).map((item) => ({
-      x: Math.random() * (canvas.width - 100) + 50,
-      y: Math.random() * (canvas.height - 100) + 50,
-      radius: Math.max(20, Math.min(50, Math.sqrt(item.total_hosts) * 2)),
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: (Math.random() - 0.5) * 0.5,
-      data: item
-    }));
+    let animationId;
+    let flowOffset = 0;
 
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      bubbles.forEach(bubble => {
-        // Update position
-        bubble.x += bubble.vx;
-        bubble.y += bubble.vy;
+      flowOffset += 2;
+      if (flowOffset > 20) flowOffset = 0;
+
+      const data = selectedView === 'bu' 
+        ? businessData.business_unit_breakdown?.slice(0, 5) || []
+        : cioData.cio_breakdown?.slice(0, 5) || [];
+
+      data.forEach((item, index) => {
+        const y = (index + 1) * (canvas.height / 6);
+        const width = (canvas.width - 100) * (item.visibility_percentage / 100);
         
-        // Bounce off walls
-        if (bubble.x - bubble.radius < 0 || bubble.x + bubble.radius > canvas.width) {
-          bubble.vx *= -1;
-        }
-        if (bubble.y - bubble.radius < 0 || bubble.y + bubble.radius > canvas.height) {
-          bubble.vy *= -1;
-        }
-        
-        // Draw bubble
-        const gradient = ctx.createRadialGradient(
-          bubble.x, bubble.y, 0,
-          bubble.x, bubble.y, bubble.radius
-        );
-        
-        if (bubble.data.status === 'CRITICAL') {
-          gradient.addColorStop(0, 'rgba(168, 85, 247, 0.8)');
-          gradient.addColorStop(1, 'rgba(168, 85, 247, 0.2)');
-        } else {
-          gradient.addColorStop(0, 'rgba(0, 212, 255, 0.8)');
-          gradient.addColorStop(1, 'rgba(0, 212, 255, 0.2)');
-        }
-        
-        ctx.fillStyle = gradient;
+        // Flow effect
+        ctx.strokeStyle = item.status === 'CRITICAL' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(0, 212, 255, 0.3)';
+        ctx.lineWidth = 20;
+        ctx.setLineDash([10, 10]);
+        ctx.lineDashOffset = -flowOffset;
         ctx.beginPath();
-        ctx.arc(bubble.x, bubble.y, bubble.radius, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(50, y);
+        ctx.lineTo(50 + width, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
         
-        // Draw percentage
+        // Labels
         ctx.fillStyle = '#ffffff';
-        ctx.font = `bold ${Math.max(10, bubble.radius / 3)}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(
-          `${bubble.data.visibility_percentage?.toFixed(0)}%`,
-          bubble.x,
-          bubble.y
-        );
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText((item.business_unit || item.cio || '').substring(0, 15), 5, y + 3);
+        
+        ctx.fillStyle = item.status === 'CRITICAL' ? '#a855f7' : '#00d4ff';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${item.visibility_percentage.toFixed(1)}%`, canvas.width - 5, y + 3);
       });
 
-      bubbleFrameRef.current = requestAnimationFrame(animate);
+      animationId = requestAnimationFrame(animate);
     };
 
     animate();
 
     return () => {
-      if (bubbleFrameRef.current) cancelAnimationFrame(bubbleFrameRef.current);
+      if (animationId) cancelAnimationFrame(animationId);
     };
   }, [businessData, cioData, selectedView]);
 
@@ -462,11 +532,9 @@ const BUandApplicationView = () => {
   }
 
   const currentData = selectedView === 'bu' ? businessData?.business_unit_breakdown : cioData?.cio_breakdown || [];
-  const totalAssets = selectedView === 'bu' ? businessData?.total_assets : cioData?.total_assets || 0;
   const avgVisibility = currentData.length > 0
     ? currentData.reduce((sum, item) => sum + (item.visibility_percentage || 0), 0) / currentData.length
     : 0;
-  const criticalCount = currentData.filter(item => item.status === 'CRITICAL').length;
 
   return (
     <div className="h-full flex flex-col p-4">
@@ -476,7 +544,7 @@ const BUandApplicationView = () => {
             <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
             <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
             <span className="text-white text-sm">
-              {selectedView === 'bu' ? 'Business unit' : 'CIO'} visibility at {avgVisibility.toFixed(1)}% - {criticalCount} critical {selectedView === 'bu' ? 'units' : 'leaders'}
+              Organizational visibility at {avgVisibility.toFixed(1)}%
             </span>
           </div>
         </div>
@@ -487,7 +555,7 @@ const BUandApplicationView = () => {
         <div className="col-span-7">
           <div className="h-full glass-panel rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-cyan-400">ORGANIZATIONAL VISIBILITY</h2>
+              <h2 className="text-lg font-bold text-cyan-400">ORGANIZATIONAL HIERARCHY</h2>
               <div className="flex gap-2">
                 <button
                   onClick={() => setSelectedView('bu')}
@@ -509,12 +577,25 @@ const BUandApplicationView = () => {
                   }`}
                 >
                   <Users className="w-3 h-3" />
-                  CIO
+                  CIO VIEW
                 </button>
               </div>
             </div>
             
             <div ref={hierarchyRef} className="w-full" style={{ height: 'calc(100% - 40px)' }} />
+            
+            {hoveredNode && (
+              <div className="absolute bottom-4 left-4 bg-black/95 border border-cyan-400/50 rounded-lg p-3">
+                <div className="text-sm font-bold text-cyan-400">
+                  {hoveredNode.business_unit || hoveredNode.cio}
+                </div>
+                <div className="text-xs text-white mt-1">
+                  <div>Hosts: {hoveredNode.total_hosts?.toLocaleString()}</div>
+                  <div>Coverage: {hoveredNode.visibility_percentage?.toFixed(1)}%</div>
+                  <div className="text-cyan-400 mt-1">Click for details →</div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -540,137 +621,118 @@ const BUandApplicationView = () => {
             </div>
           </div>
 
-          {/* Visibility Flow */}
+          {/* Treemap */}
           <div className="glass-panel rounded-xl p-3">
-            <h3 className="text-sm font-bold text-purple-400 mb-2">VISIBILITY FLOW</h3>
-            <canvas ref={sankeyRef} className="w-full h-32" />
+            <h3 className="text-sm font-bold text-purple-400 mb-2">DISTRIBUTION MAP</h3>
+            <canvas ref={treemapRef} className="w-full h-32 cursor-pointer" />
           </div>
 
-          {/* Bubble Chart */}
+          {/* Flow Visualization */}
           <div className="glass-panel rounded-xl p-3">
-            <h3 className="text-sm font-bold text-cyan-400 mb-2">RELATIVE SCALE</h3>
-            <canvas ref={bubbleRef} className="w-full h-32" />
+            <h3 className="text-sm font-bold text-cyan-400 mb-2">VISIBILITY FLOW</h3>
+            <canvas ref={flowRef} className="w-full h-32" />
           </div>
-
-          {/* Detail Cards */}
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {currentData.slice(0, 10).map((item, index) => {
-              const name = item.business_unit || item.cio || 'Unknown';
-              
-              return (
-                <div
-                  key={`${selectedView}-${index}`}
-                  className={`glass-panel rounded-lg p-2.5 cursor-pointer transition-all hover:scale-102 ${
-                    selectedItem === name ? 'border-cyan-400' : ''
-                  }`}
-                  onClick={() => setSelectedItem(name)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="text-xs font-bold text-white truncate max-w-[180px]">
-                        {name}
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        {item.total_hosts?.toLocaleString() || 0} hosts ({item.percentage?.toFixed(1)}% of total)
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-xl font-bold ${
-                        item.status === 'CRITICAL' ? 'text-purple-400' :
-                        item.status === 'WARNING' ? 'text-yellow-400' :
-                        'text-cyan-400'
-                      }`}>
-                        {item.visibility_percentage?.toFixed(1) || '0.0'}%
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-2 h-2 bg-black/50 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full transition-all duration-500"
-                      style={{
-                        width: `${item.visibility_percentage || 0}%`,
-                        background: item.status === 'CRITICAL' 
-                          ? 'linear-gradient(90deg, #a855f7, #ff00ff)'
-                          : 'linear-gradient(90deg, #00d4ff, #0099ff)'
-                      }}
-                    />
-                  </div>
-                  
-                  <div className="mt-1 flex justify-between items-center">
-                    <span className="text-xs text-cyan-400">
-                      <Eye className="w-3 h-3 inline mr-1" />
-                      {item.visible_hosts?.toLocaleString() || 0}
-                    </span>
-                    <span className={`text-xs font-bold ${
-                      item.status === 'CRITICAL' ? 'text-purple-400' :
-                      item.status === 'WARNING' ? 'text-yellow-400' :
-                      'text-cyan-400'
-                    }`}>
-                      {item.status || 'UNKNOWN'}
-                    </span>
-                  </div>
-
-                  {/* Additional info for selected item */}
-                  {selectedItem === name && (
-                    <div className="mt-2 pt-2 border-t border-white/10 text-xs">
-                      {selectedView === 'bu' ? (
-                        <div>
-                          <div className="text-gray-400">Regions: {(item.regions || []).slice(0, 3).join(', ') || 'None'}</div>
-                          <div className="text-gray-400">CMDB: {item.cmdb_coverage?.toFixed(1) || '0.0'}%</div>
-                          <div className="text-gray-400">Tanium: {item.tanium_coverage?.toFixed(1) || '0.0'}%</div>
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="text-gray-400">Tier: {item.leadership_tier}</div>
-                          <div className="text-gray-400">Span of Control: {item.span_of_control}</div>
-                          <div className="text-gray-400">BUs: {(item.business_units || []).slice(0, 2).join(', ') || 'None'}</div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Risk Assessment (BU View only) */}
-          {selectedView === 'bu' && businessData?.risk_assessment?.high_risk_units?.length > 0 && (
-            <div className="glass-panel rounded-xl p-3 border border-red-500/30">
-              <h3 className="text-sm font-bold text-red-400 mb-2">HIGH RISK UNITS</h3>
-              <div className="text-xs space-y-1">
-                {businessData.risk_assessment.high_risk_units.slice(0, 3).map((unit, idx) => (
-                  <div key={idx} className="text-white">• {unit}</div>
-                ))}
-                <div className="text-red-400 mt-2">
-                  {businessData.risk_assessment.assets_at_risk?.toLocaleString() || 0} assets at risk
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Governance Analytics (CIO View only) */}
-          {selectedView === 'cio' && cioData?.governance_analytics && (
-            <div className="glass-panel rounded-xl p-3">
-              <h3 className="text-sm font-bold text-cyan-400 mb-2">GOVERNANCE METRICS</h3>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <div className="text-gray-400">Executives</div>
-                  <div className="text-lg font-bold text-white">
-                    {cioData.governance_analytics.governance_distribution?.executive_leaders || 0}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-gray-400">Avg Portfolio</div>
-                  <div className="text-lg font-bold text-cyan-400">
-                    {cioData.governance_analytics.average_portfolio_size?.toLocaleString() || 0}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
+
+      {/* Detail Panel */}
+      {detailPanel && selectedItem && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-6">
+          <div className="bg-black border-2 border-cyan-400/50 rounded-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="p-4 border-b border-cyan-400/30 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-cyan-400">
+                {(selectedItem.business_unit || selectedItem.cio || '').toUpperCase()} ANALYSIS
+              </h2>
+              <button 
+                onClick={() => {
+                  setDetailPanel(false);
+                  setSelectedItem(null);
+                  setSearchResults(null);
+                }}
+                className="text-white hover:text-cyan-400 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[calc(80vh-80px)]">
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-black/50 border border-cyan-400/30 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-white">{selectedItem.total_hosts?.toLocaleString()}</div>
+                  <div className="text-xs text-gray-400">Total Hosts</div>
+                </div>
+                <div className="bg-black/50 border border-cyan-400/30 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-cyan-400">{selectedItem.visibility_percentage?.toFixed(1)}%</div>
+                  <div className="text-xs text-gray-400">Visibility Coverage</div>
+                </div>
+                <div className="bg-black/50 border border-purple-400/30 rounded-lg p-4">
+                  <div className={`text-2xl font-bold ${
+                    selectedItem.status === 'CRITICAL' ? 'text-purple-400' :
+                    selectedItem.status === 'WARNING' ? 'text-yellow-400' :
+                    'text-cyan-400'
+                  }`}>
+                    {selectedItem.status}
+                  </div>
+                  <div className="text-xs text-gray-400">Security Status</div>
+                </div>
+              </div>
+
+              {selectedView === 'bu' && selectedItem.regions && (
+                <div className="mb-4">
+                  <h3 className="text-sm font-bold text-cyan-400 mb-2">GEOGRAPHIC SPREAD</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedItem.regions.slice(0, 10).map((region, idx) => (
+                      <span key={idx} className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/30 rounded text-xs text-cyan-400">
+                        {region}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {searchResults && searchResults.hosts && (
+                <div className="mt-6">
+                  <h3 className="text-lg font-bold text-cyan-400 mb-3">SAMPLE HOSTS</h3>
+                  <div className="bg-black/50 border border-cyan-400/30 rounded-lg overflow-hidden">
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-black/70 sticky top-0">
+                          <tr className="border-b border-cyan-400/30">
+                            <th className="text-left p-2 text-cyan-400">Host</th>
+                            <th className="text-left p-2 text-cyan-400">Infrastructure</th>
+                            <th className="text-left p-2 text-cyan-400">Region</th>
+                            <th className="text-center p-2 text-cyan-400">CMDB</th>
+                            <th className="text-center p-2 text-cyan-400">Tanium</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {searchResults.hosts.slice(0, 20).map((host, idx) => (
+                            <tr key={idx} className="border-b border-gray-800 hover:bg-cyan-400/5">
+                              <td className="p-2 text-white font-mono">{host.host}</td>
+                              <td className="p-2 text-gray-400">{host.infrastructure_type}</td>
+                              <td className="p-2 text-gray-400">{host.region}</td>
+                              <td className="p-2 text-center">
+                                {host.present_in_cmdb?.toLowerCase().includes('yes') ? 
+                                  <span className="text-cyan-400">✓</span> : 
+                                  <span className="text-purple-400">✗</span>}
+                              </td>
+                              <td className="p-2 text-center">
+                                {host.tanium_coverage?.toLowerCase().includes('tanium') ? 
+                                  <span className="text-cyan-400">✓</span> : 
+                                  <span className="text-purple-400">✗</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

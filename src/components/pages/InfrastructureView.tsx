@@ -1,15 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { Server, Cloud, Database, Monitor, AlertTriangle, Eye, Activity } from 'lucide-react';
+import { Server, Cloud, Database, Monitor, AlertTriangle, Eye, Activity, Cpu, Layers, Network, HardDrive, Zap, X, ChevronRight } from 'lucide-react';
 
 const InfrastructureView = () => {
   const [infrastructureData, setInfrastructureData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState(null);
   const [hoveredInfra, setHoveredInfra] = useState(null);
+  const [detailPanel, setDetailPanel] = useState(false);
+  const [searchResults, setSearchResults] = useState(null);
   const stackRef = useRef(null);
+  const treemapRef = useRef(null);
+  const networkRef = useRef(null);
   const [viewAngle, setViewAngle] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const rendererRef = useRef(null);
+  const sceneRef = useRef(null);
+  const layersRef = useRef([]);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const mouseRef = useRef(new THREE.Vector2());
 
   useEffect(() => {
     const fetchData = async () => {
@@ -21,25 +30,6 @@ const InfrastructureView = () => {
         setInfrastructureData(data);
       } catch (error) {
         console.error('Error:', error);
-        setInfrastructureData({
-          infrastructure_matrix: {},
-          detailed_data: [],
-          regional_analysis: {},
-          business_unit_analysis: {},
-          total_types: 0,
-          modernization_analysis: {
-            modernization_score: 0,
-            modernization_percentage: 0,
-            legacy_systems: 0,
-            cloud_adoption: 0
-          },
-          distribution: {
-            top_5: [],
-            total_instances: 0,
-            diversity_score: 0,
-            concentration_risk: 0
-          }
-        });
       } finally {
         setLoading(false);
       }
@@ -50,10 +40,31 @@ const InfrastructureView = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const searchInfrastructureHosts = async (infraType) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/host_search?q=${infraType}`);
+      const data = await response.json();
+      setSearchResults(data);
+      return data;
+    } catch (error) {
+      console.error('Search error:', error);
+      return null;
+    }
+  };
+
+  // 3D Layered Stack - Infrastructure types are LAYERS, not random shapes
   useEffect(() => {
     if (!stackRef.current || !infrastructureData || loading) return;
 
+    if (rendererRef.current) {
+      rendererRef.current.dispose();
+      if (stackRef.current.contains(rendererRef.current.domElement)) {
+        stackRef.current.removeChild(rendererRef.current.domElement);
+      }
+    }
+
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
     scene.fog = new THREE.FogExp2(0x000000, 0.002);
     
     const camera = new THREE.PerspectiveCamera(
@@ -68,6 +79,7 @@ const InfrastructureView = () => {
       alpha: true,
       powerPreference: "high-performance"
     });
+    rendererRef.current = renderer;
     
     renderer.setSize(stackRef.current.clientWidth, stackRef.current.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
@@ -78,73 +90,80 @@ const InfrastructureView = () => {
     const infrastructureTypes = infrastructureData.detailed_data || [];
     const maxHosts = Math.max(...infrastructureTypes.map((t) => t.frequency), 1);
     
-    const layers = [];
-    const clickableObjects = [];
+    layersRef.current = [];
     
+    // Create stacked layers - each infrastructure type is a layer in the stack
     infrastructureTypes.slice(0, 15).forEach((infra, index) => {
       const layerGroup = new THREE.Group();
       
-      // Calculate size based on frequency (number of hosts)
-      const radius = 20 + (infra.frequency / maxHosts) * 60;
-      const height = 8 + (infra.percentage / 10) * 5;
-      const yPosition = index * 20 - (Math.min(infrastructureTypes.length, 15) * 10);
+      // Layer dimensions based on data
+      const width = 100 + (infra.frequency / maxHosts) * 50;
+      const depth = 80 + (infra.frequency / maxHosts) * 40;
+      const height = 8;
+      const yPosition = index * 12 - (Math.min(infrastructureTypes.length, 15) * 6);
       
-      // Main infrastructure ring
-      const ringGeometry = new THREE.TorusGeometry(radius, height/2, 8, 32);
-      const ringMaterial = new THREE.MeshPhongMaterial({
-        color: infra.threat_level === 'CRITICAL' ? 0xff00ff :
+      // Main layer platform
+      const layerGeometry = new THREE.BoxGeometry(width, height, depth);
+      const layerMaterial = new THREE.MeshPhongMaterial({
+        color: infra.threat_level === 'CRITICAL' ? 0xa855f7 :
                infra.threat_level === 'HIGH' ? 0xc084fc :
                infra.threat_level === 'MEDIUM' ? 0xffaa00 : 0x00d4ff,
         transparent: true,
-        opacity: 0.4,
-        emissive: infra.threat_level === 'CRITICAL' ? 0xff00ff : 0x00d4ff,
+        opacity: 0.7,
+        emissive: infra.threat_level === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
         emissiveIntensity: 0.1
       });
       
-      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = yPosition;
-      ring.castShadow = true;
-      ring.receiveShadow = true;
-      layerGroup.add(ring);
+      const layer = new THREE.Mesh(layerGeometry, layerMaterial);
+      layer.position.y = yPosition;
+      layer.castShadow = true;
+      layer.receiveShadow = true;
+      layer.userData = infra;
+      layerGroup.add(layer);
+      layersRef.current.push(layer);
       
-      // Visible portion (inner filled area) - represents percentage
-      const visibleRadius = radius * (infra.percentage / 100);
-      const visibleGeometry = new THREE.CylinderGeometry(visibleRadius, visibleRadius, height, 32);
-      
+      // Visible portion (coverage indicator)
+      const visibleWidth = width * (infra.percentage / 100);
+      const visibleGeometry = new THREE.BoxGeometry(visibleWidth, height + 1, depth + 1);
       const visibleMaterial = new THREE.MeshPhongMaterial({
         color: 0x00d4ff,
         emissive: 0x00d4ff,
         emissiveIntensity: 0.3,
         transparent: true,
-        opacity: 0.8
+        opacity: 0.9
       });
       
       const visibleMesh = new THREE.Mesh(visibleGeometry, visibleMaterial);
-      visibleMesh.position.y = yPosition;
-      visibleMesh.castShadow = true;
-      visibleMesh.userData = infra;
+      visibleMesh.position.set(-(width - visibleWidth) / 2, yPosition, 0);
       layerGroup.add(visibleMesh);
-      clickableObjects.push(visibleMesh);
       
-      // Add floating particles for invisible hosts (gaps)
-      const invisiblePercentage = 100 - infra.percentage;
-      if (invisiblePercentage > 0) {
-        const particleCount = Math.min(Math.floor(invisiblePercentage / 2), 50);
+      // Edge glow effect
+      const edgeGeometry = new THREE.BoxGeometry(width + 2, height + 0.5, depth + 2);
+      const edgeMaterial = new THREE.MeshBasicMaterial({
+        color: infra.threat_level === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
+        transparent: true,
+        opacity: 0.2,
+        wireframe: true
+      });
+      const edgeMesh = new THREE.Mesh(edgeGeometry, edgeMaterial);
+      edgeMesh.position.y = yPosition;
+      layerGroup.add(edgeMesh);
+      
+      // Data flow particles on each layer
+      const particleCount = Math.floor(infra.frequency / 100);
+      if (particleCount > 0) {
         const particlesGeometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         
         for (let i = 0; i < particleCount * 3; i += 3) {
-          const angle = Math.random() * Math.PI * 2;
-          const r = radius + Math.random() * 30;
-          positions[i] = Math.cos(angle) * r;
-          positions[i + 1] = yPosition + (Math.random() - 0.5) * height * 2;
-          positions[i + 2] = Math.sin(angle) * r;
+          positions[i] = (Math.random() - 0.5) * width;
+          positions[i + 1] = yPosition + height;
+          positions[i + 2] = (Math.random() - 0.5) * depth;
         }
         
         particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         const particlesMaterial = new THREE.PointsMaterial({
-          color: 0xff00ff,
+          color: 0x00d4ff,
           size: 2,
           transparent: true,
           opacity: 0.6,
@@ -156,15 +175,32 @@ const InfrastructureView = () => {
         layerGroup.add(particles);
       }
       
-      layerGroup.userData = infra;
-      layers.push(layerGroup);
       scene.add(layerGroup);
     });
 
-    // Add grid helper for reference
+    // Add connection beams between layers
+    for (let i = 0; i < layersRef.current.length - 1; i++) {
+      const layer1 = layersRef.current[i];
+      const layer2 = layersRef.current[i + 1];
+      
+      const connectionGeometry = new THREE.CylinderGeometry(0.5, 0.5, 
+        Math.abs(layer2.position.y - layer1.position.y), 8);
+      const connectionMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00d4ff,
+        transparent: true,
+        opacity: 0.3
+      });
+      
+      const connection = new THREE.Mesh(connectionGeometry, connectionMaterial);
+      connection.position.y = (layer1.position.y + layer2.position.y) / 2;
+      scene.add(connection);
+    }
+
+    // Grid base
     const gridHelper = new THREE.GridHelper(200, 20, 0x00d4ff, 0x00d4ff);
     gridHelper.material.opacity = 0.1;
     gridHelper.material.transparent = true;
+    gridHelper.position.y = -100;
     scene.add(gridHelper);
 
     // Lighting
@@ -176,39 +212,30 @@ const InfrastructureView = () => {
     spotLight1.castShadow = true;
     scene.add(spotLight1);
     
-    const spotLight2 = new THREE.SpotLight(0xff00ff, 0.5);
+    const spotLight2 = new THREE.SpotLight(0xa855f7, 0.5);
     spotLight2.position.set(-100, 200, -100);
     scene.add(spotLight2);
 
     camera.position.set(150, 100, 150);
     camera.lookAt(0, 0, 0);
 
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    const handleClick = (event) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(clickableObjects);
-      
-      if (intersects.length > 0) {
-        setSelectedType(intersects[0].object.userData);
-      }
-    };
-
+    // Mouse interactions
     const handleMouseMove = (event) => {
       const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(clickableObjects);
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(layersRef.current);
+      
+      layersRef.current.forEach(layer => {
+        layer.scale.setScalar(1);
+      });
       
       if (intersects.length > 0) {
-        setHoveredInfra(intersects[0].object.userData);
+        const hoveredLayer = intersects[0].object;
+        hoveredLayer.scale.setScalar(1.05);
+        setHoveredInfra(hoveredLayer.userData);
         document.body.style.cursor = 'pointer';
       } else {
         setHoveredInfra(null);
@@ -216,17 +243,39 @@ const InfrastructureView = () => {
       }
     };
 
-    renderer.domElement.addEventListener('click', handleClick);
-    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    const handleClick = async (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(layersRef.current);
+      
+      if (intersects.length > 0) {
+        const clickedLayer = intersects[0].object;
+        const infraData = clickedLayer.userData;
+        await searchInfrastructureHosts(infraData.type);
+        setSelectedType(infraData);
+        setDetailPanel(true);
+      }
+    };
 
+    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    renderer.domElement.addEventListener('click', handleClick);
+
+    // Animation
     let frameId;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
       
-      layers.forEach((layer, index) => {
-        layer.rotation.y += 0.002 * (index % 2 === 0 ? 1 : -1);
-        layer.children.forEach(child => {
-          if (child.userData.isParticles) {
+      // Animate layers
+      layersRef.current.forEach((layer, index) => {
+        // Subtle floating animation
+        layer.position.x = Math.sin(Date.now() * 0.0005 + index) * 2;
+        
+        // Rotate particles
+        layer.parent.children.forEach(child => {
+          if (child.userData?.isParticles) {
             child.rotation.y += 0.005;
           }
         });
@@ -245,8 +294,8 @@ const InfrastructureView = () => {
 
     return () => {
       if (frameId) cancelAnimationFrame(frameId);
-      renderer.domElement.removeEventListener('click', handleClick);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('click', handleClick);
       if (stackRef.current && renderer.domElement) {
         stackRef.current.removeChild(renderer.domElement);
       }
@@ -254,12 +303,239 @@ const InfrastructureView = () => {
     };
   }, [infrastructureData, viewAngle, zoom, loading]);
 
+  // Interactive Treemap for Infrastructure Distribution
+  useEffect(() => {
+    const canvas = treemapRef.current;
+    if (!canvas || !infrastructureData) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const drawTreemap = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const data = infrastructureData.detailed_data?.slice(0, 10) || [];
+      const total = data.reduce((sum, item) => sum + item.frequency, 0);
+      
+      let currentX = 0;
+      let currentY = 0;
+      let rowHeight = canvas.height;
+      let rowWidth = canvas.width;
+      let rowTotal = 0;
+      let rowItems = [];
+
+      data.forEach((item, index) => {
+        const area = (item.frequency / total) * canvas.width * canvas.height;
+        const width = Math.sqrt(area * (canvas.width / canvas.height));
+        const height = area / width;
+
+        // Draw rectangle with gradient
+        const gradient = ctx.createLinearGradient(currentX, currentY, currentX + width, currentY + height);
+        
+        if (item.threat_level === 'CRITICAL') {
+          gradient.addColorStop(0, 'rgba(168, 85, 247, 0.8)');
+          gradient.addColorStop(1, 'rgba(168, 85, 247, 0.4)');
+        } else if (item.threat_level === 'HIGH') {
+          gradient.addColorStop(0, 'rgba(192, 132, 252, 0.8)');
+          gradient.addColorStop(1, 'rgba(192, 132, 252, 0.4)');
+        } else {
+          gradient.addColorStop(0, 'rgba(0, 212, 255, 0.8)');
+          gradient.addColorStop(1, 'rgba(0, 212, 255, 0.4)');
+        }
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(currentX + 1, currentY + 1, width - 2, height - 2);
+
+        // Draw border
+        ctx.strokeStyle = item.threat_level === 'CRITICAL' ? '#a855f7' : '#00d4ff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(currentX, currentY, width, height);
+
+        // Draw text if space allows
+        if (width > 50 && height > 30) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          // Infrastructure type name
+          const name = item.type.length > 15 ? item.type.substring(0, 15) + '...' : item.type;
+          ctx.fillText(name, currentX + width / 2, currentY + height / 2 - 10);
+          
+          // Percentage
+          ctx.font = 'bold 14px monospace';
+          ctx.fillStyle = item.threat_level === 'CRITICAL' ? '#a855f7' : '#00d4ff';
+          ctx.fillText(`${item.percentage.toFixed(1)}%`, currentX + width / 2, currentY + height / 2 + 10);
+        }
+
+        // Update position for next rectangle
+        currentX += width;
+        if (currentX >= canvas.width - 10) {
+          currentX = 0;
+          currentY += rowHeight;
+          rowHeight = canvas.height - currentY;
+        }
+      });
+    };
+
+    const handleCanvasClick = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      
+      // Determine which section was clicked
+      // (simplified - would need proper treemap click detection)
+      const data = infrastructureData.detailed_data?.slice(0, 10) || [];
+      if (data.length > 0) {
+        const clickedIndex = Math.floor((y / canvas.height) * Math.min(data.length, 3));
+        if (data[clickedIndex]) {
+          setSelectedType(data[clickedIndex]);
+          searchInfrastructureHosts(data[clickedIndex].type);
+          setDetailPanel(true);
+        }
+      }
+    };
+
+    canvas.addEventListener('click', handleCanvasClick);
+    drawTreemap();
+
+    return () => {
+      canvas.removeEventListener('click', handleCanvasClick);
+    };
+  }, [infrastructureData]);
+
+  // Network Graph for Infrastructure Relationships
+  useEffect(() => {
+    const canvas = networkRef.current;
+    if (!canvas || !infrastructureData) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    const nodes = [];
+    const connections = [];
+    
+    // Create nodes for each infrastructure type
+    infrastructureData.detailed_data?.slice(0, 8).forEach((infra, index) => {
+      const angle = (index / 8) * Math.PI * 2;
+      const radius = 80;
+      nodes.push({
+        x: canvas.width / 2 + Math.cos(angle) * radius,
+        y: canvas.height / 2 + Math.sin(angle) * radius,
+        radius: Math.max(10, Math.min(30, Math.sqrt(infra.frequency / 100))),
+        data: infra,
+        vx: 0,
+        vy: 0
+      });
+    });
+
+    // Create connections based on threat level similarity
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        if (nodes[i].data.threat_level === nodes[j].data.threat_level) {
+          connections.push({ from: i, to: j });
+        }
+      }
+    }
+
+    let animationId;
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw connections
+      connections.forEach(conn => {
+        const from = nodes[conn.from];
+        const to = nodes[conn.to];
+        
+        ctx.strokeStyle = 'rgba(0, 212, 255, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+      });
+
+      // Draw and update nodes
+      nodes.forEach((node, index) => {
+        // Apply force to center
+        const dx = canvas.width / 2 - node.x;
+        const dy = canvas.height / 2 - node.y;
+        node.vx += dx * 0.001;
+        node.vy += dy * 0.001;
+        
+        // Apply repulsion between nodes
+        nodes.forEach((other, j) => {
+          if (index !== j) {
+            const dx = node.x - other.x;
+            const dy = node.y - other.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 100) {
+              node.vx += (dx / dist) * 2;
+              node.vy += (dy / dist) * 2;
+            }
+          }
+        });
+        
+        // Apply velocity with damping
+        node.vx *= 0.9;
+        node.vy *= 0.9;
+        node.x += node.vx;
+        node.y += node.vy;
+        
+        // Keep within bounds
+        node.x = Math.max(node.radius, Math.min(canvas.width - node.radius, node.x));
+        node.y = Math.max(node.radius, Math.min(canvas.height - node.radius, node.y));
+        
+        // Draw node
+        const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, node.radius);
+        
+        if (node.data.threat_level === 'CRITICAL') {
+          gradient.addColorStop(0, 'rgba(168, 85, 247, 1)');
+          gradient.addColorStop(1, 'rgba(168, 85, 247, 0.3)');
+        } else {
+          gradient.addColorStop(0, 'rgba(0, 212, 255, 1)');
+          gradient.addColorStop(1, 'rgba(0, 212, 255, 0.3)');
+        }
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw label
+        if (node.radius > 15) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '10px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(node.data.type.substring(0, 10), node.x, node.y);
+        }
+      });
+
+      animationId = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId);
+    };
+  }, [infrastructureData]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full bg-black">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-lg font-bold text-cyan-400">ANALYZING INFRASTRUCTURE TYPES</div>
+          <div className="mt-4 text-lg font-bold text-cyan-400">ANALYZING INFRASTRUCTURE LAYERS</div>
         </div>
       </div>
     );
@@ -269,12 +545,6 @@ const InfrastructureView = () => {
 
   const criticalInfra = infrastructureData.detailed_data?.filter(item => item.threat_level === 'CRITICAL') || [];
   const modernizationPercentage = infrastructureData.modernization_analysis?.modernization_percentage || 0;
-  const legacySystems = infrastructureData.modernization_analysis?.legacy_systems || 0;
-  const cloudAdoption = infrastructureData.modernization_analysis?.cloud_adoption || 0;
-  const totalInstances = infrastructureData.distribution?.total_instances || 0;
-  const totalTypes = infrastructureData.total_types || 0;
-  const concentrationRisk = infrastructureData.distribution?.concentration_risk || 0;
-  const diversityScore = infrastructureData.distribution?.diversity_score || 0;
 
   return (
     <div className="h-full bg-black p-4">
@@ -284,23 +554,24 @@ const InfrastructureView = () => {
             <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
             <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
             <span className="text-white text-sm">
-              {criticalInfra.length} infrastructure types showing high concentration risk ({concentrationRisk.toFixed(1)}% concentration in top type)
+              {criticalInfra.length} infrastructure layers at critical risk level
             </span>
           </div>
         </div>
       )}
 
       <div className="h-full grid grid-cols-12 gap-4">
-        <div className="col-span-8">
+        {/* 3D Layered Stack */}
+        <div className="col-span-7">
           <div className="h-full bg-black/80 border border-white/10 rounded-xl p-4 backdrop-blur-xl">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Server className="w-5 h-5 text-cyan-400" />
-                  INFRASTRUCTURE TYPE DISTRIBUTION
+                  <Layers className="w-5 h-5 text-cyan-400" />
+                  INFRASTRUCTURE STACK VISUALIZATION
                 </h3>
                 <div className="text-xs text-gray-400">
-                  Tracking {totalInstances.toLocaleString()} instances across {totalTypes} types
+                  Click layers to drill down • Each layer represents an infrastructure type
                 </div>
               </div>
               <div className="flex gap-2">
@@ -316,39 +587,27 @@ const InfrastructureView = () => {
                 >
                   ZOOM OUT
                 </button>
-                <button 
-                  onClick={() => {setViewAngle({ x: 0, y: 0 }); setZoom(1);}}
-                  className="px-3 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 text-xs"
-                >
-                  RESET
-                </button>
               </div>
             </div>
             
-            <div 
-              ref={stackRef} 
-              className="w-full"
-              style={{ height: 'calc(100% - 100px)' }}
-            />
+            <div ref={stackRef} className="w-full" style={{ height: 'calc(100% - 60px)' }} />
             
             {hoveredInfra && (
-              <div className="absolute bottom-8 left-8 bg-black/90 border border-cyan-400/50 rounded-lg p-3 backdrop-blur-xl">
+              <div className="absolute bottom-4 left-4 bg-black/90 border border-cyan-400/50 rounded-lg p-3 backdrop-blur-xl">
                 <div className="text-sm font-bold text-cyan-400">{hoveredInfra.type}</div>
                 <div className="text-xs text-white/80 mt-1">
-                  <div>Host Count: {hoveredInfra.frequency?.toLocaleString()}</div>
-                  <div>Percentage: {hoveredInfra.percentage?.toFixed(1)}%</div>
-                  <div>Threat Level: {hoveredInfra.threat_level}</div>
+                  <div>Instances: {hoveredInfra.frequency?.toLocaleString()}</div>
+                  <div>Coverage: {hoveredInfra.percentage?.toFixed(1)}%</div>
+                  <div>Risk: {hoveredInfra.threat_level}</div>
+                  <div className="text-cyan-400 mt-1">Click to explore →</div>
                 </div>
               </div>
             )}
-            
-            <div className="mt-2 text-xs text-white/40">
-              Click infrastructure layers for details • Auto-rotating view • Size = host count, Fill = visibility %
-            </div>
           </div>
         </div>
 
-        <div className="col-span-4 space-y-3">
+        {/* Right Column - Multiple Visualization Types */}
+        <div className="col-span-5 space-y-3">
           {/* Modernization Score */}
           <div className="bg-black/80 border border-white/10 rounded-xl p-4 backdrop-blur-xl">
             <div className="flex items-center gap-2 mb-2">
@@ -360,13 +619,12 @@ const InfrastructureView = () => {
                 {modernizationPercentage.toFixed(1)}%
               </span>
             </div>
-            <div className="text-xs text-white/60 mb-3">MODERNIZATION SCORE</div>
             
             <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-3">
               <div 
                 className="h-full transition-all duration-1000"
                 style={{
-                  width: `${Math.min(100, Math.max(0, modernizationPercentage))}%`,
+                  width: `${modernizationPercentage}%`,
                   background: modernizationPercentage < 30 
                     ? 'linear-gradient(90deg, #ff00ff, #ff00ff)'
                     : modernizationPercentage < 60
@@ -375,150 +633,108 @@ const InfrastructureView = () => {
                 }}
               />
             </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <div className="text-cyan-400 font-bold">{cloudAdoption}</div>
-                <div className="text-gray-400">Cloud Types</div>
-              </div>
-              <div>
-                <div className="text-purple-400 font-bold">{legacySystems}</div>
-                <div className="text-gray-400">Legacy Types</div>
-              </div>
-            </div>
           </div>
 
-          {/* Infrastructure Summary */}
-          <div className="bg-black/80 border border-white/10 rounded-xl p-4 backdrop-blur-xl">
-            <div className="flex items-center gap-2 mb-3">
-              <Activity className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-sm font-bold text-white/60">INFRASTRUCTURE SUMMARY</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="text-2xl font-bold text-white">{totalTypes}</div>
-                <div className="text-xs text-gray-400">TOTAL TYPES</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-purple-400">{criticalInfra.length}</div>
-                <div className="text-xs text-gray-400">CRITICAL</div>
-              </div>
-            </div>
-
-            <div className="mt-3 space-y-1">
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400">Total Instances</span>
-                <span className="text-white">{totalInstances.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400">Diversity Score</span>
-                <span className="text-cyan-400">{diversityScore}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400">Concentration Risk</span>
-                <span className={concentrationRisk > 50 ? 'text-purple-400' : 'text-cyan-400'}>
-                  {concentrationRisk.toFixed(1)}%
-                </span>
-              </div>
-            </div>
+          {/* Interactive Treemap */}
+          <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
+            <h3 className="text-sm font-bold text-white/60 mb-2">INFRASTRUCTURE DISTRIBUTION TREEMAP</h3>
+            <canvas ref={treemapRef} className="w-full h-40 cursor-pointer" />
+            <div className="text-xs text-gray-400 mt-2">Click sections to explore infrastructure types</div>
           </div>
 
-          {selectedType && (
-            <div className="bg-black/80 border border-cyan-400/30 rounded-xl p-4 backdrop-blur-xl">
-              <div className="flex items-center gap-2 mb-3">
-                <Eye className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-sm font-bold text-cyan-400">{selectedType.type?.toUpperCase()}</h3>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-xs text-white/60">HOST COUNT</span>
-                  <span className="text-sm font-bold text-white">{selectedType.frequency?.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-white/60">PERCENTAGE OF TOTAL</span>
-                  <span className="text-sm font-bold text-white">{selectedType.percentage?.toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-white/60">THREAT LEVEL</span>
-                  <span className={`text-sm font-bold ${
-                    selectedType.threat_level === 'CRITICAL' ? 'text-pink-400' :
-                    selectedType.threat_level === 'HIGH' ? 'text-purple-400' :
-                    selectedType.threat_level === 'MEDIUM' ? 'text-yellow-400' :
-                    'text-cyan-400'
-                  }`}>
-                    {selectedType.threat_level}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Top 5 Infrastructure Types */}
-          {infrastructureData.distribution?.top_5 && (
-            <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
-              <h3 className="text-sm font-bold text-white/60 mb-3">TOP 5 INFRASTRUCTURE TYPES</h3>
-              <div className="space-y-2">
-                {infrastructureData.distribution.top_5.map((infra, index) => (
-                  <div key={index} className="bg-gray-900/30 rounded p-2 cursor-pointer hover:bg-gray-800/50 transition-all"
-                       onClick={() => setSelectedType(infra)}>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="text-xs font-bold text-white truncate max-w-[180px]">
-                          {infra.type}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          {infra.frequency?.toLocaleString()} hosts
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-lg font-bold ${
-                          infra.threat_level === 'CRITICAL' ? 'text-pink-400' :
-                          infra.threat_level === 'HIGH' ? 'text-purple-400' :
-                          infra.threat_level === 'MEDIUM' ? 'text-yellow-400' :
-                          'text-cyan-400'
-                        }`}>
-                          {infra.percentage?.toFixed(1)}%
-                        </div>
-                        <div className={`text-xs font-bold ${
-                          infra.threat_level === 'CRITICAL' ? 'text-pink-400' :
-                          infra.threat_level === 'HIGH' ? 'text-purple-400' :
-                          infra.threat_level === 'MEDIUM' ? 'text-yellow-400' :
-                          'text-cyan-400'
-                        }`}>
-                          {infra.threat_level}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Infrastructure Types List */}
-          <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl flex-1 max-h-64 overflow-hidden">
-            <h3 className="text-sm font-bold text-white/60 mb-3">ALL INFRASTRUCTURE TYPES</h3>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {infrastructureData.detailed_data?.slice(0, 20).map((infra, index) => (
-                <div key={index} className="flex justify-between items-center p-1.5 bg-gray-900/30 rounded hover:bg-gray-800/50 transition-all cursor-pointer"
-                     onClick={() => setSelectedType(infra)}>
-                  <span className="text-xs text-white truncate max-w-[150px]">{infra.type}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">{infra.frequency?.toLocaleString()}</span>
-                    <span className={`text-xs font-bold ${
-                      infra.percentage < 30 ? 'text-red-400' :
-                      infra.percentage < 60 ? 'text-yellow-400' :
-                      'text-cyan-400'
-                    }`}>
-                      {infra.percentage?.toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* Network Graph */}
+          <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
+            <h3 className="text-sm font-bold text-white/60 mb-2">THREAT LEVEL NETWORK</h3>
+            <canvas ref={networkRef} className="w-full h-40" />
           </div>
         </div>
       </div>
+
+      {/* Detail Panel */}
+      {detailPanel && selectedType && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-6">
+          <div className="bg-black border-2 border-cyan-400/50 rounded-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="p-4 border-b border-cyan-400/30 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-cyan-400">
+                {selectedType.type?.toUpperCase()} INFRASTRUCTURE ANALYSIS
+              </h2>
+              <button 
+                onClick={() => {
+                  setDetailPanel(false);
+                  setSelectedType(null);
+                  setSearchResults(null);
+                }}
+                className="text-white hover:text-cyan-400 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[calc(80vh-80px)]">
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-black/50 border border-cyan-400/30 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-white">{selectedType.frequency?.toLocaleString()}</div>
+                  <div className="text-xs text-gray-400">Total Instances</div>
+                </div>
+                <div className="bg-black/50 border border-cyan-400/30 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-cyan-400">{selectedType.percentage?.toFixed(1)}%</div>
+                  <div className="text-xs text-gray-400">Infrastructure Share</div>
+                </div>
+                <div className="bg-black/50 border border-purple-400/30 rounded-lg p-4">
+                  <div className={`text-2xl font-bold ${
+                    selectedType.threat_level === 'CRITICAL' ? 'text-purple-400' :
+                    selectedType.threat_level === 'HIGH' ? 'text-purple-400' :
+                    'text-yellow-400'
+                  }`}>
+                    {selectedType.threat_level}
+                  </div>
+                  <div className="text-xs text-gray-400">Threat Level</div>
+                </div>
+              </div>
+
+              {searchResults && searchResults.hosts && (
+                <div className="mt-6">
+                  <h3 className="text-lg font-bold text-cyan-400 mb-3">SAMPLE HOSTS</h3>
+                  <div className="bg-black/50 border border-cyan-400/30 rounded-lg overflow-hidden">
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-black/70 sticky top-0">
+                          <tr className="border-b border-cyan-400/30">
+                            <th className="text-left p-2 text-cyan-400">Host</th>
+                            <th className="text-left p-2 text-cyan-400">Region</th>
+                            <th className="text-left p-2 text-cyan-400">BU</th>
+                            <th className="text-left p-2 text-cyan-400">CMDB</th>
+                            <th className="text-left p-2 text-cyan-400">Tanium</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {searchResults.hosts.slice(0, 20).map((host, idx) => (
+                            <tr key={idx} className="border-b border-gray-800 hover:bg-cyan-400/5">
+                              <td className="p-2 text-white font-mono">{host.host}</td>
+                              <td className="p-2 text-gray-400">{host.region}</td>
+                              <td className="p-2 text-gray-400">{host.business_unit}</td>
+                              <td className="p-2 text-center">
+                                {host.present_in_cmdb?.toLowerCase().includes('yes') ? 
+                                  <span className="text-cyan-400">✓</span> : 
+                                  <span className="text-purple-400">✗</span>}
+                              </td>
+                              <td className="p-2 text-center">
+                                {host.tanium_coverage?.toLowerCase().includes('tanium') ? 
+                                  <span className="text-cyan-400">✓</span> : 
+                                  <span className="text-purple-400">✗</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

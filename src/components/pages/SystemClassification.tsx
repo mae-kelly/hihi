@@ -1,16 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { Monitor, Server, Cloud, Database, Network, AlertTriangle, Activity, Cpu } from 'lucide-react';
+import { Monitor, Server, Cloud, Database, Network, AlertTriangle, Activity, Cpu, HardDrive, Shield, Zap, X, ChevronRight, Layers } from 'lucide-react';
 
 const SystemClassification = () => {
   const [systemData, setSystemData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedSystem, setSelectedSystem] = useState(null);
+  const [hoveredSystem, setHoveredSystem] = useState(null);
+  const [detailView, setDetailView] = useState(false);
+  const [searchResults, setSearchResults] = useState(null);
   const galaxyRef = useRef(null);
+  const sunburstRef = useRef(null);
+  const timelineRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
   const frameRef = useRef(null);
-  const radarRef = useRef(null);
+  const systemNodesRef = useRef([]);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const mouseRef = useRef(new THREE.Vector2());
 
   useEffect(() => {
     const fetchData = async () => {
@@ -22,26 +29,6 @@ const SystemClassification = () => {
         setSystemData(data);
       } catch (error) {
         console.error('Error:', error);
-        setSystemData({
-          system_matrix: {},
-          system_analytics: {},
-          os_distribution: {},
-          version_analysis: {},
-          security_distribution: {},
-          total_systems: 0,
-          modernization_analysis: {
-            legacy_systems: 0,
-            legacy_assets: 0,
-            modernization_priority: [],
-            security_risk_level: 0
-          },
-          taxonomy_intelligence: {
-            os_diversity: 0,
-            dominant_os: 'Unknown',
-            system_sprawl: 0,
-            standardization_score: 0
-          }
-        });
       } finally {
         setLoading(false);
       }
@@ -52,7 +39,19 @@ const SystemClassification = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // 3D System Galaxy Visualization
+  const searchSystemHosts = async (systemName) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/host_search?q=${systemName}`);
+      const data = await response.json();
+      setSearchResults(data);
+      return data;
+    } catch (error) {
+      console.error('Search error:', error);
+      return null;
+    }
+  };
+
+  // 3D OS Galaxy - Systems grouped by OS family
   useEffect(() => {
     if (!galaxyRef.current || !systemData || loading) return;
 
@@ -85,13 +84,15 @@ const SystemClassification = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     galaxyRef.current.appendChild(renderer.domElement);
 
+    systemNodesRef.current = [];
+
     const systems = Object.entries(systemData.system_matrix || {});
     const osTypes = systemData.os_distribution || {};
     
-    // Create central core representing total systems
+    // Central core representing all systems
     const securityRiskLevel = systemData.modernization_analysis?.security_risk_level || 0;
     
-    const coreGeometry = new THREE.SphereGeometry(20, 32, 32);
+    const coreGeometry = new THREE.IcosahedronGeometry(15, 2);
     const coreMaterial = new THREE.MeshPhongMaterial({
       color: securityRiskLevel > 50 ? 0xa855f7 : 0x00d4ff,
       emissive: securityRiskLevel > 50 ? 0xa855f7 : 0x00d4ff,
@@ -102,64 +103,109 @@ const SystemClassification = () => {
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
     scene.add(core);
 
-    // Create OS category rings
-    const categoryGroups = [];
-    Object.entries(osTypes).forEach(([osType, count], catIndex) => {
-      const categoryGroup = new THREE.Group();
-      const orbitRadius = 60 + catIndex * 40;
+    // OS Family Clusters - each OS type gets its own orbital ring
+    const osColors = {
+      'Windows': 0x00d4ff,
+      'Linux': 0x00ff88,
+      'MacOS': 0xff00ff,
+      'Unix': 0xffaa00,
+      'Other': 0xa855f7
+    };
+
+    Object.entries(osTypes).forEach(([osType, count], osIndex) => {
+      if (count === 0) return;
       
-      // Category orbit ring
-      const ringGeometry = new THREE.TorusGeometry(orbitRadius, 1, 8, 100);
+      const orbitRadius = 40 + osIndex * 30;
+      const systemsOfType = systems.filter(([name]) => {
+        const nameLower = name.toLowerCase();
+        if (osType === 'Windows') return nameLower.includes('win');
+        if (osType === 'Linux') return nameLower.includes('linux') || nameLower.includes('ubuntu') || nameLower.includes('centos');
+        if (osType === 'MacOS') return nameLower.includes('mac') || nameLower.includes('osx');
+        if (osType === 'Unix') return nameLower.includes('unix') || nameLower.includes('aix');
+        return true;
+      });
+
+      // Create orbit ring
+      const ringGeometry = new THREE.TorusGeometry(orbitRadius, 0.5, 8, 100);
       const ringMaterial = new THREE.MeshBasicMaterial({
-        color: count < 1000 ? 0xa855f7 : 0x00d4ff,
+        color: osColors[osType] || 0xa855f7,
         transparent: true,
         opacity: 0.2
       });
       const ring = new THREE.Mesh(ringGeometry, ringMaterial);
       ring.rotation.x = Math.PI / 2;
-      categoryGroup.add(ring);
-      
-      // Systems in this OS category
-      const categorySystems = systems.filter(([name]) => {
-        const nameLower = name.toLowerCase();
-        const osTypeLower = osType.toLowerCase();
-        return nameLower.includes(osTypeLower) || 
-               (osTypeLower === 'windows' && nameLower.includes('win')) ||
-               (osTypeLower === 'linux' && (nameLower.includes('ubuntu') || nameLower.includes('centos') || nameLower.includes('rhel')));
-      });
-      
-      categorySystems.slice(0, 10).forEach((system, sysIndex) => {
+      scene.add(ring);
+
+      // Place systems on the orbit
+      systemsOfType.slice(0, 20).forEach((system, sysIndex) => {
         const [systemName, systemCount] = system;
-        const angle = (sysIndex / Math.min(categorySystems.length, 10)) * Math.PI * 2;
-        const x = Math.cos(angle) * orbitRadius;
-        const z = Math.sin(angle) * orbitRadius;
-        const y = (Math.random() - 0.5) * 20;
-        
-        // System node
-        const size = 3 + Math.log(systemCount / 100 + 1) * 3;
         const analytics = systemData.system_analytics?.[systemName] || {};
         
-        const nodeGeometry = new THREE.SphereGeometry(size, 16, 16);
+        const angle = (sysIndex / Math.min(systemsOfType.length, 20)) * Math.PI * 2;
+        const x = Math.cos(angle) * orbitRadius;
+        const z = Math.sin(angle) * orbitRadius;
+        const y = (Math.random() - 0.5) * 10;
+        
+        // System node
+        const nodeSize = 2 + Math.log(systemCount / 100 + 1) * 2;
+        const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
         const nodeMaterial = new THREE.MeshPhongMaterial({
-          color: analytics.security_category === 'legacy' ? 0xa855f7 : 0x00d4ff,
-          emissive: analytics.security_category === 'legacy' ? 0xa855f7 : 0x00d4ff,
+          color: analytics.security_category === 'legacy' ? 0xa855f7 : osColors[osType] || 0x00d4ff,
+          emissive: analytics.security_category === 'legacy' ? 0xa855f7 : osColors[osType] || 0x00d4ff,
           emissiveIntensity: 0.3,
           transparent: true,
           opacity: 0.8
         });
         const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
         node.position.set(x, y, z);
-        node.userData = { systemName, count: systemCount, analytics };
-        
-        categoryGroup.add(node);
+        node.userData = { 
+          systemName, 
+          count: systemCount, 
+          analytics,
+          osType,
+          isLegacy: analytics.security_category === 'legacy'
+        };
+        systemNodesRef.current.push(node);
+        scene.add(node);
+
+        // Add version indicator ring if legacy
+        if (analytics.security_category === 'legacy') {
+          const indicatorGeometry = new THREE.RingGeometry(nodeSize + 1, nodeSize + 2, 32);
+          const indicatorMaterial = new THREE.MeshBasicMaterial({
+            color: 0xa855f7,
+            transparent: true,
+            opacity: 0.5,
+            side: THREE.DoubleSide
+          });
+          const indicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+          indicator.position.copy(node.position);
+          indicator.lookAt(0, 0, 0);
+          scene.add(indicator);
+        }
       });
-      
-      categoryGroup.userData = { osType, count };
-      categoryGroups.push(categoryGroup);
-      scene.add(categoryGroup);
     });
 
-    // Add global particles
+    // Add constellation connections between similar systems
+    systemNodesRef.current.forEach((node1, i) => {
+      systemNodesRef.current.slice(i + 1).forEach(node2 => {
+        if (node1.userData.osType === node2.userData.osType) {
+          const distance = node1.position.distanceTo(node2.position);
+          if (distance < 50) {
+            const points = [node1.position, node2.position];
+            const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+            const lineMaterial = new THREE.LineBasicMaterial({
+              color: osColors[node1.userData.osType] || 0x00d4ff,
+              transparent: true,
+              opacity: 0.1
+            });
+            const line = new THREE.Line(lineGeometry, lineMaterial);
+            scene.add(line);
+          }
+        }
+      });
+    });
+
+    // Security risk particles
     const particleCount = 1000;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
@@ -205,19 +251,68 @@ const SystemClassification = () => {
     camera.position.set(0, 100, 250);
     camera.lookAt(0, 0, 0);
 
+    // Mouse interaction
+    const handleMouseMove = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(systemNodesRef.current);
+      
+      systemNodesRef.current.forEach(node => {
+        node.scale.setScalar(1);
+      });
+      
+      if (intersects.length > 0) {
+        const hoveredNode = intersects[0].object;
+        hoveredNode.scale.setScalar(1.3);
+        setHoveredSystem(hoveredNode.userData);
+        document.body.style.cursor = 'pointer';
+      } else {
+        setHoveredSystem(null);
+        document.body.style.cursor = 'default';
+      }
+    };
+
+    const handleClick = async (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(systemNodesRef.current);
+      
+      if (intersects.length > 0) {
+        const clickedNode = intersects[0].object;
+        await searchSystemHosts(clickedNode.userData.systemName);
+        setSelectedSystem(clickedNode.userData);
+        setDetailView(true);
+      }
+    };
+
+    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    renderer.domElement.addEventListener('click', handleClick);
+
     // Animation
     const animate = () => {
       if (!sceneRef.current) return;
       frameRef.current = requestAnimationFrame(animate);
       
+      // Rotate core
       core.rotation.y += 0.002;
       core.scale.setScalar(1 + Math.sin(Date.now() * 0.001) * 0.05);
       
-      categoryGroups.forEach((group, index) => {
-        group.rotation.y += 0.001 * (index + 1);
-      });
-      
+      // Rotate particles
       particles.rotation.y += 0.0002;
+      
+      // Orbit systems
+      systemNodesRef.current.forEach((node, index) => {
+        const time = Date.now() * 0.0001;
+        const orbitSpeed = 0.5 + (index % 3) * 0.2;
+        node.position.x = Math.cos(time * orbitSpeed + index) * Math.sqrt(node.position.x ** 2 + node.position.z ** 2);
+        node.position.z = Math.sin(time * orbitSpeed + index) * Math.sqrt(node.position.x ** 2 + node.position.z ** 2);
+      });
       
       const time = Date.now() * 0.0003;
       camera.position.x = Math.sin(time) * 300;
@@ -229,17 +324,9 @@ const SystemClassification = () => {
     
     animate();
 
-    const handleResize = () => {
-      if (!galaxyRef.current || !camera || !renderer) return;
-      camera.aspect = galaxyRef.current.clientWidth / galaxyRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(galaxyRef.current.clientWidth, galaxyRef.current.clientHeight);
-    };
-    
-    window.addEventListener('resize', handleResize);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('click', handleClick);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       if (rendererRef.current) {
         rendererRef.current.dispose();
@@ -248,11 +335,11 @@ const SystemClassification = () => {
         }
       }
     };
-  }, [systemData, selectedCategory, loading]);
+  }, [systemData, loading]);
 
-  // Radar Visualization
+  // Sunburst Chart for OS Distribution
   useEffect(() => {
-    const canvas = radarRef.current;
+    const canvas = sunburstRef.current;
     if (!canvas || !systemData) return;
 
     const ctx = canvas.getContext('2d');
@@ -263,83 +350,161 @@ const SystemClassification = () => {
 
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
-    const maxRadius = Math.min(centerX, centerY) - 30;
+    const maxRadius = Math.min(centerX, centerY) - 10;
 
-    let sweepAngle = 0;
+    const osDistribution = systemData.os_distribution || {};
+    const total = Object.values(osDistribution).reduce((sum, count) => sum + count, 1);
+    
+    const colors = {
+      'Windows': '#00d4ff',
+      'Linux': '#00ff88',
+      'MacOS': '#ff00ff',
+      'Unix': '#ffaa00',
+      'Other': '#a855f7'
+    };
+
+    let animationId;
+    let rotation = 0;
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      rotation += 0.002;
+
+      let currentAngle = rotation;
+      
+      Object.entries(osDistribution).forEach(([osType, count]) => {
+        const sweepAngle = (count / total) * Math.PI * 2;
+        const endAngle = currentAngle + sweepAngle;
+        
+        // Draw arc
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, maxRadius, currentAngle, endAngle);
+        ctx.closePath();
+        
+        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
+        gradient.addColorStop(0, colors[osType] + '40');
+        gradient.addColorStop(1, colors[osType]);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        
+        // Draw border
+        ctx.strokeStyle = colors[osType];
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Draw label if segment is large enough
+        if (sweepAngle > 0.2) {
+          const labelAngle = currentAngle + sweepAngle / 2;
+          const labelX = centerX + Math.cos(labelAngle) * (maxRadius * 0.7);
+          const labelY = centerY + Math.sin(labelAngle) * (maxRadius * 0.7);
+          
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 12px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(osType, labelX, labelY);
+          
+          ctx.font = '10px monospace';
+          ctx.fillText(`${((count / total) * 100).toFixed(1)}%`, labelX, labelY + 15);
+        }
+        
+        currentAngle = endAngle;
+      });
+
+      // Central info
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, maxRadius * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 14px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(Object.keys(osDistribution).length.toString(), centerX, centerY - 10);
+      ctx.font = '10px monospace';
+      ctx.fillText('OS TYPES', centerX, centerY + 10);
+
+      animationId = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId);
+    };
+  }, [systemData]);
+
+  // Version Timeline
+  useEffect(() => {
+    const canvas = timelineRef.current;
+    if (!canvas || !systemData) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    let animationId;
+    let scrollX = 0;
 
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw radar circles
-      for (let i = 1; i <= 4; i++) {
-        ctx.strokeStyle = 'rgba(0, 212, 255, 0.1)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, (maxRadius / 4) * i, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      scrollX -= 1;
+      if (scrollX < -canvas.width) scrollX = 0;
 
-      // Draw OS distribution segments
-      const osDistribution = systemData.os_distribution || {};
-      const totalSystems = Object.values(osDistribution).reduce((sum, count) => sum + count, 1);
+      // Draw timeline
+      const modernizationData = systemData.modernization_analysis?.modernization_priority || [];
+      const lineY = canvas.height / 2;
       
-      let startAngle = 0;
-      Object.entries(osDistribution).forEach(([osType, count]) => {
-        const sweepSize = (count / totalSystems) * Math.PI * 2;
-        const endAngle = startAngle + sweepSize;
-        const radius = maxRadius * (count / Math.max(...Object.values(osDistribution), 1));
+      // Timeline line
+      ctx.strokeStyle = 'rgba(0, 212, 255, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, lineY);
+      ctx.lineTo(canvas.width, lineY);
+      ctx.stroke();
+      
+      // Draw systems on timeline
+      modernizationData.slice(0, 10).forEach((system, index) => {
+        const x = (index + 1) * (canvas.width / 11) + scrollX;
+        const isLegacy = system.system.toLowerCase().includes('2008') || 
+                        system.system.toLowerCase().includes('2012') ||
+                        system.system.toLowerCase().includes('xp');
         
-        // Draw segment
-        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-        if (osType === 'Windows') {
-          gradient.addColorStop(0, 'rgba(0, 212, 255, 0.5)');
-          gradient.addColorStop(1, 'rgba(0, 212, 255, 0.1)');
-        } else if (osType === 'Linux') {
-          gradient.addColorStop(0, 'rgba(168, 85, 247, 0.5)');
-          gradient.addColorStop(1, 'rgba(168, 85, 247, 0.1)');
-        } else {
-          gradient.addColorStop(0, 'rgba(255, 170, 0, 0.5)');
-          gradient.addColorStop(1, 'rgba(255, 170, 0, 0.1)');
-        }
-        
-        ctx.fillStyle = gradient;
+        // Node
+        const nodeSize = Math.min(20, Math.max(10, Math.sqrt(system.count / 10)));
         ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.arc(centerX, centerY, radius, startAngle, endAngle);
-        ctx.closePath();
+        ctx.arc(x, lineY, nodeSize, 0, Math.PI * 2);
+        
+        const gradient = ctx.createRadialGradient(x, lineY, 0, x, lineY, nodeSize);
+        gradient.addColorStop(0, isLegacy ? 'rgba(168, 85, 247, 1)' : 'rgba(0, 212, 255, 1)');
+        gradient.addColorStop(1, isLegacy ? 'rgba(168, 85, 247, 0.3)' : 'rgba(0, 212, 255, 0.3)');
+        ctx.fillStyle = gradient;
         ctx.fill();
         
-        // OS label
-        const labelAngle = (startAngle + endAngle) / 2;
-        const labelX = centerX + Math.cos(labelAngle) * (maxRadius + 20);
-        const labelY = centerY + Math.sin(labelAngle) * (maxRadius + 20);
-        
+        // Label
         ctx.fillStyle = '#ffffff';
         ctx.font = '10px monospace';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(osType, labelX, labelY);
-        
-        startAngle = endAngle;
+        ctx.fillText(system.system.substring(0, 15), x, lineY - nodeSize - 5);
+        ctx.fillText(system.count.toLocaleString(), x, lineY + nodeSize + 15);
       });
 
-      // Sweep line
-      sweepAngle += 0.02;
-      ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(centerX, centerY);
-      ctx.lineTo(
-        centerX + Math.cos(sweepAngle) * maxRadius,
-        centerY + Math.sin(sweepAngle) * maxRadius
-      );
-      ctx.stroke();
-
-      requestAnimationFrame(animate);
+      animationId = requestAnimationFrame(animate);
     };
 
     animate();
+
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId);
+    };
   }, [systemData]);
 
   if (loading) {
@@ -355,11 +520,7 @@ const SystemClassification = () => {
 
   const totalSystems = systemData?.total_systems || 0;
   const legacySystems = systemData?.modernization_analysis?.legacy_systems || 0;
-  const legacyAssets = systemData?.modernization_analysis?.legacy_assets || 0;
   const securityRiskLevel = systemData?.modernization_analysis?.security_risk_level || 0;
-  const osDiversity = systemData?.taxonomy_intelligence?.os_diversity || 0;
-  const dominantOs = systemData?.taxonomy_intelligence?.dominant_os || 'Unknown';
-  const standardizationScore = systemData?.taxonomy_intelligence?.standardization_score || 0;
 
   return (
     <div className="h-full flex flex-col p-6 bg-black">
@@ -369,43 +530,54 @@ const SystemClassification = () => {
             <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
             <span className="text-purple-400 font-bold">CRITICAL:</span>
             <span className="text-white">
-              {legacySystems} legacy system types with {legacyAssets.toLocaleString()} assets at {securityRiskLevel.toFixed(1)}% risk
+              {legacySystems} legacy system types at {securityRiskLevel.toFixed(1)}% risk
             </span>
           </div>
         </div>
       )}
 
       <div className="flex-1 grid grid-cols-12 gap-6">
-        {/* 3D Galaxy */}
+        {/* 3D OS Galaxy */}
         <div className="col-span-8">
           <div className="h-full bg-black/90 border border-cyan-400/30 rounded-xl">
             <div className="p-4 border-b border-cyan-400/20">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold text-cyan-400">SYSTEM CLASSIFICATION GALAXY</h2>
+                  <h2 className="text-2xl font-bold text-cyan-400">SYSTEM OS GALAXY</h2>
                   <p className="text-sm text-white/60 mt-1">
-                    Tracking {totalSystems} unique system types across {osDiversity} OS families
+                    {totalSystems} systems • Click nodes to explore • Orbits represent OS families
                   </p>
                 </div>
               </div>
             </div>
             
             <div ref={galaxyRef} className="h-[calc(100%-80px)]" />
+            
+            {hoveredSystem && (
+              <div className="absolute bottom-4 left-4 bg-black/95 border border-cyan-400/50 rounded-lg p-3">
+                <div className="text-sm font-bold text-cyan-400">{hoveredSystem.systemName}</div>
+                <div className="text-xs text-white mt-1">
+                  <div>Count: {hoveredSystem.count}</div>
+                  <div>OS: {hoveredSystem.osType}</div>
+                  <div className={hoveredSystem.isLegacy ? 'text-purple-400' : 'text-cyan-400'}>
+                    {hoveredSystem.isLegacy ? 'LEGACY SYSTEM' : 'MODERN'}
+                  </div>
+                  <div className="text-cyan-400 mt-1">Click for details →</div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Metrics Panel */}
+        {/* Right Column */}
         <div className="col-span-4 space-y-4">
-          {/* Security Risk Level */}
+          {/* Security Risk */}
           <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
             <h3 className="text-lg font-bold text-white mb-3">SECURITY RISK LEVEL</h3>
             <div className="text-5xl font-bold text-center py-4">
               <span className={securityRiskLevel > 50 ? 'text-purple-400' : 'text-cyan-400'}>
                 {securityRiskLevel.toFixed(1)}%
               </span>
-            </div>
-            <div className="text-center text-sm text-white/60">
-              Legacy system exposure
             </div>
             <div className="h-4 bg-black rounded-full overflow-hidden border border-cyan-400/30 mt-3">
               <div 
@@ -420,79 +592,91 @@ const SystemClassification = () => {
             </div>
           </div>
 
-          {/* OS Radar */}
+          {/* OS Distribution Sunburst */}
           <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
-            <h3 className="text-lg font-bold text-white mb-3">OS DISTRIBUTION RADAR</h3>
-            <canvas ref={radarRef} className="w-full h-48" />
+            <h3 className="text-sm font-bold text-white mb-3">OS DISTRIBUTION</h3>
+            <canvas ref={sunburstRef} className="w-full h-48" />
           </div>
 
-          {/* Taxonomy Intelligence */}
+          {/* Version Timeline */}
           <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
-            <h3 className="text-lg font-bold text-white mb-3">TAXONOMY INTELLIGENCE</h3>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-400">OS Diversity</span>
-                <span className="text-sm font-bold text-white">{osDiversity}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-400">Dominant OS</span>
-                <span className="text-sm font-bold text-cyan-400">{dominantOs}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-400">Standardization</span>
-                <span className="text-sm font-bold text-white">{standardizationScore.toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-400">System Sprawl</span>
-                <span className="text-sm font-bold text-purple-400">{systemData?.taxonomy_intelligence?.system_sprawl || 0}</span>
-              </div>
-            </div>
+            <h3 className="text-sm font-bold text-white mb-3">MODERNIZATION TIMELINE</h3>
+            <canvas ref={timelineRef} className="w-full h-24" />
           </div>
-
-          {/* Security Distribution */}
-          <div className="bg-black/90 border border-cyan-400/30 rounded-xl p-4">
-            <h3 className="text-lg font-bold text-white mb-3">SECURITY CATEGORIES</h3>
-            <div className="space-y-2">
-              {Object.entries(systemData?.security_distribution || {}).map(([category, count]) => (
-                <div key={category} className="flex justify-between items-center">
-                  <span className="text-xs text-gray-400 capitalize">{category}</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 h-2 bg-black rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full ${
-                          category === 'legacy' ? 'bg-purple-400' :
-                          category === 'modern' ? 'bg-cyan-400' :
-                          'bg-yellow-400'
-                        }`}
-                        style={{ width: `${(count / legacyAssets * 100)}%` }}
-                      />
-                    </div>
-                    <span className="text-xs font-bold text-white min-w-[60px] text-right">
-                      {count.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Modernization Priority */}
-          {systemData?.modernization_analysis?.modernization_priority?.length > 0 && (
-            <div className="bg-black/90 border border-red-400/30 rounded-xl p-4 max-h-48 overflow-y-auto">
-              <h3 className="text-sm font-bold text-red-400 mb-2">MODERNIZATION PRIORITY</h3>
-              <div className="space-y-2">
-                {systemData.modernization_analysis.modernization_priority.slice(0, 5).map((system, idx) => (
-                  <div key={idx} className="text-xs">
-                    <div className="font-bold text-white">{system.system}</div>
-                    <div className="text-gray-400">{system.count.toLocaleString()} assets</div>
-                    <div className="text-purple-400">Regions: {system.regions?.slice(0, 3).join(', ')}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
+
+      {/* Detail View Modal */}
+      {detailView && selectedSystem && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-6">
+          <div className="bg-black border-2 border-cyan-400/50 rounded-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="p-4 border-b border-cyan-400/30 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-cyan-400">
+                {selectedSystem.systemName?.toUpperCase()} ANALYSIS
+              </h2>
+              <button 
+                onClick={() => {
+                  setDetailView(false);
+                  setSelectedSystem(null);
+                  setSearchResults(null);
+                }}
+                className="text-white hover:text-cyan-400 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[calc(80vh-80px)]">
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-black/50 border border-cyan-400/30 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-white">{selectedSystem.count}</div>
+                  <div className="text-xs text-gray-400">Total Instances</div>
+                </div>
+                <div className="bg-black/50 border border-cyan-400/30 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-cyan-400">{selectedSystem.osType}</div>
+                  <div className="text-xs text-gray-400">OS Family</div>
+                </div>
+                <div className="bg-black/50 border border-purple-400/30 rounded-lg p-4">
+                  <div className={`text-2xl font-bold ${selectedSystem.isLegacy ? 'text-purple-400' : 'text-cyan-400'}`}>
+                    {selectedSystem.isLegacy ? 'LEGACY' : 'MODERN'}
+                  </div>
+                  <div className="text-xs text-gray-400">Status</div>
+                </div>
+              </div>
+
+              {searchResults && searchResults.hosts && (
+                <div className="mt-6">
+                  <h3 className="text-lg font-bold text-cyan-400 mb-3">SAMPLE HOSTS</h3>
+                  <div className="bg-black/50 border border-cyan-400/30 rounded-lg overflow-hidden">
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-black/70 sticky top-0">
+                          <tr className="border-b border-cyan-400/30">
+                            <th className="text-left p-2 text-cyan-400">Host</th>
+                            <th className="text-left p-2 text-cyan-400">System</th>
+                            <th className="text-left p-2 text-cyan-400">Infrastructure</th>
+                            <th className="text-left p-2 text-cyan-400">Region</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {searchResults.hosts.slice(0, 20).map((host, idx) => (
+                            <tr key={idx} className="border-b border-gray-800 hover:bg-cyan-400/5">
+                              <td className="p-2 text-white font-mono">{host.host}</td>
+                              <td className="p-2 text-gray-400">{host.system}</td>
+                              <td className="p-2 text-gray-400">{host.infrastructure_type}</td>
+                              <td className="p-2 text-gray-400">{host.region}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

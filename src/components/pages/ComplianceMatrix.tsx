@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, FileSearch, Database, Server, Activity, AlertTriangle, Layers, Binary, Zap } from 'lucide-react';
+import { Shield, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, FileSearch, Database, Server, Activity, AlertTriangle, Layers, Binary, Zap, ChevronRight, X, Eye } from 'lucide-react';
 import * as THREE from 'three';
 
 const ComplianceMatrix: React.FC = () => {
@@ -8,34 +8,42 @@ const ComplianceMatrix: React.FC = () => {
   const [selectedPlatform, setSelectedPlatform] = useState<'splunk' | 'chronicle' | 'both'>('both');
   const [hostSearch, setHostSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [hoveredPlatform, setHoveredPlatform] = useState<string | null>(null);
+  const [selectedHost, setSelectedHost] = useState<any>(null);
+  const [detailView, setDetailView] = useState<string | null>(null);
   const matrixRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLCanvasElement>(null);
   const waveRef = useRef<HTMLCanvasElement>(null);
+  const intersectionRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const frameRef = useRef<number | null>(null);
+  const platformMeshesRef = useRef<THREE.Mesh[]>([]);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const mouseRef = useRef(new THREE.Vector2());
 
-  // Fetch compliance data from actual API (simulated through host search)
+  // Fetch compliance data with host enrichment
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         
-        // Since there's no direct compliance endpoint, we'll analyze through host search
+        // Search for hosts with logging platforms
         const searchTerms = ['splunk', 'chronicle', 'log', 'logging'];
         let splunkHosts = 0;
         let chronicleHosts = 0;
         let totalHosts = 0;
         let bothPlatforms = 0;
+        let detailedHosts: any[] = [];
         
         for (const term of searchTerms) {
           try {
             const response = await fetch(`http://localhost:5000/api/host_search?q=${term}`);
             if (response.ok) {
               const data = await response.json();
-              totalHosts += data.total_found || 0;
+              totalHosts = Math.max(totalHosts, data.total_found || 0);
               
-              // Analyze source_tables field for logging platforms
+              // Analyze hosts for logging platforms
               data.hosts?.forEach((host: any) => {
                 const sources = host.source_tables?.toLowerCase() || '';
                 const hasSplunk = sources.includes('splunk');
@@ -44,6 +52,13 @@ const ComplianceMatrix: React.FC = () => {
                 if (hasSplunk) splunkHosts++;
                 if (hasChronicle) chronicleHosts++;
                 if (hasSplunk && hasChronicle) bothPlatforms++;
+                
+                detailedHosts.push({
+                  ...host,
+                  has_splunk: hasSplunk,
+                  has_chronicle: hasChronicle,
+                  compliance_score: (hasSplunk && hasChronicle) ? 100 : (hasSplunk || hasChronicle) ? 50 : 0
+                });
               });
             }
           } catch (e) {
@@ -51,12 +66,12 @@ const ComplianceMatrix: React.FC = () => {
           }
         }
         
-        // Get total host count from database status
+        // Get total from database
         const dbResponse = await fetch('http://localhost:5000/api/database_status');
         const dbData = await dbResponse.json();
         const actualTotal = dbData.row_count || totalHosts || 1000;
         
-        // Calculate compliance percentages
+        // Calculate compliance
         const splunkCompliance = (splunkHosts / actualTotal) * 100;
         const chronicleCompliance = (chronicleHosts / actualTotal) * 100;
         const eitherPlatform = ((splunkHosts + chronicleHosts - bothPlatforms) / actualTotal) * 100;
@@ -68,21 +83,13 @@ const ComplianceMatrix: React.FC = () => {
             compliance_percentage: splunkCompliance,
             compliant_hosts: splunkHosts,
             non_compliant_hosts: actualTotal - splunkHosts,
-            status: splunkCompliance > 70 ? 'GOOD' : splunkCompliance > 40 ? 'WARNING' : 'CRITICAL',
-            status_breakdown: [
-              { status: 'LOGGING', host_count: splunkHosts, percentage: splunkCompliance, is_compliant: true },
-              { status: 'NOT_LOGGING', host_count: actualTotal - splunkHosts, percentage: 100 - splunkCompliance, is_compliant: false }
-            ]
+            status: splunkCompliance > 70 ? 'GOOD' : splunkCompliance > 40 ? 'WARNING' : 'CRITICAL'
           },
           chronicle_compliance: {
             compliance_percentage: chronicleCompliance,
             compliant_hosts: chronicleHosts,
             non_compliant_hosts: actualTotal - chronicleHosts,
-            status: chronicleCompliance > 70 ? 'GOOD' : chronicleCompliance > 40 ? 'WARNING' : 'CRITICAL',
-            status_breakdown: [
-              { status: 'LOGGING', host_count: chronicleHosts, percentage: chronicleCompliance, is_compliant: true },
-              { status: 'NOT_LOGGING', host_count: actualTotal - chronicleHosts, percentage: 100 - chronicleCompliance, is_compliant: false }
-            ]
+            status: chronicleCompliance > 70 ? 'GOOD' : chronicleCompliance > 40 ? 'WARNING' : 'CRITICAL'
           },
           combined_compliance: {
             both_platforms: { 
@@ -98,34 +105,11 @@ const ComplianceMatrix: React.FC = () => {
               percentage: neitherPlatform 
             },
             overall_status: eitherPlatform > 70 ? 'GOOD' : eitherPlatform > 40 ? 'WARNING' : 'CRITICAL'
-          }
+          },
+          sample_hosts: detailedHosts.slice(0, 100)
         });
       } catch (error) {
         console.error('Error:', error);
-        // Fallback data
-        setComplianceData({
-          total_hosts: 0,
-          splunk_compliance: {
-            compliance_percentage: 0,
-            compliant_hosts: 0,
-            non_compliant_hosts: 0,
-            status: 'CRITICAL',
-            status_breakdown: []
-          },
-          chronicle_compliance: {
-            compliance_percentage: 0,
-            compliant_hosts: 0,
-            non_compliant_hosts: 0,
-            status: 'CRITICAL',
-            status_breakdown: []
-          },
-          combined_compliance: {
-            both_platforms: { host_count: 0, percentage: 0 },
-            either_platform: { host_count: 0, percentage: 0 },
-            neither_platform: { host_count: 0, percentage: 0 },
-            overall_status: 'CRITICAL'
-          }
-        });
       } finally {
         setLoading(false);
       }
@@ -136,36 +120,10 @@ const ComplianceMatrix: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Search for specific hosts
-  const handleHostSearch = async () => {
-    if (!hostSearch) return;
-    
-    try {
-      const response = await fetch(`http://localhost:5000/api/host_search?q=${hostSearch}`);
-      if (response.ok) {
-        const data = await response.json();
-        // Enrich results with logging platform info
-        const enrichedResults = data.hosts?.map((host: any) => {
-          const sources = host.source_tables?.toLowerCase() || '';
-          return {
-            ...host,
-            has_splunk: sources.includes('splunk'),
-            has_chronicle: sources.includes('chronicle') || sources.includes('gsoc'),
-            logging_status: sources.includes('splunk') || sources.includes('chronicle') ? 'COMPLIANT' : 'NON_COMPLIANT'
-          };
-        }) || [];
-        setSearchResults(enrichedResults);
-      }
-    } catch (error) {
-      console.error('Search error:', error);
-    }
-  };
-
-  // 3D Compliance Matrix Visualization
+  // Interactive 3D Compliance Visualization - Dual Platform Cylinders
   useEffect(() => {
     if (!matrixRef.current || !complianceData || loading) return;
 
-    // Clean up previous scene
     if (rendererRef.current) {
       rendererRef.current.dispose();
       if (matrixRef.current.contains(rendererRef.current.domElement)) {
@@ -195,32 +153,42 @@ const ComplianceMatrix: React.FC = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     matrixRef.current.appendChild(renderer.domElement);
 
-    // Create dual platform visualization
+    // Clear mesh references
+    platformMeshesRef.current = [];
+
+    // Create platform group
     const platformGroup = new THREE.Group();
     
-    // Splunk Platform (Left)
+    // Splunk Platform (Left) - Interactive
     if (complianceData.splunk_compliance) {
       const splunkGroup = new THREE.Group();
       const splunkCompliance = complianceData.splunk_compliance.compliance_percentage;
       
-      // Create cylinder for Splunk
       const radius = 30;
       const height = 60;
       
+      // Outer cylinder
       const geometry = new THREE.CylinderGeometry(radius, radius, height, 32);
       const material = new THREE.MeshPhongMaterial({
         color: splunkCompliance > 50 ? 0x00d4ff : 0xa855f7,
         emissive: splunkCompliance > 50 ? 0x00d4ff : 0xa855f7,
         emissiveIntensity: 0.2,
         transparent: true,
-        opacity: 0.8
+        opacity: 0.4
       });
       
       const cylinder = new THREE.Mesh(geometry, material);
       cylinder.rotation.x = Math.PI / 2;
+      cylinder.userData = {
+        platform: 'splunk',
+        compliance: splunkCompliance,
+        compliant: complianceData.splunk_compliance.compliant_hosts,
+        total: complianceData.total_hosts
+      };
+      platformMeshesRef.current.push(cylinder);
       splunkGroup.add(cylinder);
       
-      // Add compliance level indicator
+      // Compliance level fill
       const levelHeight = height * (splunkCompliance / 100);
       const levelGeometry = new THREE.CylinderGeometry(radius - 5, radius - 5, levelHeight, 32);
       const levelMaterial = new THREE.MeshPhongMaterial({
@@ -234,13 +202,15 @@ const ComplianceMatrix: React.FC = () => {
       const levelMesh = new THREE.Mesh(levelGeometry, levelMaterial);
       levelMesh.position.y = (levelHeight - height) / 2;
       levelMesh.rotation.x = Math.PI / 2;
+      levelMesh.userData = cylinder.userData;
+      platformMeshesRef.current.push(levelMesh);
       splunkGroup.add(levelMesh);
       
       splunkGroup.position.x = -40;
       platformGroup.add(splunkGroup);
     }
     
-    // Chronicle Platform (Right)
+    // Chronicle Platform (Right) - Interactive
     if (complianceData.chronicle_compliance) {
       const chronicleGroup = new THREE.Group();
       const chronicleCompliance = complianceData.chronicle_compliance.compliance_percentage;
@@ -254,14 +224,20 @@ const ComplianceMatrix: React.FC = () => {
         emissive: chronicleCompliance > 50 ? 0x00d4ff : 0xa855f7,
         emissiveIntensity: 0.2,
         transparent: true,
-        opacity: 0.8
+        opacity: 0.4
       });
       
       const cylinder = new THREE.Mesh(geometry, material);
       cylinder.rotation.x = Math.PI / 2;
+      cylinder.userData = {
+        platform: 'chronicle',
+        compliance: chronicleCompliance,
+        compliant: complianceData.chronicle_compliance.compliant_hosts,
+        total: complianceData.total_hosts
+      };
+      platformMeshesRef.current.push(cylinder);
       chronicleGroup.add(cylinder);
       
-      // Add compliance level
       const levelHeight = height * (chronicleCompliance / 100);
       const levelGeometry = new THREE.CylinderGeometry(radius - 5, radius - 5, levelHeight, 32);
       const levelMaterial = new THREE.MeshPhongMaterial({
@@ -275,32 +251,39 @@ const ComplianceMatrix: React.FC = () => {
       const levelMesh = new THREE.Mesh(levelGeometry, levelMaterial);
       levelMesh.position.y = (levelHeight - height) / 2;
       levelMesh.rotation.x = Math.PI / 2;
+      levelMesh.userData = cylinder.userData;
+      platformMeshesRef.current.push(levelMesh);
       chronicleGroup.add(levelMesh);
       
       chronicleGroup.position.x = 40;
       platformGroup.add(chronicleGroup);
     }
     
-    // Central connection
-    if (complianceData.combined_compliance) {
-      const bothCompliance = complianceData.combined_compliance.both_platforms.percentage;
-      const bridgeGeometry = new THREE.CylinderGeometry(10, 10, 80, 32);
-      const bridgeMaterial = new THREE.MeshPhongMaterial({
-        color: bothCompliance > 50 ? 0x00d4ff : 0xa855f7,
-        emissive: bothCompliance > 50 ? 0x00d4ff : 0xa855f7,
-        emissiveIntensity: 0.1,
-        transparent: true,
-        opacity: bothCompliance / 100
-      });
-      const bridge = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
-      bridge.rotation.z = Math.PI / 2;
-      bridge.position.y = 30;
-      platformGroup.add(bridge);
-    }
+    // Central bridge connection showing overlap
+    const bothCompliance = complianceData.combined_compliance.both_platforms.percentage;
+    const bridgeGeometry = new THREE.CylinderGeometry(10, 10, 80, 32);
+    const bridgeMaterial = new THREE.MeshPhongMaterial({
+      color: bothCompliance > 50 ? 0x00d4ff : 0xa855f7,
+      emissive: bothCompliance > 50 ? 0x00d4ff : 0xa855f7,
+      emissiveIntensity: 0.1,
+      transparent: true,
+      opacity: bothCompliance / 100
+    });
+    const bridge = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
+    bridge.rotation.z = Math.PI / 2;
+    bridge.position.y = 30;
+    bridge.userData = {
+      platform: 'both',
+      compliance: bothCompliance,
+      compliant: complianceData.combined_compliance.both_platforms.host_count,
+      total: complianceData.total_hosts
+    };
+    platformMeshesRef.current.push(bridge);
+    platformGroup.add(bridge);
     
     scene.add(platformGroup);
     
-    // Add particles for non-compliant hosts
+    // Non-compliant particles
     const noncompliantHosts = complianceData.combined_compliance?.neither_platform.host_count || 0;
     const particleCount = Math.min(500, Math.max(50, Math.floor(noncompliantHosts / 100)));
     
@@ -339,6 +322,45 @@ const ComplianceMatrix: React.FC = () => {
     
     camera.position.set(0, 100, 150);
     camera.lookAt(0, 30, 0);
+
+    // Mouse interaction
+    const handleMouseMove = (event: MouseEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(platformMeshesRef.current);
+      
+      if (intersects.length > 0) {
+        const hoveredMesh = intersects[0].object;
+        setHoveredPlatform(hoveredMesh.userData.platform);
+        document.body.style.cursor = 'pointer';
+        hoveredMesh.scale.setScalar(1.1);
+      } else {
+        setHoveredPlatform(null);
+        document.body.style.cursor = 'default';
+        platformMeshesRef.current.forEach(mesh => mesh.scale.setScalar(1));
+      }
+    };
+
+    const handleClick = (event: MouseEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(platformMeshesRef.current);
+      
+      if (intersects.length > 0) {
+        const clickedMesh = intersects[0].object;
+        setSelectedPlatform(clickedMesh.userData.platform);
+        setDetailView('platform');
+      }
+    };
+
+    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    renderer.domElement.addEventListener('click', handleClick);
     
     // Animation
     const animate = () => {
@@ -358,18 +380,9 @@ const ComplianceMatrix: React.FC = () => {
     
     animate();
 
-    // Handle resize
-    const handleResize = () => {
-      if (!matrixRef.current || !camera || !renderer) return;
-      camera.aspect = matrixRef.current.clientWidth / matrixRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(matrixRef.current.clientWidth, matrixRef.current.clientHeight);
-    };
-    
-    window.addEventListener('resize', handleResize);
-    
     return () => {
-      window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('click', handleClick);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       if (rendererRef.current) {
         rendererRef.current.dispose();
@@ -380,7 +393,7 @@ const ComplianceMatrix: React.FC = () => {
     };
   }, [complianceData, loading]);
   
-  // Compliance Flow Visualization
+  // Interactive Compliance Flow
   useEffect(() => {
     const canvas = flowRef.current;
     if (!canvas || !complianceData) return;
@@ -390,17 +403,53 @@ const ComplianceMatrix: React.FC = () => {
     
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
+
+    // Make canvas clickable
+    const handleCanvasClick = (event: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const y = event.clientY - rect.top;
+      
+      if (y < canvas.height / 2) {
+        setSelectedPlatform('splunk');
+        setDetailView('flow');
+      } else {
+        setSelectedPlatform('chronicle');
+        setDetailView('flow');
+      }
+    };
+    
+    canvas.addEventListener('click', handleCanvasClick);
     
     let animationId: number;
+    let flowOffset = 0;
+    
     const animate = () => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Draw Splunk flow
+      flowOffset += 3;
+      if (flowOffset > 100) flowOffset = 0;
+      
+      // Splunk flow
       if (selectedPlatform === 'splunk' || selectedPlatform === 'both') {
         const splunkY = canvas.height / 3;
         const splunkWidth = (canvas.width * 0.8) * (complianceData.splunk_compliance?.compliance_percentage || 0) / 100;
         
+        // Animated flow particles
+        for (let i = 0; i < 5; i++) {
+          const x = (flowOffset + i * 20) % canvas.width;
+          if (x < splunkWidth + 50) {
+            const gradient = ctx.createRadialGradient(x, splunkY, 0, x, splunkY, 10);
+            gradient.addColorStop(0, 'rgba(0, 212, 255, 0.8)');
+            gradient.addColorStop(1, 'rgba(0, 212, 255, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, splunkY, 10, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        
+        // Main flow bar
         const splunkGradient = ctx.createLinearGradient(0, splunkY, splunkWidth, splunkY);
         splunkGradient.addColorStop(0, '#00d4ff');
         splunkGradient.addColorStop(1, '#00d4ff40');
@@ -427,10 +476,24 @@ const ComplianceMatrix: React.FC = () => {
         );
       }
       
-      // Draw Chronicle flow
+      // Chronicle flow
       if (selectedPlatform === 'chronicle' || selectedPlatform === 'both') {
         const chronicleY = (canvas.height / 3) * 2;
         const chronicleWidth = (canvas.width * 0.8) * (complianceData.chronicle_compliance?.compliance_percentage || 0) / 100;
+        
+        // Animated flow particles
+        for (let i = 0; i < 5; i++) {
+          const x = (flowOffset + i * 20) % canvas.width;
+          if (x < chronicleWidth + 50) {
+            const gradient = ctx.createRadialGradient(x, chronicleY, 0, x, chronicleY, 10);
+            gradient.addColorStop(0, 'rgba(0, 212, 255, 0.8)');
+            gradient.addColorStop(1, 'rgba(0, 212, 255, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, chronicleY, 10, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
         
         const chronicleGradient = ctx.createLinearGradient(0, chronicleY, chronicleWidth, chronicleY);
         chronicleGradient.addColorStop(0, '#00d4ff');
@@ -464,13 +527,14 @@ const ComplianceMatrix: React.FC = () => {
     animate();
 
     return () => {
+      canvas.removeEventListener('click', handleCanvasClick);
       if (animationId) cancelAnimationFrame(animationId);
     };
   }, [complianceData, selectedPlatform]);
-  
-  // Wave Visualization
+
+  // Venn Diagram Intersection Visualization
   useEffect(() => {
-    const canvas = waveRef.current;
+    const canvas = intersectionRef.current;
     if (!canvas || !complianceData) return;
     
     const ctx = canvas.getContext('2d');
@@ -479,47 +543,51 @@ const ComplianceMatrix: React.FC = () => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
     
-    let time = 0;
     let animationId: number;
+    let time = 0;
     
     const animate = () => {
       time += 0.02;
       
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Draw compliance waves
-      const splunkCompliance = complianceData.splunk_compliance?.compliance_percentage || 0;
-      const chronicleCompliance = complianceData.chronicle_compliance?.compliance_percentage || 0;
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = 60;
       
-      // Splunk wave
-      ctx.strokeStyle = splunkCompliance > 50 ? '#00d4ff' : '#a855f7';
-      ctx.lineWidth = 2;
+      // Splunk circle
+      ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      
-      for (let x = 0; x < canvas.width; x++) {
-        const y = canvas.height / 2 + 
-                 Math.sin((x / 50) + time) * (splunkCompliance / 5) +
-                 Math.sin((x / 25) + time * 2) * 10;
-        
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
+      ctx.arc(centerX - 30, centerY, radius + Math.sin(time) * 5, 0, Math.PI * 2);
       ctx.stroke();
       
-      // Chronicle wave
-      ctx.strokeStyle = chronicleCompliance > 50 ? '#00d4ff' : '#a855f7';
+      // Chronicle circle
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.5)';
       ctx.beginPath();
-      
-      for (let x = 0; x < canvas.width; x++) {
-        const y = canvas.height / 2 + 
-                 Math.sin((x / 50) + time + Math.PI) * (chronicleCompliance / 5) +
-                 Math.sin((x / 25) + time * 2 + Math.PI) * 10;
-        
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
+      ctx.arc(centerX + 30, centerY, radius + Math.cos(time) * 5, 0, Math.PI * 2);
       ctx.stroke();
+      
+      // Intersection
+      ctx.fillStyle = 'rgba(0, 212, 255, 0.2)';
+      ctx.beginPath();
+      ctx.arc(centerX - 30, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.2)';
+      ctx.beginPath();
+      ctx.arc(centerX + 30, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Labels
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px monospace';
+      ctx.textAlign = 'center';
+      
+      const bothPercentage = complianceData.combined_compliance?.both_platforms.percentage || 0;
+      ctx.fillText(`${bothPercentage.toFixed(1)}%`, centerX, centerY);
+      ctx.fillText('BOTH', centerX, centerY + 15);
       
       animationId = requestAnimationFrame(animate);
     };
@@ -531,6 +599,31 @@ const ComplianceMatrix: React.FC = () => {
     };
   }, [complianceData]);
   
+  // Handle host search
+  const handleHostSearch = async () => {
+    if (!hostSearch) return;
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/host_search?q=${hostSearch}`);
+      if (response.ok) {
+        const data = await response.json();
+        const enrichedResults = data.hosts?.map((host: any) => {
+          const sources = host.source_tables?.toLowerCase() || '';
+          return {
+            ...host,
+            has_splunk: sources.includes('splunk'),
+            has_chronicle: sources.includes('chronicle') || sources.includes('gsoc'),
+            logging_status: sources.includes('splunk') || sources.includes('chronicle') ? 'COMPLIANT' : 'NON_COMPLIANT'
+          };
+        }) || [];
+        setSearchResults(enrichedResults);
+        setDetailView('search');
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -543,25 +636,22 @@ const ComplianceMatrix: React.FC = () => {
   }
   
   const overallCompliance = complianceData?.combined_compliance?.either_platform.percentage || 0;
-  const bothPlatforms = complianceData?.combined_compliance?.both_platforms.percentage || 0;
-  const neitherPlatform = complianceData?.combined_compliance?.neither_platform.percentage || 0;
-  const overallStatus = complianceData?.combined_compliance?.overall_status || 'CRITICAL';
   
   return (
     <div className="h-full flex flex-col p-4">
-      {overallStatus === 'CRITICAL' && (
+      {overallCompliance < 40 && (
         <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
             <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
             <span className="text-white text-sm">
-              {neitherPlatform.toFixed(1)}% of hosts not logging to any platform
+              {complianceData?.combined_compliance?.neither_platform.percentage?.toFixed(1)}% of hosts not logging to any platform
             </span>
           </div>
         </div>
       )}
 
-      {/* Search Bar */}
+      {/* Interactive Search Bar */}
       <div className="mb-3 flex gap-2">
         <input
           type="text"
@@ -573,19 +663,19 @@ const ComplianceMatrix: React.FC = () => {
         />
         <button
           onClick={handleHostSearch}
-          className="px-4 py-2 bg-cyan-500/20 border border-cyan-500 rounded-lg text-cyan-400 hover:bg-cyan-500/30"
+          className="px-4 py-2 bg-cyan-500/20 border border-cyan-500 rounded-lg text-cyan-400 hover:bg-cyan-500/30 transition-all"
         >
           SEARCH
         </button>
       </div>
       
       <div className="flex-1 grid grid-cols-12 gap-4">
-        {/* 3D Matrix Visualization */}
+        {/* Interactive 3D Matrix */}
         <div className="col-span-7">
           <div className="h-full glass-panel rounded-xl">
             <div className="p-3 border-b border-cyan-400/20">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-cyan-400">LOGGING COMPLIANCE MATRIX</h2>
+                <h2 className="text-lg font-bold text-cyan-400">INTERACTIVE COMPLIANCE MATRIX</h2>
                 <div className="flex gap-2">
                   {['both', 'splunk', 'chronicle'].map(platform => (
                     <button
@@ -602,16 +692,25 @@ const ComplianceMatrix: React.FC = () => {
                   ))}
                 </div>
               </div>
+              <div className="text-xs text-gray-400 mt-1">Click cylinders to explore platform details</div>
             </div>
             
-            <div ref={matrixRef} className="w-full" style={{ height: 'calc(100% - 60px)' }} />
+            <div ref={matrixRef} className="w-full" style={{ height: 'calc(100% - 80px)' }} />
+            
+            {hoveredPlatform && (
+              <div className="absolute bottom-4 left-4 bg-black/95 border border-cyan-400/50 rounded-lg p-3">
+                <div className="text-sm font-bold text-cyan-400 uppercase">{hoveredPlatform}</div>
+                <div className="text-xs text-white mt-1">Click for detailed analysis →</div>
+              </div>
+            )}
           </div>
         </div>
         
-        {/* Right Column */}
+        {/* Right Column - Interactive Metrics */}
         <div className="col-span-5 space-y-3">
-          {/* Overall Compliance Card */}
-          <div className="glass-panel rounded-xl p-4">
+          {/* Overall Compliance */}
+          <div className="glass-panel rounded-xl p-4 cursor-pointer hover:border-cyan-400 transition-all"
+               onClick={() => setDetailView('overview')}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-white">OVERALL LOGGING COMPLIANCE</h3>
               <Shield className="w-5 h-5 text-cyan-400" />
@@ -620,137 +719,92 @@ const ComplianceMatrix: React.FC = () => {
               {overallCompliance.toFixed(1)}%
             </div>
             <div className="text-xs text-gray-400 mb-3">
-              {complianceData?.combined_compliance?.either_platform.host_count?.toLocaleString() || 0} / {complianceData?.total_hosts?.toLocaleString() || 0} hosts logging
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="text-center">
-                <div className="font-bold text-cyan-400">{bothPlatforms.toFixed(1)}%</div>
-                <div className="text-gray-400">Both</div>
-              </div>
-              <div className="text-center">
-                <div className="font-bold text-yellow-400">{overallCompliance.toFixed(1)}%</div>
-                <div className="text-gray-400">Either</div>
-              </div>
-              <div className="text-center">
-                <div className="font-bold text-purple-400">{neitherPlatform.toFixed(1)}%</div>
-                <div className="text-gray-400">Neither</div>
-              </div>
+              {complianceData?.combined_compliance?.either_platform.host_count?.toLocaleString() || 0} / {complianceData?.total_hosts?.toLocaleString() || 0} hosts
             </div>
           </div>
           
           {/* Platform Cards */}
           <div className="grid grid-cols-2 gap-2">
-            {/* Splunk Card */}
-            <div className="glass-panel rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
-                <Server className="w-4 h-4 text-cyan-400" />
-                <span className={`text-xs px-2 py-1 rounded ${
-                  complianceData?.splunk_compliance?.status === 'CRITICAL' 
-                    ? 'bg-purple-500/20 text-purple-400'
-                    : complianceData?.splunk_compliance?.status === 'WARNING'
-                    ? 'bg-yellow-500/20 text-yellow-400'
-                    : 'bg-cyan-500/20 text-cyan-400'
-                }`}>
-                  {complianceData?.splunk_compliance?.status || 'UNKNOWN'}
-                </span>
-              </div>
+            <div className="glass-panel rounded-lg p-3 cursor-pointer hover:scale-105 transition-transform"
+                 onClick={() => { setSelectedPlatform('splunk'); setDetailView('platform'); }}>
+              <Server className="w-4 h-4 text-cyan-400 mb-2" />
               <div className="text-xs font-bold text-white mb-1">SPLUNK</div>
               <div className="text-2xl font-bold text-cyan-400">
                 {complianceData?.splunk_compliance?.compliance_percentage?.toFixed(1) || '0.0'}%
               </div>
-              <div className="text-xs text-gray-400">
-                {complianceData?.splunk_compliance?.compliant_hosts?.toLocaleString() || 0} hosts
-              </div>
             </div>
             
-            {/* Chronicle Card */}
-            <div className="glass-panel rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
-                <Database className="w-4 h-4 text-cyan-400" />
-                <span className={`text-xs px-2 py-1 rounded ${
-                  complianceData?.chronicle_compliance?.status === 'CRITICAL' 
-                    ? 'bg-purple-500/20 text-purple-400'
-                    : complianceData?.chronicle_compliance?.status === 'WARNING'
-                    ? 'bg-yellow-500/20 text-yellow-400'
-                    : 'bg-cyan-500/20 text-cyan-400'
-                }`}>
-                  {complianceData?.chronicle_compliance?.status || 'UNKNOWN'}
-                </span>
-              </div>
+            <div className="glass-panel rounded-lg p-3 cursor-pointer hover:scale-105 transition-transform"
+                 onClick={() => { setSelectedPlatform('chronicle'); setDetailView('platform'); }}>
+              <Database className="w-4 h-4 text-purple-400 mb-2" />
               <div className="text-xs font-bold text-white mb-1">CHRONICLE</div>
-              <div className="text-2xl font-bold text-cyan-400">
+              <div className="text-2xl font-bold text-purple-400">
                 {complianceData?.chronicle_compliance?.compliance_percentage?.toFixed(1) || '0.0'}%
               </div>
-              <div className="text-xs text-gray-400">
-                {complianceData?.chronicle_compliance?.compliant_hosts?.toLocaleString() || 0} hosts
-              </div>
             </div>
           </div>
           
-          {/* Compliance Flow */}
+          {/* Interactive Flow */}
           <div className="glass-panel rounded-xl p-3">
             <h3 className="text-sm font-bold text-purple-400 mb-2">PLATFORM COMPLIANCE FLOW</h3>
-            <canvas ref={flowRef} className="w-full h-32" />
+            <canvas ref={flowRef} className="w-full h-32 cursor-pointer" />
           </div>
           
-          {/* Compliance Wave */}
+          {/* Intersection Diagram */}
           <div className="glass-panel rounded-xl p-3">
-            <h3 className="text-sm font-bold text-cyan-400 mb-2">COMPLIANCE PULSE</h3>
+            <h3 className="text-sm font-bold text-cyan-400 mb-2">PLATFORM INTERSECTION</h3>
+            <canvas ref={intersectionRef} className="w-full h-32" />
+          </div>
+          
+          {/* Wave Visualization */}
+          <div className="glass-panel rounded-xl p-3">
+            <h3 className="text-sm font-bold text-white mb-2">COMPLIANCE PULSE</h3>
             <canvas ref={waveRef} className="w-full h-24" />
           </div>
-          
-          {/* Search Results or Status Breakdown */}
-          {searchResults.length > 0 ? (
-            <div className="glass-panel rounded-xl p-3 max-h-48 overflow-y-auto">
-              <h3 className="text-sm font-bold text-white mb-2">SEARCH RESULTS</h3>
-              <div className="space-y-1">
-                {searchResults.slice(0, 10).map((host: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center p-2 bg-black/30 rounded">
-                    <div className="flex-1">
-                      <span className="text-xs text-white font-mono">{host.host}</span>
-                      {host.domain && (
-                        <span className="text-xs text-gray-400 ml-2">{host.domain}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {host.has_splunk && (
-                        <span className="text-xs px-1 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">S</span>
-                      )}
-                      {host.has_chronicle && (
-                        <span className="text-xs px-1 py-0.5 bg-purple-500/20 text-purple-400 rounded">C</span>
-                      )}
-                      <span className={`text-xs font-bold ${
-                        host.logging_status === 'COMPLIANT' ? 'text-cyan-400' : 'text-purple-400'
-                      }`}>
-                        {host.logging_status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : complianceData?.splunk_compliance?.status_breakdown && (
-            <div className="glass-panel rounded-xl p-3">
-              <h3 className="text-sm font-bold text-white mb-2">STATUS BREAKDOWN</h3>
-              <div className="space-y-1">
-                {complianceData.splunk_compliance.status_breakdown.slice(0, 3).map((status: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center">
-                    <span className="text-xs text-gray-400">{status.status}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-white">{status.host_count?.toLocaleString() || 0}</span>
-                      <span className={`text-xs font-bold ${
-                        status.is_compliant ? 'text-cyan-400' : 'text-purple-400'
-                      }`}>
-                        {status.percentage?.toFixed(1) || '0.0'}%
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
+
+      {/* Detail View Modal */}
+      {detailView && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-6">
+          <div className="bg-black border-2 border-cyan-400/50 rounded-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="p-4 border-b border-cyan-400/30 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-cyan-400">
+                {detailView === 'platform' ? `${selectedPlatform?.toUpperCase()} PLATFORM DETAILS` :
+                 detailView === 'search' ? 'HOST SEARCH RESULTS' :
+                 'COMPLIANCE OVERVIEW'}
+              </h2>
+              <button onClick={() => setDetailView(null)} className="text-white hover:text-cyan-400">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[calc(80vh-80px)]">
+              {detailView === 'search' && searchResults.length > 0 && (
+                <div className="space-y-2">
+                  {searchResults.slice(0, 20).map((host, idx) => (
+                    <div key={idx} className="flex justify-between items-center p-3 bg-black/30 rounded border border-gray-800 hover:border-cyan-400/30">
+                      <div className="flex-1">
+                        <span className="text-xs text-white font-mono">{host.host}</span>
+                        {host.domain && <span className="text-xs text-gray-400 ml-2">{host.domain}</span>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {host.has_splunk && <span className="text-xs px-1 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">S</span>}
+                        {host.has_chronicle && <span className="text-xs px-1 py-0.5 bg-purple-500/20 text-purple-400 rounded">C</span>}
+                        <span className={`text-xs font-bold ${
+                          host.logging_status === 'COMPLIANT' ? 'text-cyan-400' : 'text-purple-400'
+                        }`}>
+                          {host.logging_status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
