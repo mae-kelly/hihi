@@ -4,8 +4,8 @@ import { Globe, AlertTriangle, Eye, Database, Shield } from 'lucide-react';
 
 const GlobalView = () => {
   const [globalData, setGlobalData] = useState(null);
+  const [databaseStatus, setDatabaseStatus] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [hoveredCountry, setHoveredCountry] = useState(null);
   const globeRef = useRef(null);
@@ -18,55 +18,32 @@ const GlobalView = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        setError(null);
-        
-        // Test database connection first
-        const dbResponse = await fetch('http://localhost:5000/api/database_status');
-        if (!dbResponse.ok) {
-          throw new Error(`Database API failed: ${dbResponse.status}`);
-        }
+        const [dbResponse, regionResponse, cmdbResponse] = await Promise.all([
+          fetch('http://localhost:5000/api/database_status'),
+          fetch('http://localhost:5000/api/region_metrics'),
+          fetch('http://localhost:5000/api/cmdb_presence')
+        ]);
+
         const dbData = await dbResponse.json();
-        console.log('Database status:', dbData);
-
-        // Then fetch CMDB data
-        const cmdbResponse = await fetch('http://localhost:5000/api/cmdb_presence');
-        if (!cmdbResponse.ok) {
-          throw new Error(`CMDB API failed: ${cmdbResponse.status}`);
-        }
+        const regionData = await regionResponse.json();
         const cmdbData = await cmdbResponse.json();
-        console.log('CMDB data:', cmdbData);
 
-        // Try to get regional data (this endpoint might not exist yet)
-        let regionData = { regional_analytics: [] };
-        try {
-          const regionResponse = await fetch('http://localhost:5000/api/region_metrics');
-          if (regionResponse.ok) {
-            regionData = await regionResponse.json();
-            console.log('Region data:', regionData);
-          }
-        } catch (regionError) {
-          console.warn('Region metrics not available:', regionError);
-        }
-
+        setDatabaseStatus(dbData);
         setGlobalData({
           regional_data: regionData.regional_analytics || [],
           total_assets: dbData.row_count || 0,
           cmdb_registration_rate: cmdbData.registration_rate || 0,
           cmdb_registered: cmdbData.cmdb_registered || 0,
-          overall_status: cmdbData.compliance_analysis?.compliance_status || 'UNKNOWN',
-          database_connected: dbData.status === 'connected'
+          overall_status: cmdbData.compliance_analysis?.compliance_status || 'UNKNOWN'
         });
-
       } catch (error) {
         console.error('Error fetching global data:', error);
-        setError(error.message);
         setGlobalData({
           regional_data: [],
           total_assets: 0,
           cmdb_registration_rate: 0,
           cmdb_registered: 0,
-          overall_status: 'ERROR',
-          database_connected: false
+          overall_status: 'ERROR'
         });
       } finally {
         setLoading(false);
@@ -78,7 +55,6 @@ const GlobalView = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Simple 3D Globe (simplified for debugging)
   useEffect(() => {
     if (!globeRef.current || !globalData) return;
 
@@ -90,20 +66,166 @@ const GlobalView = () => {
     renderer.setPixelRatio(window.devicePixelRatio);
     globeRef.current.appendChild(renderer.domElement);
 
-    // Simple globe
-    const earthGeometry = new THREE.SphereGeometry(50, 32, 32);
-    const earthMaterial = new THREE.MeshPhongMaterial({
-      color: globalData.cmdb_registration_rate < 50 ? 0xff00ff : 0x00d4ff,
-      emissive: globalData.cmdb_registration_rate < 50 ? 0xff00ff : 0x00d4ff,
-      emissiveIntensity: 0.1,
-      transparent: true,
-      opacity: 0.8
+    const earthGeometry = new THREE.SphereGeometry(100, 128, 128);
+    
+    const earthMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        uniform float visibility;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        
+        void main() {
+          vec2 uv = vUv;
+          float lat = (uv.y - 0.5) * 3.14159;
+          float lon = (uv.x - 0.5) * 6.28318;
+          
+          vec3 baseColor = vec3(0.0, 0.05, 0.1);
+          vec3 landColor = vec3(0.0, 0.3, 0.4);
+          vec3 threatColor = vec3(1.0, 0.0, 1.0);
+          
+          float continents = step(0.3, sin(lon * 3.0) * sin(lat * 2.0));
+          vec3 earthColor = mix(baseColor, landColor, continents);
+          
+          float grid = step(0.98, max(sin(lon * 40.0), sin(lat * 20.0)));
+          earthColor += vec3(0.0, 0.8, 1.0) * grid * 0.3;
+          
+          float threat = sin(lon * 10.0 + time) * sin(lat * 8.0 - time) * 0.5 + 0.5;
+          threat *= (1.0 - visibility / 100.0);
+          earthColor = mix(earthColor, threatColor, threat * 0.3);
+          
+          float rim = 1.0 - dot(vNormal, vec3(0.0, 0.0, 1.0));
+          rim = pow(rim, 2.0);
+          vec3 rimColor = mix(vec3(0.0, 0.8, 1.0), vec3(1.0, 0.0, 1.0), threat);
+          
+          gl_FragColor = vec4(earthColor + rimColor * rim * 0.5, 1.0);
+        }
+      `,
+      uniforms: {
+        time: { value: 0 },
+        visibility: { value: globalData.cmdb_registration_rate || 0 }
+      },
+      transparent: true
     });
     
     const earth = new THREE.Mesh(earthGeometry, earthMaterial);
     scene.add(earth);
 
-    // Add some basic lighting
+    const atmosphereGeometry = new THREE.SphereGeometry(105, 64, 64);
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+          gl_FragColor = vec4(0.0, 0.8, 1.0, 1.0) * intensity;
+        }
+      `,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide
+    });
+    
+    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    scene.add(atmosphere);
+
+    // Create markers from real regional data
+    const markers = [];
+    globalData.regional_data.forEach(region => {
+      // Map region names to approximate coordinates
+      const regionCoords = {
+        'north america': { lat: 45, lon: -100 },
+        'europe': { lat: 50, lon: 10 },
+        'emea': { lat: 30, lon: 20 },
+        'asia': { lat: 30, lon: 100 },
+        'apac': { lat: 10, lon: 120 },
+        'latam': { lat: -15, lon: -60 },
+        'oceania': { lat: -25, lon: 135 }
+      };
+
+      const coords = regionCoords[region.region.toLowerCase()] || { lat: 0, lon: 0 };
+      const phi = (90 - coords.lat) * Math.PI / 180;
+      const theta = (coords.lon + 180) * Math.PI / 180;
+      
+      const x = 100 * Math.sin(phi) * Math.cos(theta);
+      const y = 100 * Math.cos(phi);
+      const z = 100 * Math.sin(phi) * Math.sin(theta);
+      
+      const markerGeometry = new THREE.SphereGeometry(2 + Math.log(region.count / 1000 + 1), 16, 16);
+      const markerMaterial = new THREE.MeshBasicMaterial({
+        color: region.security_score < 40 ? 0xff00ff : region.security_score < 70 ? 0xc084fc : 0x00d4ff,
+        emissive: region.security_score < 40 ? 0xff00ff : 0x00d4ff,
+        emissiveIntensity: 0.5
+      });
+      
+      const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+      marker.position.set(x * 1.05, y * 1.05, z * 1.05);
+      marker.userData = region;
+      markers.push(marker);
+      scene.add(marker);
+      
+      const pulseGeometry = new THREE.RingGeometry(3, 5, 32);
+      const pulseMaterial = new THREE.MeshBasicMaterial({
+        color: region.security_score < 40 ? 0xff00ff : 0x00d4ff,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+      });
+      const pulse = new THREE.Mesh(pulseGeometry, pulseMaterial);
+      pulse.position.copy(marker.position);
+      pulse.lookAt(0, 0, 0);
+      pulse.userData = { isPulse: true, baseScale: 1 };
+      scene.add(pulse);
+    });
+
+    const particleCount = 5000;
+    const particlesGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      const radius = 150 + Math.random() * 100;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      
+      positions[i] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
+      positions[i + 2] = radius * Math.cos(phi);
+      
+      const isVisible = Math.random() > 0.5;
+      colors[i] = isVisible ? 0 : 1;
+      colors[i + 1] = isVisible ? 0.8 : 0;
+      colors[i + 2] = 1;
+    }
+    
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    
+    const particlesMaterial = new THREE.PointsMaterial({
+      size: 1,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+    
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
+
     const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
     scene.add(ambientLight);
     
@@ -111,7 +233,51 @@ const GlobalView = () => {
     directionalLight.position.set(100, 100, 100);
     scene.add(directionalLight);
 
-    camera.position.set(0, 0, 150);
+    camera.position.set(0, 0, 300);
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const handleMouseMove = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(markers);
+      
+      if (intersects.length > 0) {
+        setHoveredCountry(intersects[0].object.userData);
+        document.body.style.cursor = 'pointer';
+      } else {
+        setHoveredCountry(null);
+        document.body.style.cursor = isDragging ? 'grabbing' : 'grab';
+      }
+    };
+
+    const handleClick = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(markers);
+      
+      if (intersects.length > 0) {
+        setSelectedRegion(intersects[0].object.userData);
+      }
+    };
+
+    const handleResize = () => {
+      if (!globeRef.current) return;
+      camera.aspect = globeRef.current.clientWidth / globeRef.current.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
+    };
+
+    window.addEventListener('resize', handleResize);
+    renderer.domElement.addEventListener('mousemove', handleMouseMove);
+    renderer.domElement.addEventListener('click', handleClick);
 
     let frameId;
     const animate = () => {
@@ -119,8 +285,25 @@ const GlobalView = () => {
       
       earth.rotation.y = rotation.y;
       earth.rotation.x = rotation.x;
+      atmosphere.rotation.y = rotation.y;
+      atmosphere.rotation.x = rotation.x;
       
-      camera.position.z = 150 / zoom;
+      markers.forEach(marker => {
+        marker.rotation.y = rotation.y;
+        marker.rotation.x = rotation.x;
+      });
+      
+      scene.children.forEach(child => {
+        if (child.userData.isPulse) {
+          const scale = 1 + Math.sin(Date.now() * 0.003) * 0.3;
+          child.scale.setScalar(child.userData.baseScale * scale);
+        }
+      });
+      
+      particles.rotation.y += 0.0001;
+      earthMaterial.uniforms.time.value = Date.now() * 0.001;
+      
+      camera.position.z = 300 / zoom;
       
       renderer.render(scene, camera);
     };
@@ -128,13 +311,16 @@ const GlobalView = () => {
     animate();
 
     return () => {
+      window.removeEventListener('resize', handleResize);
       if (frameId) cancelAnimationFrame(frameId);
+      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
+      renderer.domElement.removeEventListener('click', handleClick);
       if (globeRef.current && renderer.domElement) {
         globeRef.current.removeChild(renderer.domElement);
       }
       renderer.dispose();
     };
-  }, [globalData, rotation, zoom]);
+  }, [globalData, rotation, zoom, isDragging]);
 
   const handleMouseDown = (e) => {
     setIsDragging(true);
@@ -166,24 +352,7 @@ const GlobalView = () => {
       <div className="w-full h-full flex items-center justify-center bg-black">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-400"></div>
-          <div className="mt-3 text-sm font-bold text-cyan-400">CONNECTING TO FLASK API...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-black">
-        <div className="text-center p-6 bg-red-900/20 border border-red-500 rounded-xl">
-          <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <div className="text-lg font-bold text-red-400 mb-2">API CONNECTION ERROR</div>
-          <div className="text-sm text-white mb-4">
-            {error}
-          </div>
-          <div className="text-xs text-gray-400">
-            Make sure Flask server is running on http://localhost:5000
-          </div>
+          <div className="mt-3 text-sm font-bold text-cyan-400">LOADING GLOBAL CMDB VISIBILITY</div>
         </div>
       </div>
     );
@@ -195,16 +364,6 @@ const GlobalView = () => {
 
   return (
     <div className="w-full h-full p-3 bg-black">
-      {/* Debug Info */}
-      <div className="mb-3 bg-gray-900/50 border border-gray-700 rounded-xl p-2">
-        <div className="text-xs text-gray-400">
-          DEBUG: DB Connected: {globalData.database_connected ? 'Yes' : 'No'} | 
-          Total Assets: {globalData.total_assets} | 
-          CMDB Rate: {globalData.cmdb_registration_rate}% |
-          Status: {globalData.overall_status}
-        </div>
-      </div>
-
       {/* Critical Alert */}
       {isCritical && (
         <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
@@ -227,7 +386,7 @@ const GlobalView = () => {
                   <Globe className="w-4 h-4 text-cyan-400" />
                   GLOBAL CMDB VISIBILITY
                 </h3>
-                <div className="text-xs text-gray-400">Real-time asset registration status</div>
+                <div className="text-xs text-gray-400">Asset registration across regions</div>
               </div>
               <div className="flex gap-1">
                 <button 
@@ -259,10 +418,22 @@ const GlobalView = () => {
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
               onWheel={handleWheel}
-            />
+            >
+              {hoveredCountry && (
+                <div className="absolute bottom-4 left-4 bg-black/90 border border-cyan-400/50 rounded-lg p-2 backdrop-blur-xl">
+                  <div className="text-xs font-bold text-cyan-400 mb-1">{hoveredCountry.region.toUpperCase()}</div>
+                  <div className="text-xs text-white/80">
+                    <div>Assets: {hoveredCountry.count.toLocaleString()}</div>
+                    <div>CMDB Coverage: {hoveredCountry.cmdb_coverage.toFixed(1)}%</div>
+                    <div>Tanium Coverage: {hoveredCountry.tanium_coverage.toFixed(1)}%</div>
+                    <div>Security Score: {hoveredCountry.security_score.toFixed(1)}</div>
+                  </div>
+                </div>
+              )}
+            </div>
             
             <div className="p-2 flex items-center justify-between text-xs text-white/40 border-t border-white/10">
-              <div>Interactive globe showing CMDB registration status</div>
+              <div>Drag to rotate • Scroll to zoom • Click regions for details</div>
               <div>ZOOM: {(zoom * 100).toFixed(0)}%</div>
             </div>
           </div>
@@ -273,7 +444,7 @@ const GlobalView = () => {
           <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
             <div className="flex items-center gap-2 mb-2">
               <Database className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-xs font-bold text-white/60">CMDB REGISTRATION</h3>
+              <h3 className="text-xs font-bold text-white/60">CMDB REGISTRATION STATUS</h3>
             </div>
             <div className="text-3xl font-bold mb-1">
               <span className={isCritical ? 'text-pink-400' : 'text-cyan-400'}>
@@ -281,7 +452,7 @@ const GlobalView = () => {
               </span>
             </div>
             <div className="text-xs text-white/60 mb-2">
-              {globalData.cmdb_registered.toLocaleString()} / {globalData.total_assets.toLocaleString()} ASSETS
+              {globalData.cmdb_registered.toLocaleString()} / {globalData.total_assets.toLocaleString()} ASSETS REGISTERED
             </div>
             <div className="h-2 bg-white/10 rounded-full overflow-hidden">
               <div 
@@ -299,27 +470,73 @@ const GlobalView = () => {
           {/* Database Connection Status */}
           <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
             <div className="flex items-center gap-2 mb-2">
-              <Shield className={`w-4 h-4 ${globalData.database_connected ? 'text-green-400' : 'text-red-400'}`} />
-              <h3 className="text-xs font-bold text-white/60">API CONNECTION</h3>
+              <Shield className="w-4 h-4 text-green-400" />
+              <h3 className="text-xs font-bold text-white/60">DATABASE STATUS</h3>
             </div>
-            <div className={`text-sm font-bold ${globalData.database_connected ? 'text-green-400' : 'text-red-400'}`}>
-              {globalData.database_connected ? 'CONNECTED' : 'DISCONNECTED'}
+            <div className="text-sm font-bold text-green-400">
+              {databaseStatus?.status === 'connected' ? 'CONNECTED' : 'DISCONNECTED'}
             </div>
             <div className="text-xs text-white/60">
-              Flask API Status
+              {databaseStatus?.row_count?.toLocaleString() || 0} records available
+            </div>
+            <div className="text-xs text-gray-400 mt-1">
+              Database: {databaseStatus?.database_type?.toUpperCase() || 'UNKNOWN'}
             </div>
           </div>
 
+          {selectedRegion && (
+            <div className="bg-black/80 border border-cyan-400/30 rounded-xl p-3 backdrop-blur-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <Eye className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-xs font-bold text-cyan-400">{selectedRegion.region.toUpperCase()}</h3>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-xs text-white/60">TOTAL ASSETS</span>
+                  <span className="text-xs font-bold text-white">{selectedRegion.count.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-white/60">CMDB COVERAGE</span>
+                  <span className="text-xs font-bold text-white">{selectedRegion.cmdb_coverage.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-white/60">TANIUM COVERAGE</span>
+                  <span className="text-xs font-bold text-white">{selectedRegion.tanium_coverage.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-white/60">SECURITY SCORE</span>
+                  <span className={`text-xs font-bold ${
+                    selectedRegion.security_score < 40 ? 'text-pink-400' : 
+                    selectedRegion.security_score < 70 ? 'text-purple-400' : 
+                    'text-cyan-400'
+                  }`}>
+                    {selectedRegion.security_score.toFixed(1)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-white/60">RISK CATEGORY</span>
+                  <span className={`text-xs font-bold ${
+                    selectedRegion.risk_category === 'HIGH' ? 'text-pink-400' : 
+                    selectedRegion.risk_category === 'MEDIUM' ? 'text-purple-400' : 
+                    'text-cyan-400'
+                  }`}>
+                    {selectedRegion.risk_category}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Overall Status */}
           <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl flex-1">
-            <h3 className="text-xs font-bold text-white/60 mb-2">SYSTEM ANALYSIS</h3>
+            <h3 className="text-xs font-bold text-white/60 mb-2">ANALYSIS</h3>
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-white/60">COMPLIANCE STATUS</span>
+                <span className="text-xs text-white/60">OVERALL STATUS</span>
                 <span className={`text-xs font-bold ${
-                  globalData.overall_status === 'COMPLIANT' ? 'text-cyan-400' : 
-                  globalData.overall_status === 'PARTIAL_COMPLIANCE' ? 'text-yellow-400' : 
-                  'text-pink-400'
+                  globalData.overall_status === 'CRITICAL' ? 'text-pink-400' : 
+                  globalData.overall_status === 'PARTIAL_COMPLIANCE' ? 'text-purple-400' : 
+                  globalData.overall_status === 'COMPLIANT' ? 'text-cyan-400' : 'text-gray-400'
                 }`}>
                   {globalData.overall_status}
                 </span>
@@ -335,17 +552,6 @@ const GlobalView = () => {
                 <span className="text-xs font-bold text-purple-400">
                   {(100 - globalData.cmdb_registration_rate).toFixed(1)}%
                 </span>
-              </div>
-            </div>
-
-            {/* Raw Data Display */}
-            <div className="mt-4 p-2 bg-gray-900/50 rounded border border-gray-700">
-              <div className="text-xs text-gray-400 mb-1">RAW API DATA:</div>
-              <div className="text-xs text-green-400 font-mono">
-                <div>Total: {globalData.total_assets}</div>
-                <div>Registered: {globalData.cmdb_registered}</div>
-                <div>Rate: {globalData.cmdb_registration_rate}%</div>
-                <div>DB: {globalData.database_connected ? 'OK' : 'FAIL'}</div>
               </div>
             </div>
           </div>
