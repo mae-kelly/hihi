@@ -443,7 +443,7 @@ const LoggingStandards: React.FC = () => {
           <div className="h-full glass-panel rounded-xl">
             <div className="p-3 border-b border-cyan-400/20">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-cyan-400">LOGGING STANDARDS MATRIX</h2>
+                <h2 className="text-lg font-bold text-cyan-400">LOGGING STANDARDS</h2>
                 <div className="text-3xl font-bold">
                   <span className={complianceScore < 50 ? 'text-purple-400' : complianceScore < 80 ? 'text-yellow-400' : 'text-cyan-400'}>
                     {complianceScore.toFixed(1)}%

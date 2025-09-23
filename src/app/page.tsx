@@ -62,16 +62,16 @@ export default function Home() {
 
   const getPageTitle = () => {
     switch(currentPage) {
-      case 'global-view': return 'GLOBAL SURVEILLANCE MATRIX';
-      case 'infrastructure': return 'INFRASTRUCTURE RECONNAISSANCE';
-      case 'regional-country': return 'GEOGRAPHIC INTELLIGENCE';
-      case 'bu-application': return 'ORGANIZATIONAL INFILTRATION';
-      case 'system-classification': return 'SYSTEM CLASSIFICATION MATRIX';
-      case 'security-coverage': return 'DEFENSIVE PERIMETER STATUS';
-      case 'compliance': return 'COMPLIANCE ENFORCEMENT';
-      case 'domain-visibility': return 'DOMAIN SURVEILLANCE';
-      case 'logging-standards': return 'INTELLIGENCE COLLECTION STANDARDS';
-      default: return 'OPERATIONAL DASHBOARD';
+      case 'global-view': return 'GLOBAL VIEW';
+      case 'infrastructure': return 'INFRASTRUCTURE';
+      case 'regional-country': return 'GEOGRAPHY ';
+      case 'bu-application': return 'ORGANIZATIONS';
+      case 'system-classification': return 'SYSTEM CLASSIFICATION';
+      case 'security-coverage': return 'SECURITY COVERAGE';
+      case 'compliance': return 'COMPLIANCE';
+      case 'domain-visibility': return 'DOMAIN VISIBILITY';
+      case 'logging-standards': return 'LOGGING STANDARDS';
+      default: return 'DASHBOARD';
     }
   };
 
@@ -87,30 +87,30 @@ export default function Home() {
         }} />
       </div>
       
-      {/* Navigation Sidebar */}
+      {/* Navigation Sidebar - Fixed width 256px (w-64) */}
       <Navigation currentPage={currentPage} onNavigate={handleNavigate} />
       
-      {/* Main Content Area */}
-      <div className="flex-1 ml-56 flex flex-col relative z-10 h-screen">
-        {/* Header */}
-        <header className="flex-shrink-0 border-b border-white/10 bg-black/80 backdrop-blur-xl h-14">
-          <div className="px-4 h-full flex items-center">
+      {/* Main Content Area - Adjusted for correct sidebar width */}
+      <div className="flex-1 ml-64 flex flex-col relative z-10 h-screen">
+        {/* Header - Fixed height */}
+        <header className="flex-shrink-0 border-b border-white/10 bg-black/80 backdrop-blur-xl h-12">
+          <div className="px-3 h-full flex items-center">
             <div className="flex items-center justify-between w-full">
               <div>
-                <h2 className="text-lg font-bold tracking-tight">
+                <h2 className="text-base font-bold tracking-tight">
                   <span className="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                     {getPageTitle()}
                   </span>
                 </h2>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest mt-0">
-                  CLEARANCE LEVEL: OMEGA • REAL-TIME SURVEILLANCE ACTIVE
+                <p className="text-[9px] text-white/40 uppercase tracking-widest">
+                  AO1 VISIBILITY
                 </p>
               </div>
               
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
-                  <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                  <span className="text-[10px] font-medium text-cyan-400">LIVE</span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/5 border border-white/10">
+                  <div className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
+                  <span className="text-[9px] font-medium text-cyan-400">LIVE</span>
                 </div>
                 
                 <div className="text-xs font-mono text-white/60">
@@ -121,11 +121,9 @@ export default function Home() {
           </div>
         </header>
         
-        {/* Main Content - Full height minus header */}
+        {/* Main Content - Full remaining height */}
         <main className="flex-1 overflow-hidden bg-black">
-          <div className="h-full">
-            {renderPage()}
-          </div>
+          {renderPage()}
         </main>
       </div>
     </div>

@@ -94,7 +94,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentPage, onNavigate }) => {
                 </span>
               </h1>
               <p className="text-xs text-white/60 uppercase tracking-widest">
-                Real-Time CMDB
+                CMDB+
               </p>
             </div>
           </div>

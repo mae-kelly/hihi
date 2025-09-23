@@ -241,6 +241,14 @@ const GlobalView = () => {
       }
     };
 
+    const handleResize = () => {
+      if (!globeRef.current) return;
+      camera.aspect = globeRef.current.clientWidth / globeRef.current.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
+    };
+
+    window.addEventListener('resize', handleResize);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
     renderer.domElement.addEventListener('click', handleClick);
 
@@ -276,6 +284,7 @@ const GlobalView = () => {
     animate();
 
     return () => {
+      window.removeEventListener('resize', handleResize);
       if (frameId) cancelAnimationFrame(frameId);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       renderer.domElement.removeEventListener('click', handleClick);
@@ -313,7 +322,7 @@ const GlobalView = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full bg-black">
+      <div className="w-full h-full flex items-center justify-center bg-black">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-400"></div>
           <div className="mt-3 text-sm font-bold text-cyan-400">INITIALIZING GLOBAL SURVEILLANCE</div>
@@ -327,12 +336,12 @@ const GlobalView = () => {
   const isCritical = globalData.global_visibility_percentage < 50;
 
   return (
-    <div className="h-full bg-black p-4 overflow-hidden">
+    <div className="w-full h-full p-3 bg-black">
       <div className="h-full grid grid-cols-12 gap-3">
-        <div className="col-span-8">
+        <div className="col-span-8 h-full">
           <div className="h-full bg-black/80 border border-white/10 rounded-xl backdrop-blur-xl flex flex-col">
             <div className="flex items-center justify-between p-3 border-b border-white/10">
-              <h3 className="text-sm font-bold text-white">PLANETARY SURVEILLANCE NETWORK</h3>
+              <h3 className="text-sm font-bold text-white">INTERACTIVE GLOBE</h3>
               <div className="flex gap-1">
                 <button 
                   onClick={() => setZoom(prev => Math.min(3, prev + 0.2))}
@@ -357,23 +366,23 @@ const GlobalView = () => {
             
             <div 
               ref={globeRef} 
-              className="flex-1 cursor-grab"
+              className="flex-1 cursor-grab relative"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
               onWheel={handleWheel}
-            />
-            
-            {hoveredCountry && (
-              <div className="absolute bottom-4 left-4 bg-black/90 border border-cyan-400/50 rounded-lg p-2 backdrop-blur-xl">
-                <div className="text-xs font-bold text-cyan-400 mb-1">{hoveredCountry.name}</div>
-                <div className="text-xs text-white/80">
-                  <div>Visibility: {hoveredCountry.visibility}%</div>
-                  <div>Hosts: {hoveredCountry.hosts.toLocaleString()}</div>
+            >
+              {hoveredCountry && (
+                <div className="absolute bottom-4 left-4 bg-black/90 border border-cyan-400/50 rounded-lg p-2 backdrop-blur-xl">
+                  <div className="text-xs font-bold text-cyan-400 mb-1">{hoveredCountry.name}</div>
+                  <div className="text-xs text-white/80">
+                    <div>Visibility: {hoveredCountry.visibility}%</div>
+                    <div>Hosts: {hoveredCountry.hosts.toLocaleString()}</div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
             
             <div className="p-2 flex items-center justify-between text-xs text-white/40 border-t border-white/10">
               <div>Drag to rotate • Scroll to zoom • Click regions for details</div>
@@ -382,7 +391,7 @@ const GlobalView = () => {
           </div>
         </div>
 
-        <div className="col-span-4 flex flex-col gap-3">
+        <div className="col-span-4 h-full flex flex-col gap-3">
           <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
             <h3 className="text-xs font-bold text-white/60 mb-2">GLOBAL VISIBILITY STATUS</h3>
             <div className="text-3xl font-bold mb-1">
@@ -450,7 +459,7 @@ const GlobalView = () => {
           )}
 
           <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl flex-1">
-            <h3 className="text-xs font-bold text-white/60 mb-2">THREAT ANALYSIS</h3>
+            <h3 className="text-xs font-bold text-white/60 mb-2">ANALYSIS</h3>
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/60">INVISIBLE HOSTS</span>
