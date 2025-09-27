@@ -1,33 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { Server, Cloud, Database, Monitor, AlertTriangle, Eye, Activity, Cpu, Layers, Network, HardDrive, Zap, X, ChevronRight } from 'lucide-react';
+import { Server, Cloud, Database, Network, AlertTriangle, Activity, Cpu, HardDrive, Layers, Shield } from 'lucide-react';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, TreeMap, AreaChart, Area } from 'recharts';
 
 const InfrastructureView = () => {
-  const [infrastructureData, setInfrastructureData] = useState(null);
+  const [infraData, setInfraData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedType, setSelectedType] = useState(null);
-  const [hoveredInfra, setHoveredInfra] = useState(null);
-  const [detailPanel, setDetailPanel] = useState(false);
-  const [searchResults, setSearchResults] = useState(null);
-  const stackRef = useRef(null);
-  const treemapRef = useRef(null);
-  const networkRef = useRef(null);
-  const [viewAngle, setViewAngle] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const threeDRef = useRef(null);
   const rendererRef = useRef(null);
-  const sceneRef = useRef(null);
-  const layersRef = useRef([]);
-  const raycasterRef = useRef(new THREE.Raycaster());
-  const mouseRef = useRef(new THREE.Vector2());
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/infrastructure_type_metrics');
-        if (!response.ok) throw new Error('Failed to fetch infrastructure data');
+        const response = await fetch('http://localhost:5000/api/infrastructure_type/breakdown');
+        if (!response.ok) throw new Error('Failed to fetch');
         const data = await response.json();
-        setInfrastructureData(data);
+        setInfraData(data);
       } catch (error) {
         console.error('Error:', error);
       } finally {
@@ -40,701 +30,304 @@ const InfrastructureView = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const searchInfrastructureHosts = async (infraType) => {
-    try {
-      const response = await fetch(`http://localhost:5000/api/host_search?q=${infraType}`);
-      const data = await response.json();
-      setSearchResults(data);
-      return data;
-    } catch (error) {
-      console.error('Search error:', error);
-      return null;
-    }
-  };
-
-  // 3D Layered Stack - Infrastructure types are LAYERS, not random shapes
+  // 3D Visualization
   useEffect(() => {
-    if (!stackRef.current || !infrastructureData || loading) return;
+    if (!threeDRef.current || !infraData || loading) return;
 
     if (rendererRef.current) {
       rendererRef.current.dispose();
-      if (stackRef.current.contains(rendererRef.current.domElement)) {
-        stackRef.current.removeChild(rendererRef.current.domElement);
+      if (threeDRef.current.contains(rendererRef.current.domElement)) {
+        threeDRef.current.removeChild(rendererRef.current.domElement);
       }
     }
 
     const scene = new THREE.Scene();
-    sceneRef.current = scene;
-    scene.fog = new THREE.FogExp2(0x000000, 0.002);
+    scene.fog = new THREE.FogExp2(0x000011, 0.002);
     
-    const camera = new THREE.PerspectiveCamera(
-      60, 
-      stackRef.current.clientWidth / stackRef.current.clientHeight, 
-      0.1, 
-      1000
-    );
-    
-    const renderer = new THREE.WebGLRenderer({ 
-      antialias: true, 
-      alpha: true,
-      powerPreference: "high-performance"
-    });
+    const camera = new THREE.PerspectiveCamera(75, threeDRef.current.clientWidth / threeDRef.current.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     rendererRef.current = renderer;
     
-    renderer.setSize(stackRef.current.clientWidth, stackRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    stackRef.current.appendChild(renderer.domElement);
+    renderer.setSize(threeDRef.current.clientWidth, threeDRef.current.clientHeight);
+    threeDRef.current.appendChild(renderer.domElement);
 
-    const infrastructureTypes = infrastructureData.detailed_data || [];
-    const maxHosts = Math.max(...infrastructureTypes.map((t) => t.frequency), 1);
+    // Create infrastructure layers
+    const layers = infraData?.infrastructure_breakdown?.slice(0, 10) || [];
     
-    layersRef.current = [];
-    
-    // Create stacked layers - each infrastructure type is a layer in the stack
-    infrastructureTypes.slice(0, 15).forEach((infra, index) => {
-      const layerGroup = new THREE.Group();
+    layers.forEach((infra, index) => {
+      const geometry = new THREE.BoxGeometry(
+        20 * (infra.total_assets / 1000),
+        5,
+        20 * (infra.total_assets / 1000)
+      );
       
-      // Layer dimensions based on data
-      const width = 100 + (infra.frequency / maxHosts) * 50;
-      const depth = 80 + (infra.frequency / maxHosts) * 40;
-      const height = 8;
-      const yPosition = index * 12 - (Math.min(infrastructureTypes.length, 15) * 6);
-      
-      // Main layer platform
-      const layerGeometry = new THREE.BoxGeometry(width, height, depth);
-      const layerMaterial = new THREE.MeshPhongMaterial({
-        color: infra.threat_level === 'CRITICAL' ? 0xa855f7 :
-               infra.threat_level === 'HIGH' ? 0xc084fc :
-               infra.threat_level === 'MEDIUM' ? 0xffaa00 : 0x00d4ff,
+      const material = new THREE.MeshPhongMaterial({
+        color: infra.risk_level === 'CRITICAL' ? 0xff0000 : 
+               infra.risk_level === 'HIGH' ? 0xffaa00 : 
+               infra.risk_level === 'MEDIUM' ? 0xffff00 : 0x00ff00,
         transparent: true,
-        opacity: 0.7,
-        emissive: infra.threat_level === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
-        emissiveIntensity: 0.1
+        opacity: 0.7
       });
       
-      const layer = new THREE.Mesh(layerGeometry, layerMaterial);
-      layer.position.y = yPosition;
-      layer.castShadow = true;
-      layer.receiveShadow = true;
-      layer.userData = infra;
-      layerGroup.add(layer);
-      layersRef.current.push(layer);
-      
-      // Visible portion (coverage indicator)
-      const visibleWidth = width * (infra.percentage / 100);
-      const visibleGeometry = new THREE.BoxGeometry(visibleWidth, height + 1, depth + 1);
-      const visibleMaterial = new THREE.MeshPhongMaterial({
-        color: 0x00d4ff,
-        emissive: 0x00d4ff,
-        emissiveIntensity: 0.3,
-        transparent: true,
-        opacity: 0.9
-      });
-      
-      const visibleMesh = new THREE.Mesh(visibleGeometry, visibleMaterial);
-      visibleMesh.position.set(-(width - visibleWidth) / 2, yPosition, 0);
-      layerGroup.add(visibleMesh);
-      
-      // Edge glow effect
-      const edgeGeometry = new THREE.BoxGeometry(width + 2, height + 0.5, depth + 2);
-      const edgeMaterial = new THREE.MeshBasicMaterial({
-        color: infra.threat_level === 'CRITICAL' ? 0xa855f7 : 0x00d4ff,
-        transparent: true,
-        opacity: 0.2,
-        wireframe: true
-      });
-      const edgeMesh = new THREE.Mesh(edgeGeometry, edgeMaterial);
-      edgeMesh.position.y = yPosition;
-      layerGroup.add(edgeMesh);
-      
-      // Data flow particles on each layer
-      const particleCount = Math.floor(infra.frequency / 100);
-      if (particleCount > 0) {
-        const particlesGeometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        
-        for (let i = 0; i < particleCount * 3; i += 3) {
-          positions[i] = (Math.random() - 0.5) * width;
-          positions[i + 1] = yPosition + height;
-          positions[i + 2] = (Math.random() - 0.5) * depth;
-        }
-        
-        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        const particlesMaterial = new THREE.PointsMaterial({
-          color: 0x00d4ff,
-          size: 2,
-          transparent: true,
-          opacity: 0.6,
-          blending: THREE.AdditiveBlending
-        });
-        
-        const particles = new THREE.Points(particlesGeometry, particlesMaterial);
-        particles.userData = { isParticles: true };
-        layerGroup.add(particles);
-      }
-      
-      scene.add(layerGroup);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.y = index * 7 - 20;
+      scene.add(mesh);
     });
-
-    // Add connection beams between layers
-    for (let i = 0; i < layersRef.current.length - 1; i++) {
-      const layer1 = layersRef.current[i];
-      const layer2 = layersRef.current[i + 1];
-      
-      const connectionGeometry = new THREE.CylinderGeometry(0.5, 0.5, 
-        Math.abs(layer2.position.y - layer1.position.y), 8);
-      const connectionMaterial = new THREE.MeshBasicMaterial({
-        color: 0x00d4ff,
-        transparent: true,
-        opacity: 0.3
-      });
-      
-      const connection = new THREE.Mesh(connectionGeometry, connectionMaterial);
-      connection.position.y = (layer1.position.y + layer2.position.y) / 2;
-      scene.add(connection);
-    }
-
-    // Grid base
-    const gridHelper = new THREE.GridHelper(200, 20, 0x00d4ff, 0x00d4ff);
-    gridHelper.material.opacity = 0.1;
-    gridHelper.material.transparent = true;
-    gridHelper.position.y = -100;
-    scene.add(gridHelper);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
-    
-    const spotLight1 = new THREE.SpotLight(0x00d4ff, 1);
-    spotLight1.position.set(100, 200, 100);
-    spotLight1.castShadow = true;
-    scene.add(spotLight1);
-    
-    const spotLight2 = new THREE.SpotLight(0xa855f7, 0.5);
-    spotLight2.position.set(-100, 200, -100);
-    scene.add(spotLight2);
+    const pointLight = new THREE.PointLight(0xffffff, 0.8);
+    pointLight.position.set(50, 50, 50);
+    scene.add(pointLight);
 
-    camera.position.set(150, 100, 150);
+    camera.position.set(40, 20, 40);
     camera.lookAt(0, 0, 0);
 
-    // Mouse interactions
-    const handleMouseMove = (event) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const intersects = raycasterRef.current.intersectObjects(layersRef.current);
-      
-      layersRef.current.forEach(layer => {
-        layer.scale.setScalar(1);
-      });
-      
-      if (intersects.length > 0) {
-        const hoveredLayer = intersects[0].object;
-        hoveredLayer.scale.setScalar(1.05);
-        setHoveredInfra(hoveredLayer.userData);
-        document.body.style.cursor = 'pointer';
-      } else {
-        setHoveredInfra(null);
-        document.body.style.cursor = 'default';
-      }
-    };
-
-    const handleClick = async (event) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
-      raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const intersects = raycasterRef.current.intersectObjects(layersRef.current);
-      
-      if (intersects.length > 0) {
-        const clickedLayer = intersects[0].object;
-        const infraData = clickedLayer.userData;
-        await searchInfrastructureHosts(infraData.type);
-        setSelectedType(infraData);
-        setDetailPanel(true);
-      }
-    };
-
-    renderer.domElement.addEventListener('mousemove', handleMouseMove);
-    renderer.domElement.addEventListener('click', handleClick);
-
-    // Animation
-    let frameId;
     const animate = () => {
-      frameId = requestAnimationFrame(animate);
-      
-      // Animate layers
-      layersRef.current.forEach((layer, index) => {
-        // Subtle floating animation
-        layer.position.x = Math.sin(Date.now() * 0.0005 + index) * 2;
-        
-        // Rotate particles
-        layer.parent.children.forEach(child => {
-          if (child.userData?.isParticles) {
-            child.rotation.y += 0.005;
-          }
-        });
-      });
-      
-      const time = Date.now() * 0.0005;
-      camera.position.x = Math.sin(time + viewAngle.y) * 200 * zoom;
-      camera.position.z = Math.cos(time + viewAngle.y) * 200 * zoom;
-      camera.position.y = 100 + viewAngle.x * 50;
-      camera.lookAt(0, 0, 0);
-      
+      requestAnimationFrame(animate);
+      scene.rotation.y += 0.002;
       renderer.render(scene, camera);
     };
-
     animate();
 
     return () => {
-      if (frameId) cancelAnimationFrame(frameId);
-      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
-      renderer.domElement.removeEventListener('click', handleClick);
-      if (stackRef.current && renderer.domElement) {
-        stackRef.current.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
-    };
-  }, [infrastructureData, viewAngle, zoom, loading]);
-
-  // Interactive Treemap for Infrastructure Distribution
-  useEffect(() => {
-    const canvas = treemapRef.current;
-    if (!canvas || !infrastructureData) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-
-    const drawTreemap = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      const data = infrastructureData.detailed_data?.slice(0, 10) || [];
-      const total = data.reduce((sum, item) => sum + item.frequency, 0);
-      
-      let currentX = 0;
-      let currentY = 0;
-      let rowHeight = canvas.height;
-      let rowWidth = canvas.width;
-      let rowTotal = 0;
-      let rowItems = [];
-
-      data.forEach((item, index) => {
-        const area = (item.frequency / total) * canvas.width * canvas.height;
-        const width = Math.sqrt(area * (canvas.width / canvas.height));
-        const height = area / width;
-
-        // Draw rectangle with gradient
-        const gradient = ctx.createLinearGradient(currentX, currentY, currentX + width, currentY + height);
-        
-        if (item.threat_level === 'CRITICAL') {
-          gradient.addColorStop(0, 'rgba(168, 85, 247, 0.8)');
-          gradient.addColorStop(1, 'rgba(168, 85, 247, 0.4)');
-        } else if (item.threat_level === 'HIGH') {
-          gradient.addColorStop(0, 'rgba(192, 132, 252, 0.8)');
-          gradient.addColorStop(1, 'rgba(192, 132, 252, 0.4)');
-        } else {
-          gradient.addColorStop(0, 'rgba(0, 212, 255, 0.8)');
-          gradient.addColorStop(1, 'rgba(0, 212, 255, 0.4)');
-        }
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(currentX + 1, currentY + 1, width - 2, height - 2);
-
-        // Draw border
-        ctx.strokeStyle = item.threat_level === 'CRITICAL' ? '#a855f7' : '#00d4ff';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(currentX, currentY, width, height);
-
-        // Draw text if space allows
-        if (width > 50 && height > 30) {
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 10px monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          
-          // Infrastructure type name
-          const name = item.type.length > 15 ? item.type.substring(0, 15) + '...' : item.type;
-          ctx.fillText(name, currentX + width / 2, currentY + height / 2 - 10);
-          
-          // Percentage
-          ctx.font = 'bold 14px monospace';
-          ctx.fillStyle = item.threat_level === 'CRITICAL' ? '#a855f7' : '#00d4ff';
-          ctx.fillText(`${item.percentage.toFixed(1)}%`, currentX + width / 2, currentY + height / 2 + 10);
-        }
-
-        // Update position for next rectangle
-        currentX += width;
-        if (currentX >= canvas.width - 10) {
-          currentX = 0;
-          currentY += rowHeight;
-          rowHeight = canvas.height - currentY;
-        }
-      });
-    };
-
-    const handleCanvasClick = (event) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      
-      // Determine which section was clicked
-      // (simplified - would need proper treemap click detection)
-      const data = infrastructureData.detailed_data?.slice(0, 10) || [];
-      if (data.length > 0) {
-        const clickedIndex = Math.floor((y / canvas.height) * Math.min(data.length, 3));
-        if (data[clickedIndex]) {
-          setSelectedType(data[clickedIndex]);
-          searchInfrastructureHosts(data[clickedIndex].type);
-          setDetailPanel(true);
-        }
+      if (rendererRef.current && threeDRef.current) {
+        threeDRef.current.removeChild(rendererRef.current.domElement);
+        rendererRef.current.dispose();
       }
     };
-
-    canvas.addEventListener('click', handleCanvasClick);
-    drawTreemap();
-
-    return () => {
-      canvas.removeEventListener('click', handleCanvasClick);
-    };
-  }, [infrastructureData]);
-
-  // Network Graph for Infrastructure Relationships
-  useEffect(() => {
-    const canvas = networkRef.current;
-    if (!canvas || !infrastructureData) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-
-    const nodes = [];
-    const connections = [];
-    
-    // Create nodes for each infrastructure type
-    infrastructureData.detailed_data?.slice(0, 8).forEach((infra, index) => {
-      const angle = (index / 8) * Math.PI * 2;
-      const radius = 80;
-      nodes.push({
-        x: canvas.width / 2 + Math.cos(angle) * radius,
-        y: canvas.height / 2 + Math.sin(angle) * radius,
-        radius: Math.max(10, Math.min(30, Math.sqrt(infra.frequency / 100))),
-        data: infra,
-        vx: 0,
-        vy: 0
-      });
-    });
-
-    // Create connections based on threat level similarity
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        if (nodes[i].data.threat_level === nodes[j].data.threat_level) {
-          connections.push({ from: i, to: j });
-        }
-      }
-    }
-
-    let animationId;
-    const animate = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Draw connections
-      connections.forEach(conn => {
-        const from = nodes[conn.from];
-        const to = nodes[conn.to];
-        
-        ctx.strokeStyle = 'rgba(0, 212, 255, 0.2)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(from.x, from.y);
-        ctx.lineTo(to.x, to.y);
-        ctx.stroke();
-      });
-
-      // Draw and update nodes
-      nodes.forEach((node, index) => {
-        // Apply force to center
-        const dx = canvas.width / 2 - node.x;
-        const dy = canvas.height / 2 - node.y;
-        node.vx += dx * 0.001;
-        node.vy += dy * 0.001;
-        
-        // Apply repulsion between nodes
-        nodes.forEach((other, j) => {
-          if (index !== j) {
-            const dx = node.x - other.x;
-            const dy = node.y - other.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 100) {
-              node.vx += (dx / dist) * 2;
-              node.vy += (dy / dist) * 2;
-            }
-          }
-        });
-        
-        // Apply velocity with damping
-        node.vx *= 0.9;
-        node.vy *= 0.9;
-        node.x += node.vx;
-        node.y += node.vy;
-        
-        // Keep within bounds
-        node.x = Math.max(node.radius, Math.min(canvas.width - node.radius, node.x));
-        node.y = Math.max(node.radius, Math.min(canvas.height - node.radius, node.y));
-        
-        // Draw node
-        const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, node.radius);
-        
-        if (node.data.threat_level === 'CRITICAL') {
-          gradient.addColorStop(0, 'rgba(168, 85, 247, 1)');
-          gradient.addColorStop(1, 'rgba(168, 85, 247, 0.3)');
-        } else {
-          gradient.addColorStop(0, 'rgba(0, 212, 255, 1)');
-          gradient.addColorStop(1, 'rgba(0, 212, 255, 0.3)');
-        }
-        
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Draw label
-        if (node.radius > 15) {
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '10px monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(node.data.type.substring(0, 10), node.x, node.y);
-        }
-      });
-
-      animationId = requestAnimationFrame(animate);
-    };
-
-    animate();
-
-    return () => {
-      if (animationId) cancelAnimationFrame(animationId);
-    };
-  }, [infrastructureData]);
+  }, [infraData, loading]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full bg-black">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-lg font-bold text-cyan-400">ANALYZING INFRASTRUCTURE LAYERS</div>
-        </div>
+      <div className="flex items-center justify-center h-screen bg-gray-900">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
       </div>
     );
   }
 
-  if (!infrastructureData) return null;
+  const breakdown = infraData?.infrastructure_breakdown || [];
+  const categorySummary = infraData?.category_summary || [];
+  const totalTypes = infraData?.total_types || 0;
 
-  const criticalInfra = infrastructureData.detailed_data?.filter(item => item.threat_level === 'CRITICAL') || [];
-  const modernizationPercentage = infrastructureData.modernization_analysis?.modernization_percentage || 0;
+  // Prepare chart data
+  const pieData = categorySummary.map(cat => ({
+    name: cat.category,
+    value: cat.total_assets,
+    coverage: cat.overall_visibility
+  }));
+
+  const barData = breakdown.slice(0, 10).map(infra => ({
+    name: infra.type.length > 15 ? infra.type.substring(0, 15) + '...' : infra.type,
+    assets: infra.total_assets,
+    cmdb: infra.visibility_metrics.cmdb,
+    tanium: infra.visibility_metrics.tanium,
+    splunk: infra.visibility_metrics.splunk,
+    crowdstrike: infra.visibility_metrics.crowdstrike
+  }));
+
+  const treeMapData = breakdown.slice(0, 15).map(infra => ({
+    name: infra.type,
+    size: infra.total_assets,
+    risk: infra.risk_level,
+    visibility: infra.overall_visibility
+  }));
+
+  const colors = {
+    'On-Premise': '#00d4ff',
+    'Cloud': '#a855f7',
+    'SaaS': '#22c55e',
+    'API': '#ffaa00',
+    'Other': '#ef4444'
+  };
 
   return (
-    <div className="h-full bg-black p-4">
-      {criticalInfra.length > 0 && (
-        <div className="mb-3 bg-black border border-purple-500/50 rounded-xl p-3">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-purple-400 animate-pulse" />
-            <span className="text-purple-400 font-bold text-sm">CRITICAL:</span>
-            <span className="text-white text-sm">
-              {criticalInfra.length} infrastructure layers at critical risk level
-            </span>
+    <div className="min-h-screen bg-gray-900 text-white p-4">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-cyan-400 mb-2">Infrastructure Type Analysis</h1>
+        <div className="flex gap-2">
+          {['all', 'On-Premise', 'Cloud', 'SaaS'].map(cat => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-4 py-2 rounded ${selectedCategory === cat ? 'bg-cyan-600' : 'bg-gray-700'}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Metrics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm">Total Types</p>
+              <p className="text-2xl font-bold">{totalTypes}</p>
+            </div>
+            <Layers className="h-8 w-8 text-cyan-400" />
           </div>
         </div>
-      )}
 
-      <div className="h-full grid grid-cols-12 gap-4">
-        {/* 3D Layered Stack */}
-        <div className="col-span-7">
-          <div className="h-full bg-black/80 border border-white/10 rounded-xl p-4 backdrop-blur-xl">
-            <div className="flex items-center justify-between mb-3">
+        {categorySummary.slice(0, 3).map((cat, idx) => (
+          <div key={idx} className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
+            <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Layers className="w-5 h-5 text-cyan-400" />
-                  INFRASTRUCTURE STACK VISUALIZATION
-                </h3>
-                <div className="text-xs text-gray-400">
-                  Click layers to drill down • Each layer represents an infrastructure type
-                </div>
+                <p className="text-gray-400 text-sm">{cat.category}</p>
+                <p className="text-2xl font-bold">{cat.total_assets.toLocaleString()}</p>
+                <p className="text-xs text-cyan-400">{cat.overall_visibility.toFixed(1)}% visible</p>
               </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setZoom(prev => Math.max(0.5, prev - 0.1))}
-                  className="px-3 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 text-xs"
-                >
-                  ZOOM IN
-                </button>
-                <button 
-                  onClick={() => setZoom(prev => Math.min(2, prev + 0.1))}
-                  className="px-3 py-1 bg-white/5 border border-white/20 rounded text-cyan-400 hover:bg-white/10 text-xs"
-                >
-                  ZOOM OUT
-                </button>
-              </div>
+              {cat.category === 'Cloud' ? <Cloud className="h-8 w-8 text-purple-400" /> :
+               cat.category === 'On-Premise' ? <Server className="h-8 w-8 text-cyan-400" /> :
+               <Database className="h-8 w-8 text-green-400" />}
             </div>
-            
-            <div ref={stackRef} className="w-full" style={{ height: 'calc(100% - 60px)' }} />
-            
-            {hoveredInfra && (
-              <div className="absolute bottom-4 left-4 bg-black/90 border border-cyan-400/50 rounded-lg p-3 backdrop-blur-xl">
-                <div className="text-sm font-bold text-cyan-400">{hoveredInfra.type}</div>
-                <div className="text-xs text-white/80 mt-1">
-                  <div>Instances: {hoveredInfra.frequency?.toLocaleString()}</div>
-                  <div>Coverage: {hoveredInfra.percentage?.toFixed(1)}%</div>
-                  <div>Risk: {hoveredInfra.threat_level}</div>
-                  <div className="text-cyan-400 mt-1">Click to explore →</div>
-                </div>
-              </div>
-            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* 3D Visualization */}
+        <div className="lg:col-span-1">
+          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
+            <h2 className="text-xl font-bold mb-3 text-cyan-400">Infrastructure Stack</h2>
+            <div ref={threeDRef} style={{ height: '300px' }} />
           </div>
         </div>
 
-        {/* Right Column - Multiple Visualization Types */}
-        <div className="col-span-5 space-y-3">
-          {/* Modernization Score */}
-          <div className="bg-black/80 border border-white/10 rounded-xl p-4 backdrop-blur-xl">
-            <div className="flex items-center gap-2 mb-2">
-              <Cloud className="w-4 h-4 text-purple-400" />
-              <h3 className="text-sm font-bold text-white/60">MODERNIZATION ANALYSIS</h3>
-            </div>
-            <div className="text-3xl font-bold mb-2">
-              <span className={modernizationPercentage < 30 ? 'text-pink-400' : modernizationPercentage < 60 ? 'text-yellow-400' : 'text-cyan-400'}>
-                {modernizationPercentage.toFixed(1)}%
-              </span>
-            </div>
-            
-            <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-3">
-              <div 
-                className="h-full transition-all duration-1000"
-                style={{
-                  width: `${modernizationPercentage}%`,
-                  background: modernizationPercentage < 30 
-                    ? 'linear-gradient(90deg, #ff00ff, #ff00ff)'
-                    : modernizationPercentage < 60
-                    ? 'linear-gradient(90deg, #ffaa00, #ff8800)'
-                    : 'linear-gradient(90deg, #00d4ff, #00d4ff)'
-                }}
-              />
-            </div>
+        {/* Pie Chart */}
+        <div className="lg:col-span-1">
+          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
+            <h2 className="text-xl font-bold mb-3 text-cyan-400">Category Distribution</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" labelLine={false} outerRadius={100} fill="#8884d8" dataKey="value"
+                     label={(entry) => `${entry.name}: ${entry.coverage?.toFixed(1)}%`}>
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={colors[entry.name] || '#888'} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
+        </div>
 
-          {/* Interactive Treemap */}
-          <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
-            <h3 className="text-sm font-bold text-white/60 mb-2">INFRASTRUCTURE DISTRIBUTION TREEMAP</h3>
-            <canvas ref={treemapRef} className="w-full h-40 cursor-pointer" />
-            <div className="text-xs text-gray-400 mt-2">Click sections to explore infrastructure types</div>
-          </div>
-
-          {/* Network Graph */}
-          <div className="bg-black/80 border border-white/10 rounded-xl p-3 backdrop-blur-xl">
-            <h3 className="text-sm font-bold text-white/60 mb-2">THREAT LEVEL NETWORK</h3>
-            <canvas ref={networkRef} className="w-full h-40" />
+        {/* Risk Summary */}
+        <div className="lg:col-span-1">
+          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
+            <h2 className="text-xl font-bold mb-3 text-cyan-400">Risk Distribution</h2>
+            <div className="space-y-3">
+              {['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(risk => {
+                const count = breakdown.filter(i => i.risk_level === risk).length;
+                const percentage = (count / breakdown.length) * 100;
+                return (
+                  <div key={risk}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm">{risk}</span>
+                      <span className="text-sm">{count} types</span>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full ${
+                          risk === 'CRITICAL' ? 'bg-red-500' :
+                          risk === 'HIGH' ? 'bg-orange-500' :
+                          risk === 'MEDIUM' ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Detail Panel */}
-      {detailPanel && selectedType && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-6">
-          <div className="bg-black border-2 border-cyan-400/50 rounded-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
-            <div className="p-4 border-b border-cyan-400/30 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-cyan-400">
-                {selectedType.type?.toUpperCase()} INFRASTRUCTURE ANALYSIS
-              </h2>
-              <button 
-                onClick={() => {
-                  setDetailPanel(false);
-                  setSelectedType(null);
-                  setSearchResults(null);
-                }}
-                className="text-white hover:text-cyan-400 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto max-h-[calc(80vh-80px)]">
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="bg-black/50 border border-cyan-400/30 rounded-lg p-4">
-                  <div className="text-2xl font-bold text-white">{selectedType.frequency?.toLocaleString()}</div>
-                  <div className="text-xs text-gray-400">Total Instances</div>
-                </div>
-                <div className="bg-black/50 border border-cyan-400/30 rounded-lg p-4">
-                  <div className="text-2xl font-bold text-cyan-400">{selectedType.percentage?.toFixed(1)}%</div>
-                  <div className="text-xs text-gray-400">Infrastructure Share</div>
-                </div>
-                <div className="bg-black/50 border border-purple-400/30 rounded-lg p-4">
-                  <div className={`text-2xl font-bold ${
-                    selectedType.threat_level === 'CRITICAL' ? 'text-purple-400' :
-                    selectedType.threat_level === 'HIGH' ? 'text-purple-400' :
-                    'text-yellow-400'
-                  }`}>
-                    {selectedType.threat_level}
-                  </div>
-                  <div className="text-xs text-gray-400">Threat Level</div>
-                </div>
-              </div>
+      {/* Bar Chart */}
+      <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30 mb-6">
+        <h2 className="text-xl font-bold mb-3 text-cyan-400">Top Infrastructure Types - Security Coverage</h2>
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={barData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <XAxis dataKey="name" stroke="#9ca3af" angle={-45} textAnchor="end" height={80} />
+            <YAxis stroke="#9ca3af" />
+            <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
+            <Legend />
+            <Bar dataKey="cmdb" stackId="a" fill="#00d4ff" name="CMDB %" />
+            <Bar dataKey="tanium" stackId="a" fill="#22c55e" name="Tanium %" />
+            <Bar dataKey="splunk" stackId="a" fill="#a855f7" name="Splunk %" />
+            <Bar dataKey="crowdstrike" stackId="a" fill="#ffaa00" name="CrowdStrike %" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
 
-              {searchResults && searchResults.hosts && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-bold text-cyan-400 mb-3">SAMPLE HOSTS</h3>
-                  <div className="bg-black/50 border border-cyan-400/30 rounded-lg overflow-hidden">
-                    <div className="max-h-64 overflow-y-auto">
-                      <table className="w-full text-xs">
-                        <thead className="bg-black/70 sticky top-0">
-                          <tr className="border-b border-cyan-400/30">
-                            <th className="text-left p-2 text-cyan-400">Host</th>
-                            <th className="text-left p-2 text-cyan-400">Region</th>
-                            <th className="text-left p-2 text-cyan-400">BU</th>
-                            <th className="text-left p-2 text-cyan-400">CMDB</th>
-                            <th className="text-left p-2 text-cyan-400">Tanium</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {searchResults.hosts.slice(0, 20).map((host, idx) => (
-                            <tr key={idx} className="border-b border-gray-800 hover:bg-cyan-400/5">
-                              <td className="p-2 text-white font-mono">{host.host}</td>
-                              <td className="p-2 text-gray-400">{host.region}</td>
-                              <td className="p-2 text-gray-400">{host.business_unit}</td>
-                              <td className="p-2 text-center">
-                                {host.present_in_cmdb?.toLowerCase().includes('yes') ? 
-                                  <span className="text-cyan-400">✓</span> : 
-                                  <span className="text-purple-400">✗</span>}
-                              </td>
-                              <td className="p-2 text-center">
-                                {host.tanium_coverage?.toLowerCase().includes('tanium') ? 
-                                  <span className="text-cyan-400">✓</span> : 
-                                  <span className="text-purple-400">✗</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+      {/* Data Table */}
+      <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
+        <h2 className="text-xl font-bold mb-3 text-cyan-400">Infrastructure Breakdown Details</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left p-2 text-gray-400">Type</th>
+                <th className="text-left p-2 text-gray-400">Category</th>
+                <th className="text-right p-2 text-gray-400">Assets</th>
+                <th className="text-right p-2 text-gray-400">CMDB %</th>
+                <th className="text-right p-2 text-gray-400">Tanium %</th>
+                <th className="text-right p-2 text-gray-400">Splunk %</th>
+                <th className="text-right p-2 text-gray-400">Overall %</th>
+                <th className="text-center p-2 text-gray-400">Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {breakdown
+                .filter(infra => selectedCategory === 'all' || infra.category === selectedCategory)
+                .slice(0, 20)
+                .map((infra, idx) => (
+                  <tr key={idx} className="border-b border-gray-700 hover:bg-gray-700/50">
+                    <td className="p-2">{infra.type}</td>
+                    <td className="p-2">
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        infra.category === 'Cloud' ? 'bg-purple-500/20 text-purple-400' :
+                        infra.category === 'On-Premise' ? 'bg-cyan-500/20 text-cyan-400' :
+                        infra.category === 'SaaS' ? 'bg-green-500/20 text-green-400' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}>
+                        {infra.category}
+                      </span>
+                    </td>
+                    <td className="p-2 text-right">{infra.total_assets.toLocaleString()}</td>
+                    <td className="p-2 text-right">{infra.visibility_metrics.cmdb.toFixed(1)}%</td>
+                    <td className="p-2 text-right">{infra.visibility_metrics.tanium.toFixed(1)}%</td>
+                    <td className="p-2 text-right">{infra.visibility_metrics.splunk.toFixed(1)}%</td>
+                    <td className="p-2 text-right">
+                      <span className={`font-bold ${
+                        infra.overall_visibility > 70 ? 'text-green-400' :
+                        infra.overall_visibility > 40 ? 'text-yellow-400' : 'text-red-400'
+                      }`}>
+                        {infra.overall_visibility.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="p-2 text-center">
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        infra.risk_level === 'CRITICAL' ? 'bg-red-500/20 text-red-400' :
+                        infra.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-400' :
+                        infra.risk_level === 'MEDIUM' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-green-500/20 text-green-400'
+                      }`}>
+                        {infra.risk_level}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
     </div>
   );
 };
