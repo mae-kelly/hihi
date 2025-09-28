@@ -26,44 +26,49 @@ const LoggingStandards = () => {
         const complianceData = await complianceResponse.json();
         const securityData = await securityResponse.json();
         
+        // Build logging_roles from actual API data
+        const logging_roles = {};
+        
+        if (complianceData && securityData) {
+          logging_roles['Network'] = {
+            coverage: complianceData?.overall_compliance || 0,
+            status: complianceData?.compliance_status === 'COMPLIANT' ? 'active' : 'partial',
+            gaps: complianceData?.platform_percentages?.no_logging || 0
+          };
+          
+          logging_roles['Endpoint'] = {
+            coverage: securityData?.overall_coverage?.tanium?.coverage || 0,
+            status: securityData?.security_maturity === 'ADVANCED' ? 'active' : 'warning',
+            gaps: 100 - (securityData?.overall_coverage?.tanium?.coverage || 0)
+          };
+          
+          logging_roles['Cloud'] = {
+            coverage: complianceData?.regional_compliance?.[0]?.any_logging || 0,
+            status: 'critical',
+            gaps: 100 - (complianceData?.regional_compliance?.[0]?.any_logging || 0)
+          };
+          
+          logging_roles['Application'] = {
+            coverage: complianceData?.platform_percentages?.both_platforms || 0,
+            status: 'warning',
+            gaps: 100 - (complianceData?.platform_percentages?.both_platforms || 0)
+          };
+          
+          logging_roles['Identity'] = {
+            coverage: securityData?.overall_coverage?.dlp?.coverage || 0,
+            status: 'active',
+            gaps: 100 - (securityData?.overall_coverage?.dlp?.coverage || 0)
+          };
+        }
+        
         setLoggingData({
           compliance: complianceData,
           security: securityData,
-          logging_roles: {
-            'Network': {
-              coverage: complianceData?.overall_compliance || 45.2,
-              status: complianceData?.compliance_status === 'COMPLIANT' ? 'active' : 'partial',
-              gaps: complianceData?.platform_percentages?.no_logging || 0
-            },
-            'Endpoint': {
-              coverage: securityData?.overall_coverage?.tanium?.coverage || 69.29,
-              status: securityData?.security_maturity === 'ADVANCED' ? 'active' : 'warning',
-              gaps: 100 - (securityData?.overall_coverage?.tanium?.coverage || 0)
-            },
-            'Cloud': {
-              coverage: complianceData?.regional_compliance?.[0]?.any_logging || 19.17,
-              status: 'critical',
-              gaps: 100 - (complianceData?.regional_compliance?.[0]?.any_logging || 0)
-            },
-            'Application': {
-              coverage: complianceData?.platform_percentages?.both_platforms || 42.8,
-              status: 'warning',
-              gaps: 100 - (complianceData?.platform_percentages?.both_platforms || 0)
-            },
-            'Identity': {
-              coverage: securityData?.overall_coverage?.dlp?.coverage || 82.3,
-              status: 'active',
-              gaps: 100 - (securityData?.overall_coverage?.dlp?.coverage || 0)
-            }
-          }
+          logging_roles: logging_roles
         });
       } catch (error) {
         console.error('Error:', error);
-        setLoggingData({
-          compliance: {},
-          security: {},
-          logging_roles: {}
-        });
+        setLoggingData(null);
       } finally {
         setLoading(false);
       }
@@ -238,6 +243,17 @@ const LoggingStandards = () => {
             <div className="absolute inset-0 animate-ping rounded-full h-10 w-10 border border-yellow-400/20"></div>
           </div>
           <div className="mt-3 text-[10px] text-white/40 uppercase tracking-[0.2em] animate-pulse">Analyzing Standards...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!loggingData) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <AlertTriangle className="h-8 w-8 text-red-400 mx-auto mb-3" />
+          <p className="text-[10px] text-white/40 uppercase tracking-[0.2em]">Failed to load data</p>
         </div>
       </div>
     );
