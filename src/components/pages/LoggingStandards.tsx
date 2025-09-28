@@ -1,12 +1,14 @@
+// src/components/pages/LoggingStandards.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { FileText, CheckCircle, XCircle, AlertCircle, Shield, Database, Network, Activity, Terminal, Lock, Layers, Server, Wifi, Cloud, AlertTriangle, Eye, Target, Zap, Binary, TrendingUp } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, FunnelChart, Funnel, LabelList } from 'recharts';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, FunnelChart, Funnel, LabelList, AreaChart, Area } from 'recharts';
 
 const LoggingStandards = () => {
   const [loggingData, setLoggingData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedStandard, setSelectedStandard] = useState('overview');
+  const [hoveredMetric, setHoveredMetric] = useState(null);
   const threeDRef = useRef(null);
   const rendererRef = useRef(null);
 
@@ -14,7 +16,6 @@ const LoggingStandards = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Using multiple endpoints to gather logging standards data
         const [complianceResponse, securityResponse] = await Promise.all([
           fetch('http://localhost:5000/api/logging_compliance/breakdown'),
           fetch('http://localhost:5000/api/security_control/coverage')
@@ -25,11 +26,9 @@ const LoggingStandards = () => {
         const complianceData = await complianceResponse.json();
         const securityData = await securityResponse.json();
         
-        // Combine data to create logging standards view
         setLoggingData({
           compliance: complianceData,
           security: securityData,
-          // Mock logging roles based on actual data structure
           logging_roles: {
             'Network': {
               coverage: complianceData?.overall_compliance || 45.2,
@@ -60,7 +59,6 @@ const LoggingStandards = () => {
         });
       } catch (error) {
         console.error('Error:', error);
-        // Set default data if API fails
         setLoggingData({
           compliance: {},
           security: {},
@@ -88,24 +86,25 @@ const LoggingStandards = () => {
     }
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x000011, 0.001);
+    scene.fog = new THREE.FogExp2(0x000000, 0.001);
     
     const camera = new THREE.PerspectiveCamera(60, threeDRef.current.clientWidth / threeDRef.current.clientHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     rendererRef.current = renderer;
     
     renderer.setSize(threeDRef.current.clientWidth, threeDRef.current.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     threeDRef.current.appendChild(renderer.domElement);
 
     // Central compliance core
     const complianceScore = loggingData?.compliance?.overall_compliance || 50;
-    const coreGeometry = new THREE.IcosahedronGeometry(15, 2);
+    const coreGeometry = new THREE.IcosahedronGeometry(10, 2);
     const coreMaterial = new THREE.MeshPhongMaterial({
-      color: complianceScore < 50 ? 0xa855f7 : complianceScore < 80 ? 0xffaa00 : 0x00d4ff,
-      emissive: complianceScore < 50 ? 0xa855f7 : 0x00d4ff,
-      emissiveIntensity: 0.3,
+      color: complianceScore < 50 ? 0xff0044 : complianceScore < 80 ? 0xff8800 : 0x00d4ff,
+      emissive: complianceScore < 50 ? 0xff0044 : 0x00d4ff,
+      emissiveIntensity: 0.2,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.8
     });
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
     scene.add(core);
@@ -114,41 +113,39 @@ const LoggingStandards = () => {
     const roles = Object.entries(loggingData?.logging_roles || {});
     roles.forEach(([roleName, role], index) => {
       const angle = (index / roles.length) * Math.PI * 2;
-      const radius = 50;
+      const radius = 40;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      const y = role.coverage > 70 ? 20 : role.coverage > 40 ? 0 : -20;
+      const y = role.coverage > 70 ? 15 : role.coverage > 40 ? 0 : -15;
       
       // Role node
-      const nodeSize = 5 + Math.log(role.coverage / 10 + 1) * 3;
+      const nodeSize = 3 + Math.log(role.coverage / 10 + 1) * 2;
       const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
       const nodeMaterial = new THREE.MeshPhongMaterial({
-        color: role.status === 'critical' ? 0xa855f7 :
-               role.status === 'warning' ? 0xffaa00 :
-               role.status === 'partial' ? 0xc084fc : 0x00d4ff,
-        emissive: role.status === 'critical' ? 0xa855f7 : 0x00d4ff,
-        emissiveIntensity: 0.2,
+        color: role.status === 'critical' ? 0xff0044 :
+               role.status === 'warning' ? 0xff8800 :
+               role.status === 'partial' ? 0xa855f7 : 0x00d4ff,
+        emissive: role.status === 'critical' ? 0xff0044 : 0x00d4ff,
+        emissiveIntensity: 0.1,
         transparent: true,
-        opacity: 0.8
+        opacity: 0.7
       });
       
       const nodeMesh = new THREE.Mesh(nodeGeometry, nodeMaterial);
       nodeMesh.position.set(x, y, z);
       scene.add(nodeMesh);
       
-      // Coverage indicator
-      const coverageRadius = nodeSize * (role.coverage / 100);
-      const coverageGeometry = new THREE.SphereGeometry(coverageRadius, 12, 12);
-      const coverageMaterial = new THREE.MeshPhongMaterial({
-        color: 0x00d4ff,
-        emissive: 0x00d4ff,
-        emissiveIntensity: 0.5,
+      // Coverage indicator ring
+      const ringGeometry = new THREE.TorusGeometry(nodeSize + 2, 0.3, 8, 100);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ff88,
         transparent: true,
-        opacity: 0.9
+        opacity: role.coverage / 100
       });
-      const coverageSphere = new THREE.Mesh(coverageGeometry, coverageMaterial);
-      coverageSphere.position.copy(nodeMesh.position);
-      scene.add(coverageSphere);
+      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+      ring.position.copy(nodeMesh.position);
+      ring.rotation.x = Math.PI / 2;
+      scene.add(ring);
       
       // Connection to core
       const points = [
@@ -157,24 +154,24 @@ const LoggingStandards = () => {
       ];
       const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
       const lineMaterial = new THREE.LineBasicMaterial({
-        color: role.status === 'critical' ? 0xa855f7 : 0x00d4ff,
+        color: role.status === 'critical' ? 0xff0044 : 0x00d4ff,
         transparent: true,
-        opacity: 0.3
+        opacity: 0.2
       });
       const line = new THREE.Line(lineGeometry, lineMaterial);
       scene.add(line);
     });
 
     // Data flow particles
-    const particleCount = 500;
+    const particleCount = 400;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
     
     for (let i = 0; i < particleCount * 3; i += 3) {
-      positions[i] = (Math.random() - 0.5) * 200;
-      positions[i + 1] = (Math.random() - 0.5) * 150;
-      positions[i + 2] = (Math.random() - 0.5) * 200;
+      positions[i] = (Math.random() - 0.5) * 150;
+      positions[i + 1] = (Math.random() - 0.5) * 100;
+      positions[i + 2] = (Math.random() - 0.5) * 150;
       
       const isCompliant = Math.random() < (complianceScore / 100);
       colors[i] = isCompliant ? 0 : 1;
@@ -186,10 +183,10 @@ const LoggingStandards = () => {
     particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
     const particlesMaterial = new THREE.PointsMaterial({
-      size: 1,
+      size: 0.5,
       vertexColors: true,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.4,
       blending: THREE.AdditiveBlending
     });
     
@@ -197,16 +194,16 @@ const LoggingStandards = () => {
     scene.add(particles);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
     scene.add(ambientLight);
-    const pointLight1 = new THREE.PointLight(0x00d4ff, 1, 300);
-    pointLight1.position.set(150, 100, 150);
+    const pointLight1 = new THREE.PointLight(0x00d4ff, 0.5, 200);
+    pointLight1.position.set(100, 80, 100);
     scene.add(pointLight1);
-    const pointLight2 = new THREE.PointLight(0xa855f7, 1, 300);
-    pointLight2.position.set(-150, -100, -150);
+    const pointLight2 = new THREE.PointLight(0xa855f7, 0.5, 200);
+    pointLight2.position.set(-100, -80, -100);
     scene.add(pointLight2);
 
-    camera.position.set(0, 80, 150);
+    camera.position.set(0, 60, 120);
     camera.lookAt(0, 0, 0);
 
     const animate = () => {
@@ -215,10 +212,9 @@ const LoggingStandards = () => {
       core.rotation.x += 0.001;
       particles.rotation.y += 0.0005;
       
-      const time = Date.now() * 0.0003;
-      camera.position.x = Math.sin(time) * 200;
-      camera.position.z = Math.cos(time) * 200;
-      camera.position.y = 80 + Math.sin(time * 2) * 20;
+      const time = Date.now() * 0.0002;
+      camera.position.x = Math.sin(time) * 150;
+      camera.position.z = Math.cos(time) * 150;
       camera.lookAt(0, 0, 0);
       
       renderer.render(scene, camera);
@@ -235,8 +231,14 @@ const LoggingStandards = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-10 w-10 border-b border-yellow-400/50"></div>
+            <div className="absolute inset-0 animate-ping rounded-full h-10 w-10 border border-yellow-400/20"></div>
+          </div>
+          <div className="mt-3 text-[10px] text-white/40 uppercase tracking-[0.2em] animate-pulse">Analyzing Standards...</div>
+        </div>
       </div>
     );
   }
@@ -251,16 +253,16 @@ const LoggingStandards = () => {
     name: role,
     value: data.coverage,
     status: data.status,
-    color: data.status === 'critical' ? '#ef4444' : 
-           data.status === 'warning' ? '#f59e0b' : 
-           data.status === 'partial' ? '#c084fc' : '#00d4ff'
+    color: data.status === 'critical' ? 'rgba(255, 0, 68, 0.7)' : 
+           data.status === 'warning' ? 'rgba(255, 136, 0, 0.7)' : 
+           data.status === 'partial' ? 'rgba(168, 85, 247, 0.7)' : 'rgba(0, 212, 255, 0.7)'
   }));
 
   const complianceBarData = [
-    { name: 'Splunk', value: complianceData?.platform_percentages?.splunk_only || 0, deployed: complianceData?.platform_breakdown?.splunk_only || 0 },
-    { name: 'GSO', value: complianceData?.platform_percentages?.gso_only || 0, deployed: complianceData?.platform_breakdown?.gso_only || 0 },
-    { name: 'Both', value: complianceData?.platform_percentages?.both_platforms || 0, deployed: complianceData?.platform_breakdown?.both_platforms || 0 },
-    { name: 'None', value: complianceData?.platform_percentages?.no_logging || 0, deployed: complianceData?.platform_breakdown?.no_logging || 0 }
+    { name: 'Splunk', value: complianceData?.platform_percentages?.splunk_only || 0 },
+    { name: 'GSO', value: complianceData?.platform_percentages?.gso_only || 0 },
+    { name: 'Both', value: complianceData?.platform_percentages?.both_platforms || 0 },
+    { name: 'None', value: complianceData?.platform_percentages?.no_logging || 0 }
   ];
 
   const radarData = Object.entries(loggingRoles).map(([role, data]) => ({
@@ -270,167 +272,262 @@ const LoggingStandards = () => {
   }));
 
   const pipelineData = [
-    { name: 'Configure', value: 100, fill: '#00d4ff' },
-    { name: 'Collect', value: 75, fill: '#22c55e' },
-    { name: 'Transport', value: 68, fill: '#ffaa00' },
-    { name: 'Ingest', value: 52, fill: '#f59e0b' },
-    { name: 'Normalize', value: 38, fill: '#ef4444' }
+    { name: 'Configure', value: 100, fill: 'rgba(0, 212, 255, 0.7)' },
+    { name: 'Collect', value: 75, fill: 'rgba(0, 255, 136, 0.7)' },
+    { name: 'Transport', value: 68, fill: 'rgba(255, 170, 0, 0.7)' },
+    { name: 'Ingest', value: 52, fill: 'rgba(245, 158, 11, 0.7)' },
+    { name: 'Normalize', value: 38, fill: 'rgba(255, 0, 68, 0.7)' }
   ];
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
+    <div className="p-3 h-full overflow-auto bg-black">
+      {/* Grid background */}
+      <div className="fixed inset-0 opacity-[0.02] pointer-events-none"
+           style={{
+             backgroundImage: 'linear-gradient(rgba(255, 170, 0, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 170, 0, 0.3) 1px, transparent 1px)',
+             backgroundSize: '50px 50px'
+           }} />
+      
       {/* Header with Critical Alert */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-cyan-400 mb-2">Logging Standards Compliance Dashboard</h1>
+      <div className="mb-4 relative">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-white/90 tracking-tight">LOGGING STANDARDS COMPLIANCE</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-1 h-1 rounded-full bg-yellow-400 animate-pulse" />
+              <p className="text-[9px] text-white/40 uppercase tracking-[0.15em]">Standards validation dashboard</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <FileText className="w-3 h-3 text-yellow-400/60 animate-pulse" />
+            <span className="text-[10px] text-white/50">Standards</span>
+          </div>
+        </div>
+
         {overallCompliance < 50 && (
-          <div className="bg-red-500/10 border border-red-500 rounded-lg p-3 flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-red-400" />
-            <span className="text-red-400 font-bold">CRITICAL COMPLIANCE FAILURE:</span>
-            <span className="text-white">
-              Overall logging compliance at {overallCompliance.toFixed(1)}% - Multiple standards violations detected
+          <div className="mt-3 bg-red-500/10 border border-red-500/30 rounded-lg p-2 flex items-center gap-2">
+            <AlertTriangle className="h-3 w-3 text-red-400" />
+            <span className="text-[10px] text-red-400 font-bold uppercase tracking-wider">Critical:</span>
+            <span className="text-[10px] text-white/80">
+              Overall logging compliance at {overallCompliance.toFixed(1)}% - Multiple standards violations
             </span>
           </div>
         )}
       </div>
 
       {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
+      <div className="grid grid-cols-5 gap-2 mb-4">
+        <div 
+          onMouseEnter={() => setHoveredMetric(0)}
+          onMouseLeave={() => setHoveredMetric(null)}
+          className={`relative bg-black/60 backdrop-blur-xl rounded-lg p-3 border transition-all duration-300 cursor-pointer
+            ${hoveredMetric === 0 ? 'border-yellow-400/40 transform -translate-y-0.5' : 'border-white/10'}`}
+        >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-sm">Overall Compliance</p>
-              <p className="text-2xl font-bold text-cyan-400">{overallCompliance.toFixed(1)}%</p>
+              <p className="text-[9px] text-white/40 uppercase tracking-[0.1em] font-medium">Overall</p>
+              <p className={`text-base font-bold mt-1 transition-colors ${
+                hoveredMetric === 0 ? 'text-yellow-400' : 'text-white/90'
+              }`}>{overallCompliance.toFixed(1)}%</p>
             </div>
-            <FileText className="h-8 w-8 text-cyan-400" />
+            <FileText className={`h-4 w-4 transition-all ${
+              hoveredMetric === 0 ? 'text-yellow-400/80' : 'text-white/20'
+            }`} />
           </div>
         </div>
         
         {Object.entries(loggingRoles).slice(0, 4).map(([role, data], idx) => (
-          <div key={idx} className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
+          <div 
+            key={idx}
+            onMouseEnter={() => setHoveredMetric(idx + 1)}
+            onMouseLeave={() => setHoveredMetric(null)}
+            className={`relative bg-black/60 backdrop-blur-xl rounded-lg p-3 border transition-all duration-300 cursor-pointer
+              ${hoveredMetric === idx + 1 ? 'border-yellow-400/40 transform -translate-y-0.5' : 'border-white/10'}`}
+          >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">{role}</p>
-                <p className="text-2xl font-bold">
-                  <span className={data.status === 'critical' ? 'text-red-400' : 
-                                   data.status === 'warning' ? 'text-yellow-400' : 'text-cyan-400'}>
-                    {data.coverage.toFixed(1)}%
-                  </span>
+                <p className="text-[9px] text-white/40 uppercase tracking-[0.1em] font-medium">{role}</p>
+                <p className={`text-base font-bold mt-1 transition-colors ${
+                  data.status === 'critical' ? 'text-red-400' : 
+                  data.status === 'warning' ? 'text-yellow-400' : 
+                  hoveredMetric === idx + 1 ? 'text-cyan-400' : 'text-white/90'
+                }`}>
+                  {data.coverage.toFixed(1)}%
                 </p>
               </div>
-              {role === 'Network' ? <Network className="h-8 w-8 text-purple-400" /> :
-               role === 'Endpoint' ? <Server className="h-8 w-8 text-cyan-400" /> :
-               role === 'Cloud' ? <Cloud className="h-8 w-8 text-purple-400" /> :
-               <Lock className="h-8 w-8 text-green-400" />}
+              {role === 'Network' ? <Network className="h-4 w-4 text-purple-400/40" /> :
+               role === 'Endpoint' ? <Server className="h-4 w-4 text-cyan-400/40" /> :
+               role === 'Cloud' ? <Cloud className="h-4 w-4 text-purple-400/40" /> :
+               <Lock className="h-4 w-4 text-green-400/40" />}
             </div>
           </div>
         ))}
       </div>
 
       {/* Main Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-3">
         {/* 3D Visualization */}
-        <div className="lg:col-span-1">
-          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-            <h2 className="text-xl font-bold mb-3 text-cyan-400">Logging Standards Hierarchy</h2>
-            <div ref={threeDRef} style={{ height: '300px' }} />
+        <div className="col-span-1">
+          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-yellow-400/50 to-transparent" />
+            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Standards Hierarchy</h2>
+            <div ref={threeDRef} style={{ height: '240px' }} />
           </div>
         </div>
 
         {/* Roles Pie Chart */}
-        <div className="lg:col-span-1">
-          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-            <h2 className="text-xl font-bold mb-3 text-cyan-400">Role Coverage Distribution</h2>
-            <ResponsiveContainer width="100%" height={300}>
+        <div className="col-span-1">
+          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Role Coverage</h2>
+            <ResponsiveContainer width="100%" height={240}>
               <PieChart>
-                <Pie data={rolesPieData} cx="50%" cy="50%" labelLine={false} outerRadius={100} fill="#8884d8" dataKey="value"
-                     label={(entry) => `${entry.name}: ${entry.value.toFixed(1)}%`}>
+                <Pie 
+                  data={rolesPieData} 
+                  cx="50%" 
+                  cy="50%" 
+                  innerRadius={40}
+                  outerRadius={80} 
+                  paddingAngle={2}
+                  dataKey="value"
+                >
                   {rolesPieData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'rgba(0, 0, 0, 0.95)', 
+                    border: '1px solid rgba(255, 170, 0, 0.2)',
+                    borderRadius: '4px',
+                    fontSize: '10px'
+                  }} 
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Radar Chart */}
-        <div className="lg:col-span-1">
-          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-            <h2 className="text-xl font-bold mb-3 text-cyan-400">Coverage Radar</h2>
-            <ResponsiveContainer width="100%" height={300}>
+        <div className="col-span-1">
+          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent" />
+            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Coverage Radar</h2>
+            <ResponsiveContainer width="100%" height={240}>
               <RadarChart data={radarData}>
-                <PolarGrid stroke="#374151" />
-                <PolarAngleAxis dataKey="subject" stroke="#9ca3af" />
-                <PolarRadiusAxis angle={90} domain={[0, 100]} stroke="#9ca3af" />
-                <Radar name="Coverage %" dataKey="coverage" stroke="#00d4ff" fill="#00d4ff" fillOpacity={0.6} />
-                <Tooltip />
+                <PolarGrid stroke="rgba(255, 255, 255, 0.05)" />
+                <PolarAngleAxis dataKey="subject" stroke="#ffffff20" tick={{ fontSize: 8 }} />
+                <PolarRadiusAxis angle={90} domain={[0, 100]} stroke="#ffffff20" tick={{ fontSize: 8 }} />
+                <Radar name="Coverage %" dataKey="coverage" stroke="rgba(255, 170, 0, 0.6)" fill="rgba(255, 170, 0, 0.2)" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'rgba(0, 0, 0, 0.95)', 
+                    border: '1px solid rgba(255, 170, 0, 0.2)',
+                    borderRadius: '4px',
+                    fontSize: '10px'
+                  }} 
+                />
               </RadarChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Pipeline Funnel Chart */}
-      <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30 mb-6">
-        <h2 className="text-xl font-bold mb-3 text-cyan-400">Logging Pipeline Status</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <FunnelChart>
-            <Tooltip />
-            <Funnel dataKey="value" data={pipelineData} isAnimationActive>
-              <LabelList position="center" fill="#fff" stroke="none" />
-            </Funnel>
-          </FunnelChart>
-        </ResponsiveContainer>
+      {/* Pipeline Status */}
+      <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden mb-3">
+        <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-yellow-400/50 to-transparent" />
+        <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Logging Pipeline Status</h2>
+        <div className="flex justify-between items-center px-6">
+          {pipelineData.map((stage, idx) => (
+            <div key={idx} className="flex flex-col items-center">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-2 border-white/10 flex items-center justify-center">
+                  <div 
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      background: `conic-gradient(${stage.fill} ${stage.value}%, transparent ${stage.value}%)`,
+                      opacity: 0.3
+                    }}
+                  />
+                  <span className="text-[10px] font-bold text-white/80">{stage.value}%</span>
+                </div>
+                <p className="text-[9px] text-white/40 mt-2 uppercase tracking-wider">{stage.name}</p>
+              </div>
+              {idx < pipelineData.length - 1 && (
+                <div className="absolute ml-16 mt-8 w-20 h-0.5 bg-white/10">
+                  <div 
+                    className="h-full bg-gradient-to-r from-cyan-400 to-purple-400"
+                    style={{ width: `${stage.value}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Platform Compliance Bar Chart */}
-      <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30 mb-6">
-        <h2 className="text-xl font-bold mb-3 text-cyan-400">Platform Compliance Breakdown</h2>
-        <ResponsiveContainer width="100%" height={250}>
+      <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden mb-3">
+        <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+        <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Platform Compliance</h2>
+        <ResponsiveContainer width="100%" height={150}>
           <BarChart data={complianceBarData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="name" stroke="#9ca3af" />
-            <YAxis stroke="#9ca3af" />
-            <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-            <Legend />
-            <Bar dataKey="value" fill="#00d4ff" name="Coverage %" />
-            <Bar dataKey="deployed" fill="#22c55e" name="Deployed Count" />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.03)" />
+            <XAxis dataKey="name" stroke="#ffffff20" tick={{ fontSize: 9 }} />
+            <YAxis stroke="#ffffff20" tick={{ fontSize: 9 }} />
+            <Tooltip 
+              contentStyle={{ 
+                backgroundColor: 'rgba(0, 0, 0, 0.95)', 
+                border: '1px solid rgba(255, 170, 0, 0.2)',
+                borderRadius: '4px',
+                fontSize: '10px'
+              }} 
+            />
+            <Bar dataKey="value" fill="rgba(255, 170, 0, 0.5)" radius={[2, 2, 0, 0]}>
+              {complianceBarData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={
+                  entry.name === 'Both' ? 'rgba(0, 255, 136, 0.5)' :
+                  entry.name === 'None' ? 'rgba(255, 0, 68, 0.5)' :
+                  'rgba(255, 170, 0, 0.5)'
+                } />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       {/* Data Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-3">
         {/* Logging Roles Table */}
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Logging Role Standards</h2>
+        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-yellow-400/50 to-transparent" />
+          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Role Standards</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-[10px]">
               <thead>
-                <tr className="border-b border-gray-700">
-                  <th className="text-left p-2 text-gray-400">Role</th>
-                  <th className="text-right p-2 text-gray-400">Coverage %</th>
-                  <th className="text-right p-2 text-gray-400">Gap %</th>
-                  <th className="text-center p-2 text-gray-400">Status</th>
-                  <th className="text-center p-2 text-gray-400">Risk</th>
+                <tr className="border-b border-white/5">
+                  <th className="text-left py-1.5 text-white/30 font-medium uppercase tracking-wider">Role</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Coverage</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Gap</th>
+                  <th className="text-center py-1.5 text-white/30 font-medium uppercase tracking-wider">Status</th>
+                  <th className="text-center py-1.5 text-white/30 font-medium uppercase tracking-wider">Risk</th>
                 </tr>
               </thead>
               <tbody>
                 {Object.entries(loggingRoles).map(([role, data], idx) => (
-                  <tr key={idx} className="border-b border-gray-700 hover:bg-gray-700/50">
-                    <td className="p-2">{role}</td>
-                    <td className="p-2 text-right">
+                  <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                    <td className="py-1.5 text-white/70">{role}</td>
+                    <td className="py-1.5 text-right">
                       <span className={`font-bold ${
-                        data.coverage > 70 ? 'text-green-400' :
-                        data.coverage > 40 ? 'text-yellow-400' : 'text-red-400'
+                        data.coverage > 70 ? 'text-green-400/80' :
+                        data.coverage > 40 ? 'text-yellow-400/80' : 'text-red-400/80'
                       }`}>
                         {data.coverage.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="p-2 text-right text-red-400">{data.gaps.toFixed(1)}%</td>
-                    <td className="p-2 text-center">
-                      <span className={`px-2 py-1 rounded text-xs ${
+                    <td className="py-1.5 text-right text-red-400/60">{data.gaps.toFixed(1)}%</td>
+                    <td className="py-1.5 text-center">
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
                         data.status === 'active' ? 'bg-green-500/20 text-green-400' :
                         data.status === 'warning' ? 'bg-yellow-500/20 text-yellow-400' :
                         data.status === 'partial' ? 'bg-purple-500/20 text-purple-400' :
@@ -439,10 +536,10 @@ const LoggingStandards = () => {
                         {data.status.toUpperCase()}
                       </span>
                     </td>
-                    <td className="p-2 text-center">
-                      {data.coverage < 30 ? <XCircle className="w-4 h-4 text-red-400 inline" /> :
-                       data.coverage < 70 ? <AlertCircle className="w-4 h-4 text-yellow-400 inline" /> :
-                       <CheckCircle className="w-4 h-4 text-green-400 inline" />}
+                    <td className="py-1.5 text-center">
+                      {data.coverage < 30 ? <XCircle className="w-3 h-3 text-red-400 inline" /> :
+                       data.coverage < 70 ? <AlertCircle className="w-3 h-3 text-yellow-400 inline" /> :
+                       <CheckCircle className="w-3 h-3 text-green-400 inline" />}
                     </td>
                   </tr>
                 ))}
@@ -452,34 +549,35 @@ const LoggingStandards = () => {
         </div>
 
         {/* Critical Actions Table */}
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Critical Actions Required</h2>
-          <div className="space-y-3">
+        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-red-400/50 to-transparent" />
+          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Critical Actions</h2>
+          <div className="space-y-2">
             {Object.entries(loggingRoles)
               .filter(([_, data]) => data.coverage < 50)
               .map(([role, data], idx) => (
-                <div key={idx} className="p-3 bg-red-500/10 border border-red-500/30 rounded">
+                <div key={idx} className="p-2 bg-red-500/10 border border-red-500/20 rounded">
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="font-bold text-red-400">{role.toUpperCase()}</div>
-                      <div className="text-sm text-gray-300 mt-1">
+                      <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider">{role}</div>
+                      <div className="text-[9px] text-white/60 mt-1">
                         Current: {data.coverage.toFixed(1)}% | Gap: {data.gaps.toFixed(1)}%
                       </div>
                     </div>
-                    <Target className="w-5 h-5 text-red-400" />
+                    <Target className="w-3 h-3 text-red-400" />
                   </div>
-                  <div className="mt-2 text-xs text-gray-400">
-                    {role === 'Cloud' ? 'Enable CloudTrail, VPC Flow Logs immediately' :
-                     role === 'Network' ? 'Configure SNMP/NetFlow on all network devices' :
-                     'Deploy agent-based logging solution'}
+                  <div className="mt-1 text-[9px] text-white/40">
+                    {role === 'Cloud' ? 'Enable CloudTrail, VPC Flow Logs' :
+                     role === 'Network' ? 'Configure SNMP/NetFlow on devices' :
+                     'Deploy agent-based logging'}
                   </div>
                 </div>
               ))}
             
             {overallCompliance > 50 && (
-              <div className="p-3 bg-green-500/10 border border-green-500/30 rounded">
-                <div className="text-sm text-green-400">
-                  Continue monitoring and improving logging coverage to reach 95% compliance target
+              <div className="p-2 bg-green-500/10 border border-green-500/20 rounded">
+                <div className="text-[10px] text-green-400">
+                  Continue monitoring to reach 95% compliance target
                 </div>
               </div>
             )}

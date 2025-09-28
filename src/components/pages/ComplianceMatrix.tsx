@@ -1,6 +1,7 @@
+// src/components/pages/ComplianceMatrix.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, FileSearch, Database, Server, Activity, AlertTriangle, Layers, Binary, Zap, ChevronRight, X, Eye } from 'lucide-react';
 import * as THREE from 'three';
+import { Shield, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, FileSearch, Database, Server, Activity, AlertTriangle, Layers, Binary, Zap } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, AreaChart, Area } from 'recharts';
 
 const ComplianceMatrix = () => {
@@ -8,6 +9,7 @@ const ComplianceMatrix = () => {
   const [loading, setLoading] = useState(true);
   const [selectedPlatform, setSelectedPlatform] = useState('both');
   const [selectedTab, setSelectedTab] = useState('overview');
+  const [hoveredMetric, setHoveredMetric] = useState(null);
   const matrixRef = useRef(null);
   const rendererRef = useRef(null);
 
@@ -68,21 +70,20 @@ const ComplianceMatrix = () => {
     
     // Splunk Platform (Left)
     const splunkPercent = complianceData?.platform_percentages?.splunk_only || 0;
-    const splunkTotal = complianceData?.platform_breakdown?.splunk_only || 0;
     
-    const splunkRadius = 25;
-    const splunkHeight = 50;
+    const splunkRadius = 20;
+    const splunkHeight = 40;
     
     // Outer cylinder for Splunk
     const splunkOuterGeometry = new THREE.CylinderGeometry(splunkRadius, splunkRadius, splunkHeight, 32, 1, true);
     const splunkOuterMaterial = new THREE.MeshPhongMaterial({
       color: 0x00d4ff,
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.2,
       side: THREE.DoubleSide
     });
     const splunkOuter = new THREE.Mesh(splunkOuterGeometry, splunkOuterMaterial);
-    splunkOuter.position.x = -30;
+    splunkOuter.position.x = -25;
     platformGroup.add(splunkOuter);
     
     // Inner filled cylinder for Splunk
@@ -92,10 +93,10 @@ const ComplianceMatrix = () => {
       const splunkFillMaterial = new THREE.MeshPhongMaterial({
         color: 0x00d4ff,
         emissive: 0x00d4ff,
-        emissiveIntensity: 0.3
+        emissiveIntensity: 0.2
       });
       const splunkFill = new THREE.Mesh(splunkFillGeometry, splunkFillMaterial);
-      splunkFill.position.x = -30;
+      splunkFill.position.x = -25;
       splunkFill.position.y = -splunkHeight/2 + splunkFillHeight/2;
       platformGroup.add(splunkFill);
     }
@@ -103,19 +104,19 @@ const ComplianceMatrix = () => {
     // GSO Platform (Right)
     const gsoPercent = complianceData?.platform_percentages?.gso_only || 0;
     
-    const gsoRadius = 25;
-    const gsoHeight = 50;
+    const gsoRadius = 20;
+    const gsoHeight = 40;
     
     // Outer cylinder for GSO
     const gsoOuterGeometry = new THREE.CylinderGeometry(gsoRadius, gsoRadius, gsoHeight, 32, 1, true);
     const gsoOuterMaterial = new THREE.MeshPhongMaterial({
       color: 0xa855f7,
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.2,
       side: THREE.DoubleSide
     });
     const gsoOuter = new THREE.Mesh(gsoOuterGeometry, gsoOuterMaterial);
-    gsoOuter.position.x = 30;
+    gsoOuter.position.x = 25;
     platformGroup.add(gsoOuter);
     
     // Inner filled cylinder for GSO
@@ -125,10 +126,10 @@ const ComplianceMatrix = () => {
       const gsoFillMaterial = new THREE.MeshPhongMaterial({
         color: 0xa855f7,
         emissive: 0xa855f7,
-        emissiveIntensity: 0.3
+        emissiveIntensity: 0.2
       });
       const gsoFill = new THREE.Mesh(gsoFillGeometry, gsoFillMaterial);
-      gsoFill.position.x = 30;
+      gsoFill.position.x = 25;
       gsoFill.position.y = -gsoHeight/2 + gsoFillHeight/2;
       platformGroup.add(gsoFill);
     }
@@ -137,13 +138,13 @@ const ComplianceMatrix = () => {
     const bothPercent = complianceData?.platform_percentages?.both_platforms || 0;
     const bridgeHeight = gsoHeight * (bothPercent / 100);
     if (bridgeHeight > 0) {
-      const bridgeGeometry = new THREE.BoxGeometry(60, bridgeHeight, 10);
+      const bridgeGeometry = new THREE.BoxGeometry(50, bridgeHeight, 8);
       const bridgeMaterial = new THREE.MeshPhongMaterial({
-        color: 0x22c55e,
-        emissive: 0x22c55e,
-        emissiveIntensity: 0.3,
+        color: 0x00ff88,
+        emissive: 0x00ff88,
+        emissiveIntensity: 0.2,
         transparent: true,
-        opacity: 0.7
+        opacity: 0.6
       });
       const bridge = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
       bridge.position.y = -gsoHeight/2 + bridgeHeight/2;
@@ -154,25 +155,25 @@ const ComplianceMatrix = () => {
     
     // Non-compliant particles
     const noLoggingPercent = complianceData?.platform_percentages?.no_logging || 0;
-    const particleCount = Math.min(500, Math.floor(noLoggingPercent * 10));
+    const particleCount = Math.min(300, Math.floor(noLoggingPercent * 6));
     
     if (particleCount > 0) {
       const particlesGeometry = new THREE.BufferGeometry();
       const positions = new Float32Array(particleCount * 3);
       
       for (let i = 0; i < particleCount * 3; i += 3) {
-        positions[i] = (Math.random() - 0.5) * 150;
-        positions[i + 1] = (Math.random() - 0.5) * 100;
-        positions[i + 2] = (Math.random() - 0.5) * 150;
+        positions[i] = (Math.random() - 0.5) * 120;
+        positions[i + 1] = (Math.random() - 0.5) * 80;
+        positions[i + 2] = (Math.random() - 0.5) * 120;
       }
       
       particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       
       const particlesMaterial = new THREE.PointsMaterial({
-        size: 2,
-        color: 0xff0000,
+        size: 1,
+        color: 0xff0044,
         transparent: true,
-        opacity: 0.6,
+        opacity: 0.4,
         blending: THREE.AdditiveBlending
       });
       
@@ -181,18 +182,18 @@ const ComplianceMatrix = () => {
     }
     
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
     scene.add(ambientLight);
     
-    const pointLight1 = new THREE.PointLight(0x00d4ff, 1, 200);
-    pointLight1.position.set(100, 50, 100);
+    const pointLight1 = new THREE.PointLight(0x00d4ff, 0.5, 200);
+    pointLight1.position.set(80, 50, 80);
     scene.add(pointLight1);
     
-    const pointLight2 = new THREE.PointLight(0xa855f7, 1, 200);
-    pointLight2.position.set(-100, 50, -100);
+    const pointLight2 = new THREE.PointLight(0xa855f7, 0.5, 200);
+    pointLight2.position.set(-80, 50, -80);
     scene.add(pointLight2);
     
-    camera.position.set(0, 50, 120);
+    camera.position.set(0, 40, 100);
     camera.lookAt(0, 0, 0);
     
     // Animation
@@ -214,10 +215,13 @@ const ComplianceMatrix = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900">
+      <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
-          <div className="mt-4 text-cyan-400">Loading Compliance Data...</div>
+          <div className="relative">
+            <div className="animate-spin rounded-full h-10 w-10 border-b border-purple-400/50"></div>
+            <div className="absolute inset-0 animate-ping rounded-full h-10 w-10 border border-purple-400/20"></div>
+          </div>
+          <div className="mt-3 text-[10px] text-white/40 uppercase tracking-[0.2em] animate-pulse">Loading Compliance...</div>
         </div>
       </div>
     );
@@ -232,153 +236,167 @@ const ComplianceMatrix = () => {
 
   // Prepare chart data
   const compliancePieData = [
-    { name: 'Splunk Only', value: platformPercentages.splunk_only || 0, color: '#00d4ff' },
-    { name: 'GSO Only', value: platformPercentages.gso_only || 0, color: '#a855f7' },
-    { name: 'Both Platforms', value: platformPercentages.both_platforms || 0, color: '#22c55e' },
-    { name: 'No Logging', value: platformPercentages.no_logging || 0, color: '#ef4444' }
+    { name: 'Splunk Only', value: platformPercentages.splunk_only || 0, color: 'rgba(0, 212, 255, 0.7)' },
+    { name: 'GSO Only', value: platformPercentages.gso_only || 0, color: 'rgba(168, 85, 247, 0.7)' },
+    { name: 'Both Platforms', value: platformPercentages.both_platforms || 0, color: 'rgba(0, 255, 136, 0.7)' },
+    { name: 'No Logging', value: platformPercentages.no_logging || 0, color: 'rgba(255, 0, 68, 0.7)' }
   ];
 
-  const regionalData = regionalCompliance.slice(0, 10).map(region => ({
-    region: region.region,
+  const regionalData = regionalCompliance.slice(0, 8).map(region => ({
+    region: region.region.substring(0, 10),
     splunk: region.splunk_coverage,
     gso: region.gso_coverage,
     any: region.any_logging
   }));
 
   const radarData = regionalCompliance.slice(0, 6).map(region => ({
-    subject: region.region,
+    subject: region.region.substring(0, 8),
     splunk: region.splunk_coverage,
     gso: region.gso_coverage,
     combined: region.any_logging
   }));
 
-  const areaChartData = regionalCompliance.slice(0, 8).map(region => ({
-    name: region.region,
-    splunk: region.splunk_coverage,
-    gso: region.gso_coverage,
-    gap: 100 - region.any_logging
-  }));
-
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
+    <div className="p-3 h-full overflow-auto bg-black">
+      {/* Grid background */}
+      <div className="fixed inset-0 opacity-[0.02] pointer-events-none"
+           style={{
+             backgroundImage: 'linear-gradient(rgba(168, 85, 247, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(168, 85, 247, 0.3) 1px, transparent 1px)',
+             backgroundSize: '50px 50px'
+           }} />
+      
       {/* Header with Alert */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-cyan-400 mb-2">Logging Compliance Matrix</h1>
+      <div className="mb-4 relative">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-white/90 tracking-tight">LOGGING COMPLIANCE MATRIX</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-1 h-1 rounded-full bg-purple-400 animate-pulse" />
+              <p className="text-[9px] text-white/40 uppercase tracking-[0.15em]">Platform logging analysis</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <FileSearch className="w-3 h-3 text-purple-400/60 animate-pulse" />
+            <span className="text-[10px] text-white/50">Compliance</span>
+          </div>
+        </div>
+        
         {platformPercentages.no_logging > 30 && (
-          <div className="bg-red-500/10 border border-red-500 rounded-lg p-3 flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-red-400" />
-            <span className="text-red-400 font-bold">CRITICAL:</span>
-            <span className="text-white">{platformPercentages.no_logging?.toFixed(1)}% of assets have no logging enabled</span>
+          <div className="mt-3 bg-red-500/10 border border-red-500/30 rounded-lg p-2 flex items-center gap-2">
+            <AlertTriangle className="h-3 w-3 text-red-400" />
+            <span className="text-[10px] text-red-400 font-bold uppercase tracking-wider">Critical:</span>
+            <span className="text-[10px] text-white/80">{platformPercentages.no_logging?.toFixed(1)}% of assets have no logging</span>
           </div>
         )}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
-        <button onClick={() => setSelectedTab('overview')} className={`px-4 py-2 rounded ${selectedTab === 'overview' ? 'bg-cyan-600' : 'bg-gray-700'}`}>
-          Overview
-        </button>
-        <button onClick={() => setSelectedTab('regional')} className={`px-4 py-2 rounded ${selectedTab === 'regional' ? 'bg-cyan-600' : 'bg-gray-700'}`}>
-          Regional
-        </button>
-        <button onClick={() => setSelectedTab('platforms')} className={`px-4 py-2 rounded ${selectedTab === 'platforms' ? 'bg-cyan-600' : 'bg-gray-700'}`}>
-          Platforms
-        </button>
+      <div className="flex gap-1 mb-4">
+        {['overview', 'regional', 'platforms'].map(tab => (
+          <button 
+            key={tab}
+            onClick={() => setSelectedTab(tab)} 
+            className={`px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded transition-all duration-200 ${
+              selectedTab === tab 
+                ? 'bg-gradient-to-r from-purple-500/10 to-cyan-500/10 text-white border border-purple-400/30' 
+                : 'bg-black/40 text-white/40 border border-white/5 hover:text-white/60 hover:border-white/10'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
 
       {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Total Assets</p>
-              <p className="text-2xl font-bold">{totalAssets.toLocaleString()}</p>
+      <div className="grid grid-cols-5 gap-2 mb-4">
+        {[
+          { label: 'Total Assets', value: totalAssets.toLocaleString(), icon: Server },
+          { label: 'Overall Compliance', value: `${overallCompliance.toFixed(1)}%`, icon: Shield, color: 'cyan' },
+          { label: 'Both Platforms', value: `${platformPercentages.both_platforms?.toFixed(1)}%`, icon: CheckCircle, color: 'green' },
+          { label: 'Single Platform', value: `${((platformPercentages.splunk_only || 0) + (platformPercentages.gso_only || 0)).toFixed(1)}%`, icon: AlertCircle, color: 'yellow' },
+          { label: 'No Logging', value: `${platformPercentages.no_logging?.toFixed(1)}%`, icon: XCircle, color: 'red', critical: true }
+        ].map((metric, idx) => (
+          <div 
+            key={idx}
+            onMouseEnter={() => setHoveredMetric(idx)}
+            onMouseLeave={() => setHoveredMetric(null)}
+            className={`relative bg-black/60 backdrop-blur-xl rounded-lg p-3 border transition-all duration-300 cursor-pointer
+              ${hoveredMetric === idx ? 'border-purple-400/40 transform -translate-y-0.5' : 'border-white/10'}`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[9px] text-white/40 uppercase tracking-[0.1em] font-medium">{metric.label}</p>
+                <p className={`text-sm font-bold mt-1 transition-colors ${
+                  hoveredMetric === idx ? 
+                    (metric.critical ? 'text-red-400' : metric.color === 'green' ? 'text-green-400' : 'text-purple-400') : 
+                    (metric.critical ? 'text-red-400/80' : 'text-white/90')
+                }`}>{metric.value}</p>
+              </div>
+              <metric.icon className={`h-3 w-3 transition-all ${
+                metric.critical ? 'text-red-400/60' :
+                metric.color === 'green' ? 'text-green-400/60' :
+                metric.color === 'yellow' ? 'text-yellow-400/60' :
+                metric.color === 'cyan' ? 'text-cyan-400/60' :
+                'text-white/20'
+              }`} />
             </div>
-            <Server className="h-8 w-8 text-cyan-400" />
           </div>
-        </div>
-        
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Overall Compliance</p>
-              <p className="text-2xl font-bold text-cyan-400">{overallCompliance.toFixed(1)}%</p>
-            </div>
-            <Shield className="h-8 w-8 text-cyan-400" />
-          </div>
-        </div>
-        
-        <div className="bg-gray-800 rounded-lg p-4 border border-green-400/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Both Platforms</p>
-              <p className="text-2xl font-bold text-green-400">{platformPercentages.both_platforms?.toFixed(1)}%</p>
-              <p className="text-xs text-gray-400">{platformBreakdown.both_platforms?.toLocaleString()} hosts</p>
-            </div>
-            <CheckCircle className="h-8 w-8 text-green-400" />
-          </div>
-        </div>
-        
-        <div className="bg-gray-800 rounded-lg p-4 border border-yellow-400/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Single Platform</p>
-              <p className="text-2xl font-bold text-yellow-400">
-                {((platformPercentages.splunk_only || 0) + (platformPercentages.gso_only || 0)).toFixed(1)}%
-              </p>
-            </div>
-            <AlertCircle className="h-8 w-8 text-yellow-400" />
-          </div>
-        </div>
-        
-        <div className="bg-gray-800 rounded-lg p-4 border border-red-400/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">No Logging</p>
-              <p className="text-2xl font-bold text-red-400">{platformPercentages.no_logging?.toFixed(1)}%</p>
-              <p className="text-xs text-gray-400">{platformBreakdown.no_logging?.toLocaleString()} hosts</p>
-            </div>
-            <XCircle className="h-8 w-8 text-red-400" />
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Main Charts Grid */}
       {selectedTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-3 gap-3 mb-3">
           {/* 3D Matrix Visualization */}
-          <div className="lg:col-span-1">
-            <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-              <h2 className="text-xl font-bold mb-3 text-cyan-400">Compliance Matrix 3D</h2>
-              <div ref={matrixRef} style={{ height: '300px' }} />
+          <div className="col-span-1">
+            <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent" />
+              <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Compliance Matrix 3D</h2>
+              <div ref={matrixRef} style={{ height: '240px' }} />
             </div>
           </div>
 
           {/* Pie Chart */}
-          <div className="lg:col-span-1">
-            <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-              <h2 className="text-xl font-bold mb-3 text-cyan-400">Platform Distribution</h2>
-              <ResponsiveContainer width="100%" height={300}>
+          <div className="col-span-1">
+            <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+              <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Platform Distribution</h2>
+              <ResponsiveContainer width="100%" height={240}>
                 <PieChart>
-                  <Pie data={compliancePieData} cx="50%" cy="50%" labelLine={false} outerRadius={100} fill="#8884d8" dataKey="value"
-                       label={(entry) => `${entry.name}: ${entry.value.toFixed(1)}%`}>
+                  <Pie 
+                    data={compliancePieData} 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius={40}
+                    outerRadius={80} 
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
                     {compliancePieData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'rgba(0, 0, 0, 0.95)', 
+                      border: '1px solid rgba(168, 85, 247, 0.2)',
+                      borderRadius: '4px',
+                      fontSize: '10px'
+                    }} 
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           </div>
 
           {/* Status Card */}
-          <div className="lg:col-span-1">
-            <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-              <h2 className="text-xl font-bold mb-3 text-cyan-400">Compliance Status</h2>
-              <div className="flex items-center justify-center h-[250px]">
+          <div className="col-span-1">
+            <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-green-400/50 to-transparent" />
+              <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Compliance Status</h2>
+              <div className="flex items-center justify-center h-[200px]">
                 <div className="text-center">
-                  <div className={`text-5xl font-bold mb-4 ${
+                  <div className={`text-3xl font-bold mb-3 ${
                     complianceStatus === 'COMPLIANT' ? 'text-green-400' :
                     complianceStatus === 'PARTIAL' ? 'text-yellow-400' :
                     'text-red-400'
@@ -386,13 +404,13 @@ const ComplianceMatrix = () => {
                     {complianceStatus}
                   </div>
                   <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Splunk Coverage:</span>
-                      <span className="text-white">{(platformPercentages.splunk_only + platformPercentages.both_platforms).toFixed(1)}%</span>
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-white/40">Splunk Coverage:</span>
+                      <span className="text-white/70 font-mono">{(platformPercentages.splunk_only + platformPercentages.both_platforms).toFixed(1)}%</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">GSO Coverage:</span>
-                      <span className="text-white">{(platformPercentages.gso_only + platformPercentages.both_platforms).toFixed(1)}%</span>
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-white/40">GSO Coverage:</span>
+                      <span className="text-white/70 font-mono">{(platformPercentages.gso_only + platformPercentages.both_platforms).toFixed(1)}%</span>
                     </div>
                   </div>
                 </div>
@@ -404,101 +422,97 @@ const ComplianceMatrix = () => {
 
       {/* Regional Tab Content */}
       {selectedTab === 'regional' && (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {/* Regional Bar Chart */}
-          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-            <h2 className="text-xl font-bold mb-3 text-cyan-400">Regional Compliance Analysis</h2>
-            <ResponsiveContainer width="100%" height={300}>
+          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent" />
+            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Regional Compliance Analysis</h2>
+            <ResponsiveContainer width="100%" height={200}>
               <BarChart data={regionalData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="region" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
-                <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-                <Legend />
-                <Bar dataKey="splunk" fill="#00d4ff" name="Splunk %" />
-                <Bar dataKey="gso" fill="#a855f7" name="GSO %" />
-                <Bar dataKey="any" fill="#22c55e" name="Any Logging %" />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.03)" />
+                <XAxis dataKey="region" stroke="#ffffff20" tick={{ fontSize: 9 }} />
+                <YAxis stroke="#ffffff20" tick={{ fontSize: 9 }} />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'rgba(0, 0, 0, 0.95)', 
+                    border: '1px solid rgba(168, 85, 247, 0.2)',
+                    borderRadius: '4px',
+                    fontSize: '10px'
+                  }} 
+                />
+                <Bar dataKey="splunk" fill="rgba(0, 212, 255, 0.5)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="gso" fill="rgba(168, 85, 247, 0.5)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="any" fill="rgba(0, 255, 136, 0.5)" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
           {/* Radar Chart */}
-          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-            <h2 className="text-xl font-bold mb-3 text-cyan-400">Regional Coverage Radar</h2>
-            <ResponsiveContainer width="100%" height={300}>
+          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Regional Coverage Radar</h2>
+            <ResponsiveContainer width="100%" height={250}>
               <RadarChart data={radarData}>
-                <PolarGrid stroke="#374151" />
-                <PolarAngleAxis dataKey="subject" stroke="#9ca3af" />
-                <PolarRadiusAxis angle={90} domain={[0, 100]} stroke="#9ca3af" />
-                <Radar name="Splunk" dataKey="splunk" stroke="#00d4ff" fill="#00d4ff" fillOpacity={0.3} />
-                <Radar name="GSO" dataKey="gso" stroke="#a855f7" fill="#a855f7" fillOpacity={0.3} />
-                <Radar name="Combined" dataKey="combined" stroke="#22c55e" fill="#22c55e" fillOpacity={0.3} />
-                <Legend />
-                <Tooltip />
+                <PolarGrid stroke="rgba(255, 255, 255, 0.05)" />
+                <PolarAngleAxis dataKey="subject" stroke="#ffffff20" tick={{ fontSize: 8 }} />
+                <PolarRadiusAxis angle={90} domain={[0, 100]} stroke="#ffffff20" tick={{ fontSize: 8 }} />
+                <Radar name="Splunk" dataKey="splunk" stroke="rgba(0, 212, 255, 0.6)" fill="rgba(0, 212, 255, 0.2)" />
+                <Radar name="GSO" dataKey="gso" stroke="rgba(168, 85, 247, 0.6)" fill="rgba(168, 85, 247, 0.2)" />
+                <Radar name="Combined" dataKey="combined" stroke="rgba(0, 255, 136, 0.6)" fill="rgba(0, 255, 136, 0.2)" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'rgba(0, 0, 0, 0.95)', 
+                    border: '1px solid rgba(168, 85, 247, 0.2)',
+                    borderRadius: '4px',
+                    fontSize: '10px'
+                  }} 
+                />
               </RadarChart>
             </ResponsiveContainer>
           </div>
         </div>
       )}
 
-      {/* Area Chart */}
-      {selectedTab === 'platforms' && (
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30 mb-6">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Platform Coverage Trends</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={areaChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="name" stroke="#9ca3af" />
-              <YAxis stroke="#9ca3af" />
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-              <Legend />
-              <Area type="monotone" dataKey="splunk" stackId="1" stroke="#00d4ff" fill="#00d4ff" fillOpacity={0.6} name="Splunk %" />
-              <Area type="monotone" dataKey="gso" stackId="1" stroke="#a855f7" fill="#a855f7" fillOpacity={0.6} name="GSO %" />
-              <Area type="monotone" dataKey="gap" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.6} name="Gap %" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
       {/* Data Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-3">
         {/* Platform Breakdown Table */}
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Platform Breakdown</h2>
+        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent" />
+          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Platform Breakdown</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-[10px]">
               <thead>
-                <tr className="border-b border-gray-700">
-                  <th className="text-left p-2 text-gray-400">Platform Configuration</th>
-                  <th className="text-right p-2 text-gray-400">Host Count</th>
-                  <th className="text-right p-2 text-gray-400">Percentage</th>
-                  <th className="text-center p-2 text-gray-400">Status</th>
+                <tr className="border-b border-white/5">
+                  <th className="text-left py-1.5 text-white/30 font-medium uppercase tracking-wider">Configuration</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Hosts</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Percentage</th>
+                  <th className="text-center py-1.5 text-white/30 font-medium uppercase tracking-wider">Status</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-gray-700 hover:bg-gray-700/50">
-                  <td className="p-2">Splunk Only</td>
-                  <td className="p-2 text-right">{platformBreakdown.splunk_only?.toLocaleString()}</td>
-                  <td className="p-2 text-right text-cyan-400">{platformPercentages.splunk_only?.toFixed(1)}%</td>
-                  <td className="p-2 text-center"><AlertCircle className="w-4 h-4 text-yellow-400 inline" /></td>
+                <tr className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <td className="py-1.5 text-white/70">Splunk Only</td>
+                  <td className="py-1.5 text-right text-white/50 font-mono">{platformBreakdown.splunk_only?.toLocaleString()}</td>
+                  <td className="py-1.5 text-right text-cyan-400/80">{platformPercentages.splunk_only?.toFixed(1)}%</td>
+                  <td className="py-1.5 text-center"><AlertCircle className="w-3 h-3 text-yellow-400 inline" /></td>
                 </tr>
-                <tr className="border-b border-gray-700 hover:bg-gray-700/50">
-                  <td className="p-2">GSO Only</td>
-                  <td className="p-2 text-right">{platformBreakdown.gso_only?.toLocaleString()}</td>
-                  <td className="p-2 text-right text-purple-400">{platformPercentages.gso_only?.toFixed(1)}%</td>
-                  <td className="p-2 text-center"><AlertCircle className="w-4 h-4 text-yellow-400 inline" /></td>
+                <tr className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <td className="py-1.5 text-white/70">GSO Only</td>
+                  <td className="py-1.5 text-right text-white/50 font-mono">{platformBreakdown.gso_only?.toLocaleString()}</td>
+                  <td className="py-1.5 text-right text-purple-400/80">{platformPercentages.gso_only?.toFixed(1)}%</td>
+                  <td className="py-1.5 text-center"><AlertCircle className="w-3 h-3 text-yellow-400 inline" /></td>
                 </tr>
-                <tr className="border-b border-gray-700 hover:bg-gray-700/50">
-                  <td className="p-2">Both Platforms</td>
-                  <td className="p-2 text-right">{platformBreakdown.both_platforms?.toLocaleString()}</td>
-                  <td className="p-2 text-right text-green-400">{platformPercentages.both_platforms?.toFixed(1)}%</td>
-                  <td className="p-2 text-center"><CheckCircle className="w-4 h-4 text-green-400 inline" /></td>
+                <tr className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <td className="py-1.5 text-white/70">Both Platforms</td>
+                  <td className="py-1.5 text-right text-white/50 font-mono">{platformBreakdown.both_platforms?.toLocaleString()}</td>
+                  <td className="py-1.5 text-right text-green-400/80">{platformPercentages.both_platforms?.toFixed(1)}%</td>
+                  <td className="py-1.5 text-center"><CheckCircle className="w-3 h-3 text-green-400 inline" /></td>
                 </tr>
-                <tr className="border-b border-gray-700 hover:bg-gray-700/50">
-                  <td className="p-2">No Logging</td>
-                  <td className="p-2 text-right">{platformBreakdown.no_logging?.toLocaleString()}</td>
-                  <td className="p-2 text-right text-red-400">{platformPercentages.no_logging?.toFixed(1)}%</td>
-                  <td className="p-2 text-center"><XCircle className="w-4 h-4 text-red-400 inline" /></td>
+                <tr className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <td className="py-1.5 text-white/70">No Logging</td>
+                  <td className="py-1.5 text-right text-white/50 font-mono">{platformBreakdown.no_logging?.toLocaleString()}</td>
+                  <td className="py-1.5 text-right text-red-400/80">{platformPercentages.no_logging?.toFixed(1)}%</td>
+                  <td className="py-1.5 text-center"><XCircle className="w-3 h-3 text-red-400 inline" /></td>
                 </tr>
               </tbody>
             </table>
@@ -506,36 +520,46 @@ const ComplianceMatrix = () => {
         </div>
 
         {/* Regional Compliance Table */}
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Regional Compliance</h2>
-          <div className="overflow-x-auto max-h-64">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-gray-800">
-                <tr className="border-b border-gray-700">
-                  <th className="text-left p-2 text-gray-400">Region</th>
-                  <th className="text-right p-2 text-gray-400">Assets</th>
-                  <th className="text-right p-2 text-gray-400">Splunk %</th>
-                  <th className="text-right p-2 text-gray-400">GSO %</th>
-                  <th className="text-right p-2 text-gray-400">Any %</th>
+        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Regional Compliance</h2>
+          <div className="overflow-x-auto max-h-32">
+            <table className="w-full text-[10px]">
+              <thead className="sticky top-0 bg-black/60">
+                <tr className="border-b border-white/5">
+                  <th className="text-left py-1.5 text-white/30 font-medium uppercase tracking-wider">Region</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Assets</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Splunk</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">GSO</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Any</th>
                 </tr>
               </thead>
               <tbody>
-                {regionalCompliance.map((region, idx) => (
-                  <tr key={idx} className="border-b border-gray-700 hover:bg-gray-700/50">
-                    <td className="p-2">{region.region}</td>
-                    <td className="p-2 text-right">{region.total_assets.toLocaleString()}</td>
-                    <td className="p-2 text-right">
-                      <span className={`font-bold ${region.splunk_coverage > 70 ? 'text-green-400' : region.splunk_coverage > 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                {regionalCompliance.slice(0, 10).map((region, idx) => (
+                  <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                    <td className="py-1.5 text-white/70">{region.region}</td>
+                    <td className="py-1.5 text-right text-white/50 font-mono">{region.total_assets.toLocaleString()}</td>
+                    <td className="py-1.5 text-right">
+                      <span className={`${
+                        region.splunk_coverage > 70 ? 'text-green-400/80' : 
+                        region.splunk_coverage > 40 ? 'text-yellow-400/80' : 'text-red-400/80'
+                      }`}>
                         {region.splunk_coverage.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="p-2 text-right">
-                      <span className={`font-bold ${region.gso_coverage > 70 ? 'text-green-400' : region.gso_coverage > 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <td className="py-1.5 text-right">
+                      <span className={`${
+                        region.gso_coverage > 70 ? 'text-green-400/80' : 
+                        region.gso_coverage > 40 ? 'text-yellow-400/80' : 'text-red-400/80'
+                      }`}>
                         {region.gso_coverage.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="p-2 text-right">
-                      <span className={`font-bold ${region.any_logging > 70 ? 'text-green-400' : region.any_logging > 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <td className="py-1.5 text-right">
+                      <span className={`font-bold ${
+                        region.any_logging > 70 ? 'text-green-400/80' : 
+                        region.any_logging > 40 ? 'text-yellow-400/80' : 'text-red-400/80'
+                      }`}>
                         {region.any_logging.toFixed(1)}%
                       </span>
                     </td>
