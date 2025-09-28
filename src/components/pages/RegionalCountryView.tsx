@@ -1,6 +1,7 @@
+// src/components/pages/RegionalCountryView.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { Globe, MapPin, Eye, AlertTriangle, Activity, Building, Cloud, Server, Users, Flag, TrendingUp, Layers } from 'lucide-react';
+import { Globe, MapPin, Eye, AlertTriangle, Activity, Building, Cloud, Server, Users, Flag, TrendingUp, Layers, Zap } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, AreaChart, Area, ScatterChart, Scatter } from 'recharts';
 
 const RegionalCountryView = () => {
@@ -8,7 +9,7 @@ const RegionalCountryView = () => {
   const [countryData, setCountryData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedView, setSelectedView] = useState('regional');
-  const [selectedRegion, setSelectedRegion] = useState(null);
+  const [hoveredMetric, setHoveredMetric] = useState(null);
   const globeRef = useRef(null);
   const rendererRef = useRef(null);
 
@@ -16,8 +17,6 @@ const RegionalCountryView = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
-        // Fetch both regional and country metrics
         const [regionalResponse, countryResponse] = await Promise.all([
           fetch('http://localhost:5000/api/region_metrics'),
           fetch('http://localhost:5000/api/country_metrics')
@@ -54,21 +53,22 @@ const RegionalCountryView = () => {
     }
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x000011, 0.001);
+    scene.fog = new THREE.FogExp2(0x000000, 0.001);
     
     const camera = new THREE.PerspectiveCamera(60, globeRef.current.clientWidth / globeRef.current.clientHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     rendererRef.current = renderer;
     
     renderer.setSize(globeRef.current.clientWidth, globeRef.current.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     globeRef.current.appendChild(renderer.domElement);
 
     // Create globe
-    const globeRadius = 50;
+    const globeRadius = 45;
     const globeGeometry = new THREE.SphereGeometry(globeRadius, 64, 64);
     const globeMaterial = new THREE.MeshPhongMaterial({
-      color: 0x001133,
-      emissive: 0x00d4ff,
+      color: 0x0a0a0a,
+      emissive: 0x0077be,
       emissiveIntensity: 0.02,
       transparent: true,
       opacity: 0.9
@@ -82,7 +82,7 @@ const RegionalCountryView = () => {
       color: 0x00d4ff,
       wireframe: true,
       transparent: true,
-      opacity: 0.15
+      opacity: 0.08
     });
     const wireframe = new THREE.Mesh(wireGeometry, wireMaterial);
     scene.add(wireframe);
@@ -106,88 +106,73 @@ const RegionalCountryView = () => {
       const y = globeRadius * Math.cos(phi);
       const z = globeRadius * Math.sin(phi) * Math.sin(theta);
       
-      // Create marker
-      const markerSize = Math.max(2, Math.min(8, Math.log(count / 100 + 1) * 2));
-      const markerGeometry = new THREE.ConeGeometry(markerSize, markerSize * 2, 8);
+      // Create marker with glow
+      const markerSize = Math.max(1, Math.min(5, Math.log(count / 100 + 1)));
+      
+      // Glow
+      const glowGeometry = new THREE.SphereGeometry(markerSize * 2, 8, 8);
+      const glowMaterial = new THREE.MeshBasicMaterial({
+        color: count > 10000 ? 0x00ff88 : count > 5000 ? 0xffaa00 : 0xff0044,
+        transparent: true,
+        opacity: 0.2
+      });
+      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      glow.position.set(x * 1.05, y * 1.05, z * 1.05);
+      scene.add(glow);
+      
+      // Core
+      const markerGeometry = new THREE.SphereGeometry(markerSize, 8, 8);
       const markerMaterial = new THREE.MeshPhongMaterial({
-        color: count > 10000 ? 0x00ff00 : count > 5000 ? 0xffaa00 : 0xff0000,
-        emissive: count > 10000 ? 0x00ff00 : count > 5000 ? 0xffaa00 : 0xff0000,
+        color: count > 10000 ? 0x00ff88 : count > 5000 ? 0xffaa00 : 0xff0044,
+        emissive: count > 10000 ? 0x00ff88 : count > 5000 ? 0xffaa00 : 0xff0044,
         emissiveIntensity: 0.3
       });
       
       const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-      marker.position.set(x * 1.1, y * 1.1, z * 1.1);
-      marker.lookAt(0, 0, 0);
-      marker.rotateX(Math.PI);
+      marker.position.set(x * 1.05, y * 1.05, z * 1.05);
       scene.add(marker);
-      
-      // Add pulse rings for high-density regions
-      if (count > 10000) {
-        const ringGeometry = new THREE.RingGeometry(markerSize * 1.5, markerSize * 2, 32);
-        const ringMaterial = new THREE.MeshBasicMaterial({
-          color: 0x00ff00,
-          transparent: true,
-          opacity: 0.3,
-          side: THREE.DoubleSide
-        });
-        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-        ring.position.copy(marker.position);
-        ring.lookAt(x, y, z);
-        scene.add(ring);
-      }
     });
 
-    // Add data flow particles
-    const particleCount = 500;
+    // Particles
+    const particleCount = 800;
     const particlesGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
     
     for (let i = 0; i < particleCount; i++) {
       const phi = Math.acos(2 * Math.random() - 1);
       const theta = 2 * Math.PI * Math.random();
-      const radius = globeRadius + Math.random() * 30;
+      const radius = globeRadius + Math.random() * 20;
       
       positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = radius * Math.cos(phi);
       positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-      
-      colors[i * 3] = 0;
-      colors[i * 3 + 1] = 0.83;
-      colors[i * 3 + 2] = 1;
     }
     
     particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    
     const particlesMaterial = new THREE.PointsMaterial({
-      size: 1,
-      vertexColors: true,
+      color: 0x00d4ff,
+      size: 0.5,
       transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending
+      opacity: 0.3
     });
     
     const particles = new THREE.Points(particlesGeometry, particlesMaterial);
     scene.add(particles);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
     scene.add(ambientLight);
-    const pointLight1 = new THREE.PointLight(0x00d4ff, 1, 300);
-    pointLight1.position.set(150, 150, 150);
-    scene.add(pointLight1);
-    const pointLight2 = new THREE.PointLight(0xa855f7, 0.5, 300);
-    pointLight2.position.set(-150, -150, -150);
-    scene.add(pointLight2);
+    const pointLight = new THREE.PointLight(0x00d4ff, 0.5, 300);
+    pointLight.position.set(100, 100, 100);
+    scene.add(pointLight);
 
-    camera.position.set(0, 0, 150);
+    camera.position.set(0, 0, 120);
     camera.lookAt(0, 0, 0);
 
     const animate = () => {
       requestAnimationFrame(animate);
       globe.rotation.y += 0.002;
-      wireframe.rotation.y += 0.002;
+      wireframe.rotation.y -= 0.001;
       particles.rotation.y += 0.0005;
       renderer.render(scene, camera);
     };
@@ -203,8 +188,14 @@ const RegionalCountryView = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-10 w-10 border-b border-cyan-400/50"></div>
+            <div className="absolute inset-0 animate-ping rounded-full h-10 w-10 border border-cyan-400/20"></div>
+          </div>
+          <div className="mt-3 text-[10px] text-white/40 uppercase tracking-[0.2em] animate-pulse">Mapping Regions...</div>
+        </div>
       </div>
     );
   }
@@ -215,139 +206,160 @@ const RegionalCountryView = () => {
   const totalCountries = countryData?.total_countries || 0;
 
   // Prepare chart data
-  const regionalBarData = Object.entries(regionDistribution).slice(0, 10).map(([region, count]) => ({
-    name: region.toUpperCase(),
+  const regionalBarData = Object.entries(regionDistribution).slice(0, 8).map(([region, count]) => ({
+    name: region.toUpperCase().substring(0, 8),
     assets: count,
-    percentage: (count / totalCoverage * 100).toFixed(1)
+    percentage: (count / totalCoverage * 100)
   }));
 
-  const countryBarData = Object.entries(countryDistribution).slice(0, 15).map(([country, count]) => ({
-    name: country.toUpperCase().substring(0, 20),
-    assets: count,
-    percentage: (count / totalCoverage * 100).toFixed(1)
-  }));
-
-  const regionPieData = Object.entries(regionDistribution).slice(0, 6).map(([region, count]) => ({
+  const pieData = Object.entries(regionDistribution).slice(0, 6).map(([region, count]) => ({
     name: region.toUpperCase(),
     value: count,
-    color: region.includes('america') ? '#00d4ff' :
-           region.includes('emea') || region.includes('europe') ? '#22c55e' :
-           region.includes('apac') || region.includes('asia') ? '#a855f7' :
-           region.includes('latam') ? '#ffaa00' : '#ef4444'
+    color: region.includes('america') ? 'rgba(0, 212, 255, 0.7)' :
+           region.includes('emea') || region.includes('europe') ? 'rgba(34, 197, 94, 0.7)' :
+           region.includes('apac') || region.includes('asia') ? 'rgba(168, 85, 247, 0.7)' :
+           region.includes('latam') ? 'rgba(255, 170, 0, 0.7)' : 'rgba(239, 68, 68, 0.7)'
   }));
 
-  const scatterData = Object.entries(countryDistribution).slice(0, 30).map(([country, count], idx) => ({
+  const scatterData = Object.entries(countryDistribution).slice(0, 20).map(([country, count], idx) => ({
     x: idx,
     y: count,
     name: country
   }));
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
+    <div className="p-3 h-full overflow-auto bg-black">
+      {/* Grid background */}
+      <div className="fixed inset-0 opacity-[0.02] pointer-events-none"
+           style={{
+             backgroundImage: 'linear-gradient(rgba(0, 212, 255, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 212, 255, 0.3) 1px, transparent 1px)',
+             backgroundSize: '50px 50px'
+           }} />
+      
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-cyan-400 mb-2">Regional & Country Distribution</h1>
-        <div className="flex gap-2">
-          <button onClick={() => setSelectedView('regional')} 
-                  className={`px-4 py-2 rounded ${selectedView === 'regional' ? 'bg-cyan-600' : 'bg-gray-700'}`}>
-            Regional View
-          </button>
-          <button onClick={() => setSelectedView('country')} 
-                  className={`px-4 py-2 rounded ${selectedView === 'country' ? 'bg-cyan-600' : 'bg-gray-700'}`}>
-            Country View
-          </button>
-          <button onClick={() => setSelectedView('global')} 
-                  className={`px-4 py-2 rounded ${selectedView === 'global' ? 'bg-cyan-600' : 'bg-gray-700'}`}>
-            Global Overview
-          </button>
+      <div className="mb-4 relative">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-white/90 tracking-tight">REGIONAL & COUNTRY ANALYSIS</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
+              <p className="text-[9px] text-white/40 uppercase tracking-[0.15em]">Geographic distribution mapping</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Globe className="w-3 h-3 text-cyan-400/60 animate-pulse" />
+            <span className="text-[10px] text-white/50">{totalCountries} Countries</span>
+          </div>
+        </div>
+        
+        <div className="flex gap-1 mt-3">
+          {['regional', 'country', 'global'].map(view => (
+            <button
+              key={view}
+              onClick={() => setSelectedView(view)}
+              className={`px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded transition-all duration-200 ${
+                selectedView === view 
+                  ? 'bg-gradient-to-r from-cyan-500/10 to-purple-500/10 text-white border border-cyan-400/30' 
+                  : 'bg-black/40 text-white/40 border border-white/5 hover:text-white/60 hover:border-white/10'
+              }`}
+            >
+              {view}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Total Coverage</p>
-              <p className="text-2xl font-bold">{totalCoverage.toLocaleString()}</p>
+      {/* Metrics Cards */}
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        {[
+          { label: 'Total Coverage', value: totalCoverage.toLocaleString(), icon: Globe, color: 'cyan' },
+          { label: 'Regions', value: Object.keys(regionDistribution).length, icon: MapPin, color: 'purple' },
+          { label: 'Countries', value: totalCountries, icon: Flag, color: 'green' },
+          { label: 'Top Region', value: Object.keys(regionDistribution)[0]?.toUpperCase() || 'N/A', icon: TrendingUp, color: 'yellow' }
+        ].map((metric, idx) => (
+          <div 
+            key={idx}
+            onMouseEnter={() => setHoveredMetric(idx)}
+            onMouseLeave={() => setHoveredMetric(null)}
+            className={`relative bg-black/60 backdrop-blur-xl rounded-lg p-3 border transition-all duration-300 cursor-pointer
+              ${hoveredMetric === idx ? 'border-cyan-400/40 transform -translate-y-0.5' : 'border-white/10'}`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[9px] text-white/40 uppercase tracking-[0.1em] font-medium">{metric.label}</p>
+                <p className={`text-base font-bold mt-1 transition-colors ${
+                  hoveredMetric === idx ? 'text-cyan-400' : 'text-white/90'
+                }`}>{metric.value}</p>
+              </div>
+              <metric.icon className={`h-4 w-4 transition-all ${
+                hoveredMetric === idx ? 'text-cyan-400/80' : 'text-white/20'
+              }`} />
             </div>
-            <Globe className="h-8 w-8 text-cyan-400" />
           </div>
-        </div>
-        
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Regions</p>
-              <p className="text-2xl font-bold">{Object.keys(regionDistribution).length}</p>
-            </div>
-            <MapPin className="h-8 w-8 text-purple-400" />
-          </div>
-        </div>
-        
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Countries</p>
-              <p className="text-2xl font-bold">{totalCountries}</p>
-            </div>
-            <Flag className="h-8 w-8 text-green-400" />
-          </div>
-        </div>
-        
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Top Region</p>
-              <p className="text-lg font-bold">{Object.keys(regionDistribution)[0]?.toUpperCase() || 'N/A'}</p>
-            </div>
-            <TrendingUp className="h-8 w-8 text-yellow-400" />
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Main Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-3">
         {/* 3D Globe */}
-        <div className="lg:col-span-1">
-          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-            <h2 className="text-xl font-bold mb-3 text-cyan-400">Global Distribution</h2>
-            <div ref={globeRef} style={{ height: '300px' }} />
+        <div className="col-span-1">
+          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Global Distribution</h2>
+            <div ref={globeRef} style={{ height: '240px' }} />
           </div>
         </div>
 
-        {/* Regional Pie Chart */}
-        <div className="lg:col-span-1">
-          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-            <h2 className="text-xl font-bold mb-3 text-cyan-400">Regional Distribution</h2>
-            <ResponsiveContainer width="100%" height={300}>
+        {/* Pie Chart */}
+        <div className="col-span-1">
+          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent" />
+            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Regional Split</h2>
+            <ResponsiveContainer width="100%" height={240}>
               <PieChart>
-                <Pie data={regionPieData} cx="50%" cy="50%" labelLine={false} outerRadius={100} fill="#8884d8" dataKey="value"
-                     label={(entry) => `${entry.name}: ${(entry.value / totalCoverage * 100).toFixed(1)}%`}>
-                  {regionPieData.map((entry, index) => (
+                <Pie 
+                  data={pieData} 
+                  cx="50%" 
+                  cy="50%" 
+                  innerRadius={40}
+                  outerRadius={80} 
+                  paddingAngle={2}
+                  dataKey="value"
+                >
+                  {pieData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'rgba(0, 0, 0, 0.95)', 
+                    border: '1px solid rgba(0, 212, 255, 0.2)',
+                    borderRadius: '4px',
+                    fontSize: '10px'
+                  }} 
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Top Countries Bar */}
-        <div className="lg:col-span-1">
-          <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-            <h2 className="text-xl font-bold mb-3 text-cyan-400">Top 5 Countries</h2>
+        {/* Top Countries */}
+        <div className="col-span-1">
+          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-green-400/50 to-transparent" />
+            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-3">Top 5 Countries</h2>
             <div className="space-y-3">
               {Object.entries(countryDistribution).slice(0, 5).map(([country, count], idx) => (
                 <div key={idx}>
                   <div className="flex justify-between mb-1">
-                    <span className="text-sm">{country.toUpperCase()}</span>
-                    <span className="text-sm text-cyan-400">{count.toLocaleString()}</span>
+                    <span className="text-[10px] text-white/70">{country.toUpperCase()}</span>
+                    <span className="text-[10px] text-cyan-400/80 font-mono">{count.toLocaleString()}</span>
                   </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2">
-                    <div className="bg-gradient-to-r from-cyan-400 to-purple-400 h-2 rounded-full"
-                         style={{ width: `${(count / Math.max(...Object.values(countryDistribution))) * 100}%` }} />
+                  <div className="w-full bg-black/50 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-cyan-400 to-purple-400 rounded-full transition-all duration-500"
+                      style={{ width: `${(count / Math.max(...Object.values(countryDistribution))) * 100}%` }}
+                    />
                   </div>
                 </div>
               ))}
@@ -356,77 +368,86 @@ const RegionalCountryView = () => {
         </div>
       </div>
 
-      {/* Bar Charts */}
+      {/* Bar Chart */}
       {selectedView === 'regional' && (
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30 mb-6">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Regional Asset Distribution</h2>
-          <ResponsiveContainer width="100%" height={300}>
+        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden mb-3">
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Regional Asset Distribution</h2>
+          <ResponsiveContainer width="100%" height={150}>
             <BarChart data={regionalBarData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="name" stroke="#9ca3af" />
-              <YAxis stroke="#9ca3af" />
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-              <Bar dataKey="assets" fill="#00d4ff" name="Assets" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {selectedView === 'country' && (
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30 mb-6">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Country Asset Distribution</h2>
-          <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={countryBarData} layout="horizontal">
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis type="number" stroke="#9ca3af" />
-              <YAxis type="category" dataKey="name" stroke="#9ca3af" width={100} />
-              <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-              <Bar dataKey="assets" fill="#a855f7" name="Assets" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.03)" />
+              <XAxis dataKey="name" stroke="#ffffff20" tick={{ fontSize: 9 }} />
+              <YAxis stroke="#ffffff20" tick={{ fontSize: 9 }} />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: 'rgba(0, 0, 0, 0.95)', 
+                  border: '1px solid rgba(0, 212, 255, 0.2)',
+                  borderRadius: '4px',
+                  fontSize: '10px'
+                }} 
+              />
+              <Bar dataKey="assets" fill="rgba(0, 212, 255, 0.5)" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       )}
 
       {/* Scatter Chart */}
-      {selectedView === 'global' && (
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30 mb-6">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Global Asset Scatter</h2>
-          <ResponsiveContainer width="100%" height={300}>
+      {selectedView === 'country' && (
+        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden mb-3">
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent" />
+          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Country Distribution Pattern</h2>
+          <ResponsiveContainer width="100%" height={150}>
             <ScatterChart>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis type="number" dataKey="x" name="index" stroke="#9ca3af" />
-              <YAxis type="number" dataKey="y" name="assets" stroke="#9ca3af" />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} 
-                       contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }} />
-              <Scatter name="Countries" data={scatterData} fill="#00d4ff" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.03)" />
+              <XAxis type="number" dataKey="x" stroke="#ffffff20" tick={{ fontSize: 9 }} />
+              <YAxis type="number" dataKey="y" stroke="#ffffff20" tick={{ fontSize: 9 }} />
+              <Tooltip 
+                cursor={{ strokeDasharray: '3 3' }} 
+                contentStyle={{ 
+                  backgroundColor: 'rgba(0, 0, 0, 0.95)', 
+                  border: '1px solid rgba(168, 85, 247, 0.2)',
+                  borderRadius: '4px',
+                  fontSize: '10px'
+                }} 
+              />
+              <Scatter name="Countries" data={scatterData} fill="rgba(168, 85, 247, 0.6)" />
             </ScatterChart>
           </ResponsiveContainer>
         </div>
       )}
 
       {/* Data Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-3">
         {/* Regional Table */}
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Regional Breakdown</h2>
+        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
+          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Regional Breakdown</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-[10px]">
               <thead>
-                <tr className="border-b border-gray-700">
-                  <th className="text-left p-2 text-gray-400">Region</th>
-                  <th className="text-right p-2 text-gray-400">Assets</th>
-                  <th className="text-right p-2 text-gray-400">% of Total</th>
+                <tr className="border-b border-white/5">
+                  <th className="text-left py-1.5 text-white/30 font-medium uppercase tracking-wider">Region</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Assets</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Share</th>
+                  <th className="text-center py-1.5 text-white/30 font-medium uppercase tracking-wider">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(regionDistribution).map(([region, count], idx) => (
-                  <tr key={idx} className="border-b border-gray-700 hover:bg-gray-700/50">
-                    <td className="p-2">{region.toUpperCase()}</td>
-                    <td className="p-2 text-right">{count.toLocaleString()}</td>
-                    <td className="p-2 text-right">
-                      <span className="font-bold text-cyan-400">
-                        {((count / totalCoverage) * 100).toFixed(2)}%
+                {Object.entries(regionDistribution).slice(0, 6).map(([region, count], idx) => (
+                  <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                    <td className="py-1.5 text-white/70">{region.toUpperCase()}</td>
+                    <td className="py-1.5 text-right text-white/50 font-mono">{count.toLocaleString()}</td>
+                    <td className="py-1.5 text-right">
+                      <span className="text-cyan-400/80 font-bold">
+                        {((count / totalCoverage) * 100).toFixed(1)}%
                       </span>
+                    </td>
+                    <td className="py-1.5 text-center">
+                      <div className={`inline-flex w-1.5 h-1.5 rounded-full ${
+                        count > 10000 ? 'bg-green-400' : 
+                        count > 5000 ? 'bg-yellow-400' : 'bg-red-400'
+                      } animate-pulse`} />
                     </td>
                   </tr>
                 ))}
@@ -436,26 +457,42 @@ const RegionalCountryView = () => {
         </div>
 
         {/* Country Table */}
-        <div className="bg-gray-800 rounded-lg p-4 border border-cyan-400/30">
-          <h2 className="text-xl font-bold mb-3 text-cyan-400">Top Countries</h2>
-          <div className="overflow-x-auto max-h-96">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-gray-800">
-                <tr className="border-b border-gray-700">
-                  <th className="text-left p-2 text-gray-400">Country</th>
-                  <th className="text-right p-2 text-gray-400">Assets</th>
-                  <th className="text-right p-2 text-gray-400">% of Total</th>
+        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent" />
+          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Top Countries</h2>
+          <div className="overflow-x-auto max-h-48">
+            <table className="w-full text-[10px]">
+              <thead className="sticky top-0 bg-black/60">
+                <tr className="border-b border-white/5">
+                  <th className="text-left py-1.5 text-white/30 font-medium uppercase tracking-wider">Country</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Assets</th>
+                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Share</th>
+                  <th className="text-center py-1.5 text-white/30 font-medium uppercase tracking-wider">Health</th>
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(countryDistribution).slice(0, 20).map(([country, count], idx) => (
-                  <tr key={idx} className="border-b border-gray-700 hover:bg-gray-700/50">
-                    <td className="p-2">{country.toUpperCase()}</td>
-                    <td className="p-2 text-right">{count.toLocaleString()}</td>
-                    <td className="p-2 text-right">
-                      <span className="font-bold text-purple-400">
+                {Object.entries(countryDistribution).slice(0, 10).map(([country, count], idx) => (
+                  <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                    <td className="py-1.5 text-white/70">{country.toUpperCase()}</td>
+                    <td className="py-1.5 text-right text-white/50 font-mono">{count.toLocaleString()}</td>
+                    <td className="py-1.5 text-right">
+                      <span className="text-purple-400/80 font-bold">
                         {((count / totalCoverage) * 100).toFixed(2)}%
                       </span>
+                    </td>
+                    <td className="py-1.5 text-center">
+                      <div className="flex justify-center gap-0.5">
+                        {[...Array(5)].map((_, i) => (
+                          <div 
+                            key={i}
+                            className={`w-1 h-2 rounded-sm ${
+                              i < Math.ceil((count / Math.max(...Object.values(countryDistribution))) * 5) 
+                                ? 'bg-cyan-400/60' 
+                                : 'bg-white/10'
+                            }`}
+                          />
+                        ))}
+                      </div>
                     </td>
                   </tr>
                 ))}
