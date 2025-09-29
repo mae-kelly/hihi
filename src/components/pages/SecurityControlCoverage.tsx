@@ -9,8 +9,22 @@ const SecurityControlCoverage = () => {
   const [loading, setLoading] = useState(true);
   const [selectedView, setSelectedView] = useState('overview');
   const [hoveredMetric, setHoveredMetric] = useState(null);
+  const [selectedControl, setSelectedControl] = useState(null);
+  const [shieldIntensity, setShieldIntensity] = useState(1);
   const threeDRef = useRef(null);
   const rendererRef = useRef(null);
+  const mousePos = useRef({ x: 0, y: 0 });
+
+  // NEON PASTEL COLORS
+  const COLORS = {
+    cyan: '#7dffff',
+    purple: '#b19dff',
+    pink: '#ff9ec7',
+    white: '#ffffff',
+    black: '#000000'
+  };
+
+  const hexToThree = (hex) => parseInt(hex.replace('#', '0x'));
 
   useEffect(() => {
     const fetchData = async () => {
@@ -32,6 +46,17 @@ const SecurityControlCoverage = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      mousePos.current = { 
+        x: (e.clientX / window.innerWidth) * 2 - 1,
+        y: -(e.clientY / window.innerHeight) * 2 + 1
+      };
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
   // 3D Security Shield Visualization
   useEffect(() => {
     if (!threeDRef.current || !securityData || loading) return;
@@ -47,96 +72,167 @@ const SecurityControlCoverage = () => {
     scene.fog = new THREE.FogExp2(0x000000, 0.002);
     
     const camera = new THREE.PerspectiveCamera(75, threeDRef.current.clientWidth / threeDRef.current.clientHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     rendererRef.current = renderer;
     
     renderer.setSize(threeDRef.current.clientWidth, threeDRef.current.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     threeDRef.current.appendChild(renderer.domElement);
 
-    // Create security shield layers
+    // Create security shield layers from real data
     const controls = ['tanium', 'dlp', 'crowdstrike', 'ssc'];
     const coverage = securityData?.overall_coverage || {};
+    const shieldGroup = new THREE.Group();
     
     controls.forEach((control, index) => {
       const radius = 25 - index * 4;
       const height = 15;
       const coveragePercent = coverage[control]?.coverage || 0;
       
-      // Shield layer
+      // Shield layer with neon glow
       const geometry = new THREE.CylinderGeometry(radius, radius, height, 32, 1, true);
-      const material = new THREE.MeshPhongMaterial({
-        color: coveragePercent > 70 ? 0x00ff88 : coveragePercent > 40 ? 0xff8800 : 0xff0044,
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          time: { value: 0 },
+          coverage: { value: coveragePercent / 100 },
+          color: { 
+            value: new THREE.Color(
+              coveragePercent > 70 ? hexToThree(COLORS.cyan) :
+              coveragePercent > 40 ? hexToThree(COLORS.purple) :
+              hexToThree(COLORS.pink)
+            )
+          }
+        },
+        vertexShader: `
+          varying vec3 vPosition;
+          void main() {
+            vPosition = position;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float time;
+          uniform float coverage;
+          uniform vec3 color;
+          varying vec3 vPosition;
+          void main() {
+            float angle = atan(vPosition.z, vPosition.x);
+            float coveredAngle = coverage * 3.14159 * 2.0;
+            float isCovered = angle < coveredAngle - 3.14159 ? 1.0 : 0.0;
+            
+            vec3 finalColor = color * (0.5 + isCovered * 0.5);
+            float pulse = sin(time * 2.0 + vPosition.y * 0.5) * 0.2 + 0.8;
+            finalColor *= pulse * 2.0;
+            
+            gl_FragColor = vec4(finalColor, 0.3 + isCovered * 0.3);
+          }
+        `,
         transparent: true,
-        opacity: 0.2 + (coveragePercent / 100) * 0.3,
+        blending: THREE.AdditiveBlending,
         side: THREE.DoubleSide
       });
       
       const shield = new THREE.Mesh(geometry, material);
       shield.position.y = index * 4;
-      scene.add(shield);
-      
-      // Coverage indicator
-      const coveredAngle = (coveragePercent / 100) * Math.PI * 2;
-      const coveredGeometry = new THREE.CylinderGeometry(radius - 1, radius - 1, height - 2, 32, 1, true, 0, coveredAngle);
-      const coveredMaterial = new THREE.MeshPhongMaterial({
-        color: 0x00d4ff,
-        emissive: 0x00d4ff,
-        emissiveIntensity: 0.2
-      });
-      
-      const coveredMesh = new THREE.Mesh(coveredGeometry, coveredMaterial);
-      coveredMesh.position.y = index * 4;
-      scene.add(coveredMesh);
+      shield.userData = { material, control };
+      shieldGroup.add(shield);
     });
+    
+    scene.add(shieldGroup);
 
-    // Central core
+    // Central core - protected asset
     const coreGeometry = new THREE.IcosahedronGeometry(6, 1);
-    const coreMaterial = new THREE.MeshPhongMaterial({
-      color: 0x00d4ff,
-      emissive: 0x00d4ff,
-      emissiveIntensity: 0.3
+    const coreMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 }
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        varying vec3 vNormal;
+        void main() {
+          vec3 color = vec3(0.49, 1.0, 1.0);
+          float intensity = pow(0.8 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+          color *= intensity * 3.0;
+          float pulse = sin(time * 3.0) * 0.3 + 0.7;
+          gl_FragColor = vec4(color * pulse, 0.9);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending
     });
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
     scene.add(core);
 
-    // Particles for unprotected assets
-    const particleCount = 300;
-    const particlesGeometry = new THREE.BufferGeometry();
+    // Threat particles (unprotected assets)
+    const particleCount = 500;
+    const particles = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
     
     for (let i = 0; i < particleCount * 3; i += 3) {
       positions[i] = (Math.random() - 0.5) * 80;
       positions[i + 1] = (Math.random() - 0.5) * 50;
       positions[i + 2] = (Math.random() - 0.5) * 80;
+      
+      // Threats are pink
+      colors[i] = 1.0;
+      colors[i + 1] = 0.62;
+      colors[i + 2] = 0.78;
     }
     
-    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    
     const particlesMaterial = new THREE.PointsMaterial({
-      size: 0.5,
-      color: 0xff0044,
+      size: 1.0,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.3
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
     });
     
-    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
-    scene.add(particles);
+    const particleSystem = new THREE.Points(particles, particlesMaterial);
+    scene.add(particleSystem);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
     scene.add(ambientLight);
-    const pointLight = new THREE.PointLight(0x00d4ff, 0.5);
+    const pointLight = new THREE.PointLight(hexToThree(COLORS.cyan), 0.8, 200);
     pointLight.position.set(50, 50, 50);
     scene.add(pointLight);
 
     camera.position.set(40, 25, 40);
     camera.lookAt(0, 8, 0);
 
+    const clock = new THREE.Clock();
     const animate = () => {
       requestAnimationFrame(animate);
-      scene.rotation.y += 0.002;
+      const elapsedTime = clock.getElapsedTime();
+      
+      shieldGroup.rotation.y += 0.002 * shieldIntensity;
       core.rotation.y += 0.01;
-      particles.rotation.y -= 0.001;
+      particleSystem.rotation.y -= 0.001;
+      
+      // Update shaders
+      coreMaterial.uniforms.time.value = elapsedTime;
+      shieldGroup.children.forEach(child => {
+        if(child.userData?.material) {
+          child.userData.material.uniforms.time.value = elapsedTime;
+        }
+      });
+      
+      // Camera movement
+      camera.position.x = 40 + mousePos.current.x * 10;
+      camera.position.z = 40 + mousePos.current.y * 10;
+      camera.lookAt(0, 8, 0);
+      
       renderer.render(scene, camera);
     };
     animate();
@@ -147,18 +243,23 @@ const SecurityControlCoverage = () => {
         rendererRef.current.dispose();
       }
     };
-  }, [securityData, loading]);
+  }, [securityData, loading, shieldIntensity]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="relative">
-            <div className="animate-spin rounded-full h-10 w-10 border-b border-green-400/50"></div>
-            <div className="absolute inset-0 animate-ping rounded-full h-10 w-10 border border-green-400/20"></div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: COLORS.black }}>
+        <div style={{ textAlign: 'center' }}>
+          <Shield size={48} style={{ 
+            color: COLORS.cyan, 
+            filter: `drop-shadow(0 0 40px ${COLORS.cyan})`,
+            animation: 'pulse 1.5s infinite',
+            margin: '0 auto'
+          }} />
+          <div style={{ marginTop: '24px', color: COLORS.white, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.3em' }}>
+            Scanning Security
           </div>
-          <div className="mt-3 text-[10px] text-white/40 uppercase tracking-[0.2em] animate-pulse">Scanning Security...</div>
         </div>
+        <style>{`@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); }}`}</style>
       </div>
     );
   }
@@ -168,7 +269,7 @@ const SecurityControlCoverage = () => {
   const regionalCoverage = securityData?.regional_coverage || [];
   const maturityLevel = securityData?.security_maturity || 'BASIC';
 
-  // Prepare chart data
+  // Real data preparation
   const controlsBarData = Object.entries(overallCoverage).map(([control, data]) => ({
     name: control.toUpperCase(),
     deployed: data.deployed,
@@ -179,8 +280,8 @@ const SecurityControlCoverage = () => {
     name: control.toUpperCase(),
     value: data.coverage,
     deployed: data.deployed,
-    color: data.coverage > 70 ? 'rgba(0, 255, 136, 0.7)' : 
-           data.coverage > 40 ? 'rgba(255, 170, 0, 0.7)' : 'rgba(255, 0, 68, 0.7)'
+    color: data.coverage > 70 ? COLORS.cyan : 
+           data.coverage > 40 ? COLORS.purple : COLORS.pink
   }));
 
   const regionalBarData = regionalCoverage.slice(0, 8).map(region => ({
@@ -196,59 +297,105 @@ const SecurityControlCoverage = () => {
     fullMark: 100
   }));
 
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload[0]) {
+      return (
+        <div style={{ 
+          backgroundColor: 'rgba(0,0,0,0.95)',
+          padding: '12px',
+          borderRadius: '8px',
+          border: `1px solid ${COLORS.cyan}44`,
+          backdropFilter: 'blur(10px)',
+          boxShadow: `0 8px 32px ${COLORS.cyan}33`
+        }}>
+          <p style={{ color: COLORS.white, fontSize: '12px', fontWeight: 'bold' }}>{label}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{ color: COLORS.white, fontSize: '11px', opacity: 0.9 }}>
+              {entry.name}: {typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}
+            </p>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
-    <div className="p-3 h-full overflow-auto bg-black">
-      {/* Grid background */}
-      <div className="fixed inset-0 opacity-[0.02] pointer-events-none"
-           style={{
-             backgroundImage: 'linear-gradient(rgba(0, 255, 136, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 136, 0.3) 1px, transparent 1px)',
-             backgroundSize: '50px 50px'
-           }} />
+    <div style={{ padding: '20px', height: '100%', overflow: 'auto', backgroundColor: COLORS.black, position: 'relative' }}>
+      {/* Animated background */}
+      <div style={{
+        position: 'fixed', inset: 0,
+        background: `radial-gradient(circle at 50% 20%, ${COLORS.cyan}11, transparent 50%),
+                     radial-gradient(circle at 80% 80%, ${COLORS.purple}11, transparent 50%)`,
+        pointerEvents: 'none'
+      }} />
       
       {/* Header */}
-      <div className="mb-4 relative">
-        <div className="flex items-center justify-between">
+      <div style={{ marginBottom: '28px', position: 'relative', zIndex: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h1 className="text-lg font-bold text-white/90 tracking-tight">SECURITY CONTROL COVERAGE</h1>
-            <div className="flex items-center gap-2 mt-1">
-              <div className="w-1 h-1 rounded-full bg-green-400 animate-pulse" />
-              <p className="text-[9px] text-white/40 uppercase tracking-[0.15em]">Agent deployment analysis</p>
+            <h1 style={{ 
+              fontSize: '28px', fontWeight: 'bold', color: COLORS.white,
+              textShadow: `0 0 40px ${COLORS.cyan}, 0 0 80px ${COLORS.cyan}66`
+            }}>
+              SECURITY CONTROL COVERAGE
+            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', 
+                           backgroundColor: maturityLevel === 'ADVANCED' ? COLORS.cyan : maturityLevel === 'INTERMEDIATE' ? COLORS.purple : COLORS.pink,
+                           boxShadow: `0 0 20px ${maturityLevel === 'ADVANCED' ? COLORS.cyan : maturityLevel === 'INTERMEDIATE' ? COLORS.purple : COLORS.pink}`,
+                           animation: 'pulse 2s infinite' }} />
+              <p style={{ fontSize: '11px', color: `${COLORS.white}99`, textTransform: 'uppercase', letterSpacing: '0.2em' }}>
+                Agent deployment analysis
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className={`px-2 py-0.5 rounded text-[9px] font-medium ${
-              maturityLevel === 'ADVANCED' ? 'bg-green-500/20 text-green-400 border border-green-400/30' :
-              maturityLevel === 'INTERMEDIATE' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-400/30' :
-              'bg-red-500/20 text-red-400 border border-red-400/30'
-            }`}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{
+              padding: '6px 12px', borderRadius: '6px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase',
+              backgroundColor: maturityLevel === 'ADVANCED' ? `${COLORS.cyan}33` : 
+                             maturityLevel === 'INTERMEDIATE' ? `${COLORS.purple}33` : `${COLORS.pink}33`,
+              color: maturityLevel === 'ADVANCED' ? COLORS.cyan : 
+                    maturityLevel === 'INTERMEDIATE' ? COLORS.purple : COLORS.pink,
+              border: `1px solid ${maturityLevel === 'ADVANCED' ? COLORS.cyan : 
+                                  maturityLevel === 'INTERMEDIATE' ? COLORS.purple : COLORS.pink}66`,
+              boxShadow: `0 0 20px ${maturityLevel === 'ADVANCED' ? COLORS.cyan : 
+                                    maturityLevel === 'INTERMEDIATE' ? COLORS.purple : COLORS.pink}44`
+            }}>
               {maturityLevel} MATURITY
             </span>
-            <div className="flex items-center gap-2">
-              <Shield className="w-3 h-3 text-green-400/60 animate-pulse" />
-              <span className="text-[10px] text-white/50">Security</span>
-            </div>
+            <Shield size={16} style={{ color: COLORS.cyan, filter: `drop-shadow(0 0 10px ${COLORS.cyan})` }} />
+            <span style={{ fontSize: '11px', color: COLORS.white }}>Security</span>
           </div>
         </div>
       </div>
 
       {/* Metrics Cards */}
-      <div className="grid grid-cols-4 gap-2 mb-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
         <div 
           onMouseEnter={() => setHoveredMetric(0)}
           onMouseLeave={() => setHoveredMetric(null)}
-          className={`relative bg-black/60 backdrop-blur-xl rounded-lg p-3 border transition-all duration-300 cursor-pointer
-            ${hoveredMetric === 0 ? 'border-green-400/40 transform -translate-y-0.5' : 'border-white/10'}`}
+          style={{
+            backgroundColor: COLORS.black,
+            border: hoveredMetric === 0 ? `1px solid ${COLORS.cyan}` : '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px', padding: '20px',
+            transition: 'all 0.3s',
+            transform: hoveredMetric === 0 ? 'translateY(-8px)' : 'translateY(0)',
+            boxShadow: hoveredMetric === 0 ? `0 20px 60px ${COLORS.cyan}66, 0 0 60px ${COLORS.cyan}44` : `0 0 20px ${COLORS.cyan}22`,
+            cursor: 'pointer'
+          }}
         >
-          <div className="flex items-center justify-between">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <p className="text-[9px] text-white/40 uppercase tracking-[0.1em] font-medium">Total Assets</p>
-              <p className={`text-base font-bold mt-1 transition-colors ${
-                hoveredMetric === 0 ? 'text-green-400' : 'text-white/90'
-              }`}>{totalAssets.toLocaleString()}</p>
+              <p style={{ fontSize: '10px', color: `${COLORS.white}66`, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+                Total Assets
+              </p>
+              <p style={{ fontSize: '24px', fontWeight: 'bold', color: COLORS.white }}>{totalAssets.toLocaleString()}</p>
             </div>
-            <Server className={`h-4 w-4 transition-all ${
-              hoveredMetric === 0 ? 'text-green-400/80' : 'text-white/20'
-            }`} />
+            <Server size={24} style={{ 
+              color: COLORS.cyan,
+              filter: `drop-shadow(0 0 20px ${COLORS.cyan}) drop-shadow(0 0 40px ${COLORS.cyan})`
+            }} />
           </div>
         </div>
         
@@ -257,195 +404,194 @@ const SecurityControlCoverage = () => {
             key={idx}
             onMouseEnter={() => setHoveredMetric(idx + 1)}
             onMouseLeave={() => setHoveredMetric(null)}
-            className={`relative bg-black/60 backdrop-blur-xl rounded-lg p-3 border transition-all duration-300 cursor-pointer
-              ${hoveredMetric === idx + 1 ? 'border-green-400/40 transform -translate-y-0.5' : 'border-white/10'}`}
+            onClick={() => setSelectedControl(control)}
+            style={{
+              backgroundColor: COLORS.black,
+              border: hoveredMetric === idx + 1 ? `1px solid ${data.coverage > 70 ? COLORS.cyan : data.coverage > 40 ? COLORS.purple : COLORS.pink}` : '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '12px', padding: '20px',
+              transition: 'all 0.3s',
+              transform: hoveredMetric === idx + 1 ? 'translateY(-8px)' : 'translateY(0)',
+              boxShadow: hoveredMetric === idx + 1 ? `0 20px 60px ${data.coverage > 70 ? COLORS.cyan : data.coverage > 40 ? COLORS.purple : COLORS.pink}66` : 'none',
+              cursor: 'pointer'
+          }}
           >
-            <div className="flex items-center justify-between">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <p className="text-[9px] text-white/40 uppercase tracking-[0.1em] font-medium">{control.toUpperCase()}</p>
-                <p className={`text-base font-bold mt-1 transition-colors ${
-                  hoveredMetric === idx + 1 ? 'text-green-400' : 'text-white/90'
-                }`}>{data.coverage.toFixed(1)}%</p>
-                <p className="text-[9px] text-cyan-400/60 mt-0.5">{data.deployed.toLocaleString()} protected</p>
+                <p style={{ fontSize: '10px', color: `${COLORS.white}66`, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+                  {control.toUpperCase()}
+                </p>
+                <p style={{ fontSize: '24px', fontWeight: 'bold', color: COLORS.white }}>{data.coverage.toFixed(1)}%</p>
+                <p style={{ fontSize: '10px', color: COLORS.cyan, marginTop: '4px' }}>
+                  {data.deployed.toLocaleString()} protected
+                </p>
               </div>
-              <Shield className={`h-4 w-4 transition-all ${
-                data.coverage > 70 ? 'text-green-400/60' : 
-                data.coverage > 40 ? 'text-yellow-400/60' : 'text-red-400/60'
-              }`} />
+              <Shield size={24} style={{ 
+                color: data.coverage > 70 ? COLORS.cyan : data.coverage > 40 ? COLORS.purple : COLORS.pink,
+                filter: `drop-shadow(0 0 20px ${data.coverage > 70 ? COLORS.cyan : data.coverage > 40 ? COLORS.purple : COLORS.pink})`
+              }} />
             </div>
           </div>
         ))}
       </div>
 
       {/* Main Charts Grid */}
-      <div className="grid grid-cols-3 gap-3 mb-3">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '28px' }}>
         {/* 3D Visualization */}
-        <div className="col-span-1">
-          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-green-400/50 to-transparent" />
-            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Security Shield Layers</h2>
-            <div ref={threeDRef} style={{ height: '240px' }} />
-          </div>
+        <div style={{ 
+          backgroundColor: COLORS.black, border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '12px', padding: '20px', position: 'relative'
+        }}>
+          <div style={{
+            position: 'absolute', inset: '-2px',
+            background: `linear-gradient(45deg, ${COLORS.cyan}, ${COLORS.purple}, ${COLORS.pink})`,
+            borderRadius: '12px', opacity: 0.2, animation: 'gradientRotate 4s linear infinite', zIndex: -1
+          }} />
+          <h2 style={{ fontSize: '12px', fontWeight: '600', color: `${COLORS.white}cc`, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '12px' }}>
+            Security Shield Layers
+          </h2>
+          <div ref={threeDRef} style={{ height: '240px' }} />
         </div>
 
         {/* Coverage Pie Chart */}
-        <div className="col-span-1">
-          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
-            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Control Distribution</h2>
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie 
-                  data={pieData} 
-                  cx="50%" 
-                  cy="50%" 
-                  innerRadius={40}
-                  outerRadius={80} 
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'rgba(0, 0, 0, 0.95)', 
-                    border: '1px solid rgba(0, 255, 136, 0.2)',
-                    borderRadius: '4px',
-                    fontSize: '10px'
-                  }} 
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+        <div style={{ backgroundColor: COLORS.black, border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '20px' }}>
+          <h2 style={{ fontSize: '12px', fontWeight: '600', color: `${COLORS.white}cc`, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '12px' }}>
+            Control Distribution
+          </h2>
+          <ResponsiveContainer width="100%" height={240}>
+            <PieChart>
+              <Pie 
+                data={pieData} 
+                cx="50%" cy="50%" 
+                innerRadius={40} outerRadius={80} 
+                paddingAngle={5}
+                dataKey="value"
+                onClick={(data) => setSelectedControl(data.name)}
+              >
+                {pieData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                ))}
+              </Pie>
+              <Tooltip content={<CustomTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
         </div>
 
         {/* Radar Chart */}
-        <div className="col-span-1">
-          <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-purple-400/50 to-transparent" />
-            <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Coverage Radar</h2>
-            <ResponsiveContainer width="100%" height={240}>
-              <RadarChart data={radarData}>
-                <PolarGrid stroke="rgba(255, 255, 255, 0.05)" />
-                <PolarAngleAxis dataKey="subject" stroke="#ffffff20" tick={{ fontSize: 8 }} />
-                <PolarRadiusAxis angle={90} domain={[0, 100]} stroke="#ffffff20" tick={{ fontSize: 8 }} />
-                <Radar name="Coverage %" dataKey="coverage" stroke="rgba(0, 255, 136, 0.6)" fill="rgba(0, 255, 136, 0.2)" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'rgba(0, 0, 0, 0.95)', 
-                    border: '1px solid rgba(0, 255, 136, 0.2)',
-                    borderRadius: '4px',
-                    fontSize: '10px'
-                  }} 
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
+        <div style={{ backgroundColor: COLORS.black, border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '20px' }}>
+          <h2 style={{ fontSize: '12px', fontWeight: '600', color: `${COLORS.white}cc`, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '12px' }}>
+            Coverage Radar
+          </h2>
+          <ResponsiveContainer width="100%" height={240}>
+            <RadarChart data={radarData}>
+              <PolarGrid stroke="rgba(255, 255, 255, 0.1)" />
+              <PolarAngleAxis dataKey="subject" stroke={`${COLORS.white}66`} tick={{ fontSize: 8 }} />
+              <PolarRadiusAxis angle={90} domain={[0, 100]} stroke={`${COLORS.white}66`} tick={{ fontSize: 8 }} />
+              <Radar name="Coverage %" dataKey="coverage" stroke={COLORS.cyan} fill={COLORS.cyan} fillOpacity={0.3} />
+              <Tooltip content={<CustomTooltip />} />
+            </RadarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
       {/* Regional Coverage Bar Chart */}
-      <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden mb-3">
-        <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-green-400/50 to-transparent" />
-        <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Regional Security Coverage</h2>
-        <ResponsiveContainer width="100%" height={150}>
+      <div style={{ backgroundColor: COLORS.black, border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '20px', marginBottom: '28px' }}>
+        <h2 style={{ fontSize: '12px', fontWeight: '600', color: `${COLORS.white}cc`, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '16px' }}>
+          Regional Security Coverage
+        </h2>
+        <ResponsiveContainer width="100%" height={200}>
           <BarChart data={regionalBarData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.03)" />
-            <XAxis dataKey="region" stroke="#ffffff20" tick={{ fontSize: 9 }} />
-            <YAxis stroke="#ffffff20" tick={{ fontSize: 9 }} />
-            <Tooltip 
-              contentStyle={{ 
-                backgroundColor: 'rgba(0, 0, 0, 0.95)', 
-                border: '1px solid rgba(0, 255, 136, 0.2)',
-                borderRadius: '4px',
-                fontSize: '10px'
-              }} 
-            />
-            <Bar dataKey="tanium" fill="rgba(0, 212, 255, 0.5)" radius={[2, 2, 0, 0]} />
-            <Bar dataKey="dlp" fill="rgba(0, 255, 136, 0.5)" radius={[2, 2, 0, 0]} />
-            <Bar dataKey="crowdstrike" fill="rgba(168, 85, 247, 0.5)" radius={[2, 2, 0, 0]} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
+            <XAxis dataKey="region" stroke={`${COLORS.white}66`} tick={{ fontSize: 9, fill: `${COLORS.white}66` }} />
+            <YAxis stroke={`${COLORS.white}66`} tick={{ fontSize: 9, fill: `${COLORS.white}66` }} />
+            <Tooltip content={<CustomTooltip />} />
+            <Bar dataKey="tanium" fill={COLORS.cyan} radius={[8, 8, 0, 0]} />
+            <Bar dataKey="dlp" fill={COLORS.purple} radius={[8, 8, 0, 0]} />
+            <Bar dataKey="crowdstrike" fill={COLORS.pink} radius={[8, 8, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       {/* Data Tables */}
-      <div className="grid grid-cols-2 gap-3">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }}>
         {/* Overall Coverage Table */}
-        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-green-400/50 to-transparent" />
-          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Security Controls Summary</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[10px]">
-              <thead>
-                <tr className="border-b border-white/5">
-                  <th className="text-left py-1.5 text-white/30 font-medium uppercase tracking-wider">Control</th>
-                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Deployed</th>
-                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Coverage</th>
-                  <th className="text-center py-1.5 text-white/30 font-medium uppercase tracking-wider">Status</th>
+        <div style={{ backgroundColor: COLORS.black, border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '20px' }}>
+          <h2 style={{ fontSize: '12px', fontWeight: '600', color: `${COLORS.white}cc`, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '16px' }}>
+            Security Controls Summary
+          </h2>
+          <table style={{ width: '100%', fontSize: '11px' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <th style={{ textAlign: 'left', padding: '12px 0', color: `${COLORS.white}66` }}>Control</th>
+                <th style={{ textAlign: 'right', padding: '12px 0', color: `${COLORS.white}66` }}>Deployed</th>
+                <th style={{ textAlign: 'right', padding: '12px 0', color: `${COLORS.white}66` }}>Coverage</th>
+                <th style={{ textAlign: 'center', padding: '12px 0', color: `${COLORS.white}66` }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(overallCoverage).map(([control, data], idx) => (
+                <tr key={idx} 
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}
+                    onClick={() => setSelectedControl(control)}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                  <td style={{ padding: '12px 0', color: COLORS.white, textTransform: 'uppercase' }}>{control}</td>
+                  <td style={{ padding: '12px 0', textAlign: 'right', color: `${COLORS.white}cc` }}>{data.deployed.toLocaleString()}</td>
+                  <td style={{ padding: '12px 0', textAlign: 'right' }}>
+                    <span style={{ 
+                      fontWeight: 'bold',
+                      color: data.coverage > 70 ? COLORS.cyan : data.coverage > 40 ? COLORS.purple : COLORS.pink,
+                      textShadow: `0 0 10px ${data.coverage > 70 ? COLORS.cyan : data.coverage > 40 ? COLORS.purple : COLORS.pink}`
+                    }}>
+                      {data.coverage.toFixed(1)}%
+                    </span>
+                  </td>
+                  <td style={{ padding: '12px 0', textAlign: 'center' }}>
+                    {data.coverage > 70 ? 
+                      <CheckCircle size={14} style={{ color: COLORS.cyan, filter: `drop-shadow(0 0 10px ${COLORS.cyan})` }} /> :
+                      data.coverage > 40 ?
+                      <AlertTriangle size={14} style={{ color: COLORS.purple, filter: `drop-shadow(0 0 10px ${COLORS.purple})` }} /> :
+                      <XCircle size={14} style={{ color: COLORS.pink, filter: `drop-shadow(0 0 10px ${COLORS.pink})` }} />
+                    }
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {Object.entries(overallCoverage).map(([control, data], idx) => (
-                  <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                    <td className="py-1.5 text-white/70 uppercase">{control}</td>
-                    <td className="py-1.5 text-right text-white/50 font-mono">{data.deployed.toLocaleString()}</td>
-                    <td className="py-1.5 text-right">
-                      <span className={`font-bold ${
-                        data.coverage > 70 ? 'text-green-400/80' :
-                        data.coverage > 40 ? 'text-yellow-400/80' : 'text-red-400/80'
-                      }`}>
-                        {data.coverage.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-1.5 text-center">
-                      {data.coverage > 70 ? 
-                        <CheckCircle className="w-3 h-3 text-green-400 inline" /> :
-                        data.coverage > 40 ?
-                        <AlertTriangle className="w-3 h-3 text-yellow-400 inline" /> :
-                        <XCircle className="w-3 h-3 text-red-400 inline" />
-                      }
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
 
-        {/* Regional Coverage Table */}
-        <div className="bg-black/60 backdrop-blur-xl rounded-lg p-3 border border-white/10 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
-          <h2 className="text-[10px] font-semibold text-white/60 uppercase tracking-[0.15em] mb-2">Regional Breakdown</h2>
-          <div className="overflow-x-auto max-h-32">
-            <table className="w-full text-[10px]">
-              <thead className="sticky top-0 bg-black/60">
-                <tr className="border-b border-white/5">
-                  <th className="text-left py-1.5 text-white/30 font-medium uppercase tracking-wider">Region</th>
-                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Assets</th>
-                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">Tanium</th>
-                  <th className="text-right py-1.5 text-white/30 font-medium uppercase tracking-wider">DLP</th>
+        {/* Regional Breakdown Table */}
+        <div style={{ backgroundColor: COLORS.black, border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '20px' }}>
+          <h2 style={{ fontSize: '12px', fontWeight: '600', color: `${COLORS.white}cc`, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '16px' }}>
+            Regional Breakdown
+          </h2>
+          <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '11px' }}>
+              <thead style={{ position: 'sticky', top: 0, backgroundColor: COLORS.black }}>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ textAlign: 'left', padding: '12px 0', color: `${COLORS.white}66` }}>Region</th>
+                  <th style={{ textAlign: 'right', padding: '12px 0', color: `${COLORS.white}66` }}>Assets</th>
+                  <th style={{ textAlign: 'right', padding: '12px 0', color: `${COLORS.white}66` }}>Tanium</th>
+                  <th style={{ textAlign: 'right', padding: '12px 0', color: `${COLORS.white}66` }}>DLP</th>
                 </tr>
               </thead>
               <tbody>
                 {regionalCoverage.slice(0, 10).map((region, idx) => (
-                  <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                    <td className="py-1.5 text-white/70">{region.region}</td>
-                    <td className="py-1.5 text-right text-white/50 font-mono">{region.total_assets.toLocaleString()}</td>
-                    <td className="py-1.5 text-right">
-                      <span className={`${
-                        region.tanium_coverage > 70 ? 'text-green-400/80' : 
-                        region.tanium_coverage > 40 ? 'text-yellow-400/80' : 'text-red-400/80'
-                      }`}>
+                  <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td style={{ padding: '12px 0', color: COLORS.white }}>{region.region}</td>
+                    <td style={{ padding: '12px 0', textAlign: 'right', color: `${COLORS.white}cc` }}>{region.total_assets.toLocaleString()}</td>
+                    <td style={{ padding: '12px 0', textAlign: 'right' }}>
+                      <span style={{ 
+                        color: region.tanium_coverage > 70 ? COLORS.cyan : region.tanium_coverage > 40 ? COLORS.purple : COLORS.pink,
+                        textShadow: `0 0 10px ${region.tanium_coverage > 70 ? COLORS.cyan : region.tanium_coverage > 40 ? COLORS.purple : COLORS.pink}`
+                      }}>
                         {region.tanium_coverage.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="py-1.5 text-right">
-                      <span className={`${
-                        region.dlp_coverage > 70 ? 'text-green-400/80' : 
-                        region.dlp_coverage > 40 ? 'text-yellow-400/80' : 'text-red-400/80'
-                      }`}>
+                    <td style={{ padding: '12px 0', textAlign: 'right' }}>
+                      <span style={{ 
+                        color: region.dlp_coverage > 70 ? COLORS.cyan : region.dlp_coverage > 40 ? COLORS.purple : COLORS.pink,
+                        textShadow: `0 0 10px ${region.dlp_coverage > 70 ? COLORS.cyan : region.dlp_coverage > 40 ? COLORS.purple : COLORS.pink}`
+                      }}>
                         {region.dlp_coverage.toFixed(1)}%
                       </span>
                     </td>
@@ -456,6 +602,11 @@ const SecurityControlCoverage = () => {
           </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes pulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; } }
+        @keyframes gradientRotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 };
